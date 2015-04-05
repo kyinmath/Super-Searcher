@@ -1,4 +1,3 @@
-#include <iostream>
 #include <cstdint>
 #include <mutex>
 #include <array>
@@ -16,6 +15,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Analysis/Verifier.h"
 #include "AST commands.h"
 
 /*
@@ -25,15 +25,18 @@ structure: each AST has:
 uint64_t is my only object type.
 */
 
-//todo: threading.
+//todo: threading. create non-global contexts
+#ifndef _MSC_VER
+thread_local
+#endif
 llvm::LLVMContext& thread_context = llvm::getGlobalContext();
 
 template<typename target_type>
 union int_or_ptr
 {
-	uint64_T integer;
+	uint64_t integer;
 	target_type* pointer;
-	int_or_ptr(uint64_T x) : integer(x) {}
+	int_or_ptr(uint64_t x) : integer(x) {}
 	int_or_ptr(const target_type* x) : pointer(x) {}
 };
 
@@ -46,7 +49,7 @@ struct AST
 	//we use a reverse basic block order so that all pointers point backwards in the stack, instead of having some pointers going forward, and some pointers going backwards.
 	//AST* braced_element; //this object does not survive on the stack.
 			//for now, we don't worry about 3-tree memory locality.
-	std::array<int_or_ptr<AST>, max_fields_in_AST> pointers;
+	std::array<int_or_ptr<AST>, max_fields_in_AST> fields;
 };
 
 struct Type
@@ -54,7 +57,7 @@ struct Type
 	uint64_t size; //for now, it's just the number of uint64_t in an object. no complex objects allowed.
 };
 
-namespace compile_state
+namespace codegen_status
 {
 	enum {
 		no_error,
@@ -64,9 +67,9 @@ namespace compile_state
 
 struct Compile_Return_Value
 {
-	llvm::Value* llvm_return_object;
+	llvm::Value* llvm_IR_object;
 	Compile_Return_Value(llvm::Value* b)
-		: llvm_return_object(b) {}
+		: llvm_IR_object(b) {}
 };
 
 
@@ -82,13 +85,7 @@ struct compiler_state
 
 	compiler_state() : error_location(nullptr), the_return_value(nullptr), Builder(thread_context)
 	{
-		using namespace llvm;
-		TheModule = new Module("temp module", thread_context);
-		FunctionType *FT = FunctionType::get(llvm::Type::getVoidTy(thread_context), false);
-		Function *F = Function::Create(FT, Function::ExternalLinkage, "temp function", TheModule);
-
-		BasicBlock *BB = BasicBlock::Create(thread_context, "entry", F);
-		Builder.SetInsertPoint(BB);
+		TheModule = new llvm::Module("temp module", thread_context); //todo: memleak
 	}
 
 public:
@@ -96,28 +93,47 @@ public:
 
 	AST* error_location;
 	Compile_Return_Value the_return_value;
-	//exists when compile_state == no_error. the purpose of this is so that we don't have to copy a return object over and over if we fail to compile
+	//exists when codegen_status == no_error. the purpose of this is so that we don't have to copy a return object over and over if we fail to compile
 
 
 	llvm::AllocaInst* CreateEntryBlockAlloca(uint64_t size);
 
-	unsigned AST_gen(AST* target, bool on_stack);
-	unsigned initiate_compilation(AST* target);
+	unsigned generate_IR(AST* target, bool on_stack);
+	unsigned compile_AST(AST* target)
+	{
+		using namespace llvm;
+		FunctionType *FT = FunctionType::get(llvm::Type::getVoidTy(thread_context), false);
+		Function *F = Function::Create(FT, Function::ExternalLinkage, "temp function", TheModule);
+
+		BasicBlock *BB = BasicBlock::Create(thread_context, "entry", F);
+		Builder.SetInsertPoint(BB);
+
+		if (generate_IR(target, false))
+			return 1; //error
+		Builder.CreateRetVoid();
+
+		// Validate the generated code, checking for consistency.
+		llvm::verifyFunction(*F);
+
+		TheModule->dump();
+		return 0;
+	}
 };
 
 
 //generate llvm code. propre return value goes into Compile_Return_Value/error_location; the unsigned return is an error code.
-unsigned compiler_state::AST_gen(AST* target, bool on_stack)
+unsigned compiler_state::generate_IR(AST* target, bool on_stack)
 {
 	if (target == nullptr)
 	{
-		return compile_state::no_error;
+		the_return_value = nullptr;
+		return codegen_status::no_error;
 	}
 
 	if (this->loop_catcher.find(target) != this->loop_catcher.end())
 	{
 		this->error_location = target;
-		return compile_state::infinite_loop;
+		return codegen_status::infinite_loop;
 	}
 	this->loop_catcher.insert(target);
 
@@ -131,109 +147,62 @@ unsigned compiler_state::AST_gen(AST* target, bool on_stack)
 
 
 	//compile the things that survive.
-	unsigned previous_elements = AST_gen(target->preceding_BB_element, true);
+	unsigned previous_elements = generate_IR(target->preceding_BB_element, true);
 	if (!previous_elements) return previous_elements;
 	//auto first_pointer = the_return_value;
 
 	//storage for superdependency compilation
-	std::array<Compile_Return_Value, max_fields_in_AST> subs;
+	std::vector<Compile_Return_Value> field_results;
 
 	auto generate_internal = [&](unsigned position)
 	{
-		unsigned result = AST_gen(target->pointers[position].pointer, false);
+		unsigned result = generate_IR(target->fields[position].pointer, false);
 		if (!result) return result; //error
-		subs[position] = the_return_value;
+		field_results.push_back(the_return_value);
 		return 0u;
 	};
+	if (target->tag != ASTn("if")) //if statement requires special handling
+	{
+		for (unsigned x = 0; x < AST_vector[target->tag].number_of_AST_fields; ++x)
+		{
+			unsigned result = generate_internal(x);
+			if (result != codegen_status::no_error) return result;
 
+			//normally we'd also want to verify the types here. but we're assuming that every return value is a uint64 for now.
+		}
+	}
+	auto finish = [&](llvm::Value* produced_IR) -> uint64_t
+	{
+		the_return_value = Compile_Return_Value(produced_IR);
+		return codegen_status::no_error;
+	};
 
 
 	switch (target->tag)
 	{
 	case ASTn("static_integer"):
-
-	case ASTn("add"): //add two integers.
-
-		//two integers
-		compile_superdependency_position(0);
-		compile_superdependency_position(1);
-
-		//verify that they match the int type.
-		for (unsigned x : {0, 1})
-			if (type_check<RVO>(subs[x].type, type_pointer::uint64, 0, 0, true) != 3)
-			{
-				this->error_location = target->pointers[x].pointer;
-				return compile_state::type_mismatch;
-			}
-		llvm::Value* first_address = Builder.CreateConstGEP2_64(subs[0].llvm_Value, 0, 0);
-		llvm::Value* first_value = Builder.CreateLoad(first_address);
-		llvm::Value* second_address = Builder.CreateConstGEP2_64(subs[1].llvm_Value, 0, 0);
-		llvm::Value* second_value = Builder.CreateLoad(second_address);
-
-		return finish(type_pointer::uint64, Builder.CreateAdd(subs[0].llvm_Value, subs[1].llvm_Value), 1);
-	case AST("concatenate"):
-
-		compile_superdependency_position(0);
-		compile_superdependency_position(1);
-
-		scratch_space.push_back(immut_type_T(type::concatenate, subs[0].type, subs[1].type));
-
-		uint64_t result_size = subs[0].size + subs[1].size;
 		llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
-		llvm::Type* array_type = llvm::ArrayType::get(int64_type, result_size);
-		llvm::AllocaInst* storage_location = Builder.CreateAlloca(array_type);
-
-		//todo: we should be copying stuff differently. copy this code elsewhere though; the second half is useful.
-		for (int incrementor = 0; incrementor < subs[0].size; ++incrementor) //copy the first array
-		{
-			llvm::Value* first_address = Builder.CreateConstGEP2_64(subs[0].llvm_Value, 0, incrementor);
-			llvm::Value* first_value = Builder.CreateLoad(first_address);
-			llvm::Value* storage_address = Builder.CreateConstGEP2_64(subs[0].llvm_Value, 0, incrementor);
-			Builder.CreateStore(first_value, storage_address); //copy a single integer over
-		}
-
-		for (int incrementor = 0; incrementor < subs[1].size; ++incrementor) //copy the second array
-		{
-			llvm::Value* second_address = Builder.CreateConstGEP2_64(subs[0].llvm_Value, 0, incrementor);
-			llvm::Value* second_value = Builder.CreateLoad(second_address);
-			llvm::Value* storage_address = Builder.CreateConstGEP2_64(subs[0].llvm_Value, 0, incrementor + subs[0].size);
-			Builder.CreateStore(second_value, storage_address);
-		}
-
-
-		pointer_lower_lifetime = std::min(subs[0].target_lower_lifetime, subs[1].target_lower_lifetime);
-		pointer_upper_lifetime = std::max(subs[0].target_upper_lifetime, subs[1].target_upper_lifetime);
-
-		return (scratch_space.back(), storage_location, result_size);
-
-
-	case AST("overwrite"):
-
-		//needs some kind of offset, an ending offset, and needs to get the target's type.
-		//get the type from the registered objects list.
-		//then, toggle locks and call dtors.
-	case AST("label"):
+		the_return_value = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].integer));
+		return codegen_status::no_error;
+	case ASTn("add"): //add two integers.
+		return finish(Builder.CreateAdd(field_results[0].llvm_IR_object, field_results[1].llvm_IR_object));
+	case ASTn("label"):
 		//remove the label from future_labels, because it's no longer in front of anything
-		assert(future_labels.top() == target, "ordering issue in AST_gen");
+		//assert(future_labels.top() == target, "ordering issue in generate_IR");
 		future_labels.pop();
-	case AST("if"): //you can see the condition's return object in the branches.
+	case ASTn("if"): //you can see the condition's return object in the branches.
 		//otherwise, the condition is missing, which could be another if function that may be implemented later, but probably not.
-
-		//the condition statement
-		compile_superdependency_position(0);
-
-		//find labels in the second branch
-		coro second_branch(boost::bind(&compiler_state::compile_shim, this), target->pointers[2].pointer);
-		if (target->pointers[2].pointer != nullptr)
+#ifdef _MSC_VER
+		1; //intellisense autoindent won't work if the brace-open{ is right after a :
+#endif
 		{
-			unsigned error_value = second_branch.get();
-			assert(error_value != compile_state::no_error); //EVERY possible AST must run either resolve_continuations or AST_gen or both, so we can't receive no_error
-			if (error_value != compile_state::continuation) return error_value;
+			//the condition statement
+			unsigned result = generate_internal(0);
+			if (result != codegen_status::no_error) return result;
 		}
-		//otherwise do nothing
 
 		//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
-		llvm::Value* comparison = Builder.CreateICmpNE(subs[0].llvm_Value,
+		llvm::Value* comparison = Builder.CreateICmpNE(field_results[0].llvm_IR_object,
 			llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
 		llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
@@ -248,7 +217,8 @@ unsigned compiler_state::AST_gen(AST* target, bool on_stack)
 		//first branch.
 		Builder.SetInsertPoint(ThenBB);
 
-		compile_superdependency_position(1);
+		unsigned result = generate_internal(1);
+		if (result != codegen_status::no_error) return result;
 
 		Builder.CreateBr(MergeBB);
 		ThenBB = Builder.GetInsertBlock();
@@ -257,79 +227,24 @@ unsigned compiler_state::AST_gen(AST* target, bool on_stack)
 		Builder.SetInsertPoint(ElseBB);
 
 		{
-			unsigned error_value = second_branch.get();
-			if (error_value != compile_state::no_error) return error_value;
+			unsigned result = generate_internal(2);
+			if (result != codegen_status::no_error) return result;
 		}
 
 		//for the second branch
 		Builder.CreateBr(MergeBB);
 		ThenBB = Builder.GetInsertBlock();
 
-		lockable_type_T* resultant_type;
-		uint64_t resultant_size;
-		//if one of them is escape_type, then choose the other one
-		if ((subs[1].type == escape_type) || (subs[2].type == escape_type))
-		{
-			resultant_type = (subs[1].type == escape_type) ? subs[2].type : subs[1].type;
-			resultant_size = (subs[1].type == escape_type) ? subs[2].size : subs[1].size;
-		}
-
-		else if (type_check<RVO>(subs[1].type, subs[2].type, 0, 0, false) != 3)
-		{
-			error_location = target;
-			return compile_state::type_mismatch;
-			//todo: what error should be returned? the owning AST, or the superdependency AST?
-			//definitely not the superdependency AST, because then there's not any way to get the owner. you have no idea what it should be. and there can be duplicates: different owners
-			//but if the owner is reported, we probably need to report which slot, also.
-			//actually, we want to report a lot of information. the types, whether it was an if branch type mismatch,
-		}
-		else
-		{
-			resultant_type = subs[2].type; //it's the more lax one
-			resultant_size = subs[2].size;
-		}
-		pointer_lower_lifetime = std::min(subs[1].target_lower_lifetime, subs[2].target_lower_lifetime);
-		pointer_upper_lifetime = std::max(subs[1].target_upper_lifetime, subs[2].target_upper_lifetime);
-
-
 		// Emit merge block.
 		TheFunction->getBasicBlockList().push_back(MergeBB);
 		Builder.SetInsertPoint(MergeBB);
 		llvm::PHINode *PN = Builder.CreatePHI(llvm::Type::getDoubleTy(thread_context), 2);
 
-		PN->addIncoming(subs[1].llvm_Value, ThenBB);
-		PN->addIncoming(subs[2].llvm_Value, ElseBB);
-		return finish(resultant_type, PN, resultant_size);
+		PN->addIncoming(field_results[1].llvm_IR_object, ThenBB);
+		PN->addIncoming(field_results[2].llvm_IR_object, ElseBB);
+		return finish(PN);
 
-	case AST("lock immutify"):
-		does_target_require_dtors = 2;
-		compile_superdependency_position(0);
-		//todo: test if the offset's element is a lock. if so, simply change it to say "immut"
-		Builder.CreateAtomicRMW(llvm::AtomicRMWInst::BinOp::Add, subs[0].llvm_Value, llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), llvm::AtomicOrdering::Acquire);
-		//todo
-	case AST("dtor"):
-		does_target_require_dtors = 1;
-		return finish(empty_type, nullptr, 0);
 	}
 
 
 }
-
-
-//run this function right before you, personally, actually emit any llvm code, and after any potential labels might exist.
-//that means if any superdependency function emits llvm code, that's ok. as long as you're not the one emitting the code.
-unsigned compiler_state::resolve_continuations()
-{
-	unsigned size_of_stack = this->temp_stack.size(); //note what the stack looks like now
-	while (!continuations.empty())
-	{
-		AST* next_continuation = continuations.top();
-		continuations.pop();
-		auto try_continuation = AST_gen(next_continuation);
-		if (!try_continuation) return try_continuation;
-		clear_stack(size_of_stack);
-	}
-	if (!returns.empty())
-		(*returns.top())(compile_state::continuation); //yield
-	return unsigned(compile_state::no_error);
-};
