@@ -18,9 +18,6 @@
     <ClCompile Include="cs11.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="AST commands.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="kaleidoscope4.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

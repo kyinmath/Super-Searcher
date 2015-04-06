@@ -231,20 +231,31 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 		}
 	}
 
+	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 
 	switch (target->tag)
 	{
 	case ASTn("static integer"):
 	{
-		llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 		return Return_Info(codegen_status::no_error, llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)));
 	}
 	case ASTn("add"): //add two integers.
 		return Return_Info(codegen_status::no_error, Builder.CreateAdd(field_results[0], field_results[1]));
-	case ASTn("label"):
-		//remove the label from future_labels, because it's no longer in front of anything
-		//assert(future_labels.top() == target, "ordering issue in generate_IR");
-		future_labels.pop();
+	case ASTn("Hello World!"):
+	{
+		llvm::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!\n");
+
+		//create the function type
+		std::vector<llvm::Type *> putsArgs;
+		putsArgs.push_back(Builder.getInt8Ty()->getPointerTo());
+		llvm::ArrayRef<llvm::Type*> argsRef(putsArgs);
+		llvm::FunctionType *putsType =
+			llvm::FunctionType::get(Builder.getInt32Ty(), argsRef, false);
+
+		llvm::Constant *putsFunc = TheModule->getOrInsertFunction("puts", putsType);
+
+		return Return_Info(codegen_status::no_error, Builder.CreateCall(putsFunc, helloWorld));
+	}
 	case ASTn("if"): //you can see the condition's return object in the branches.
 		//otherwise, the condition is missing, which could be another if function that may be implemented later, but probably not.
 #ifdef _MSC_VER
@@ -315,7 +326,8 @@ int main()
 
 
 	AST getif("if", &addthem, &get1, &get2, &get1);
+	AST helloworld("Hello World!", &getif);
 	compiler_object compiler;
-	compiler.compile_AST(&getif);
+	compiler.compile_AST(&helloworld);
 	//trying to compile getif results in core dump. but addthem works.
 }

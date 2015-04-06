@@ -23,11 +23,12 @@ struct AST_info
 constexpr AST_info AST_vector[] =
 {
 	{ "static integer" },
+	{ "Hello World!" },
+	{ "if", 3 }, //test, first branch, second branch
+	{ "get 0" },
 	{ "goto", 2 }, //label and failure branch
 	{ "label" },
 	{ "basic block" },
-	{ "if", 3 }, //test, first branch, second branch
-	{ "get 0" },
 	{ "add", 2 }, //ints
 	{ "sub", 2 },
 	{ "mul", 2 },
