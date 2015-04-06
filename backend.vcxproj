@@ -39,7 +39,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>C:\Users\CompAcc\Downloads\llvm-3.6.0.src\include;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
+    <IncludePath>C:\Users\CompAcc\Readonly virtual\llvm-3.6.0.src\include;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -68,6 +68,7 @@
   <ItemGroup>
     <ClCompile Include="AST commands.cpp" />
     <ClCompile Include="cs11.cpp" />
+    <ClCompile Include="kaleidoscope4.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AST commands.h" />

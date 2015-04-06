@@ -22,7 +22,7 @@ struct AST_info
 //must be a vector, because we have to return the position.
 constexpr AST_info AST_vector[] =
 {
-	{ "static integer"},
+	{ "static integer" },
 	{ "goto", 2 }, //label and failure branch
 	{ "label" },
 	{ "basic block" },

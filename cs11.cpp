@@ -1,5 +1,14 @@
-//compile with clang++ -g cs11.cpp `llvm-config --cppflags --libs core --ldflags --system-libs` -o toy -std=c++1y
-//we need the packages libedit-dev and zlib1g-dev 
+/*
+in Ubuntu, these go in /etc/apt/sources.list :
+deb http://llvm.org/apt/trusty/ llvm-toolchain-trusty-3.6 main
+deb-src http://llvm.org/apt/trusty/ llvm-toolchain-trusty-3.6 main
+then in console, sudo apt-get install clang-3.6 llvm-3.6
+
+clang++-3.6 -g cs11.cpp `llvm-config-3.6 --cxxflags --ldflags --system-libs --libs core mcjit native` -o toy -rdynamic -std=c++1z
+we need the packages libedit-dev and zlib1g-dev if there are errors about lz and ledit
+
+*/
+#include <iostream>
 #include <cstdint>
 //#include <mutex>
 #include <array>
@@ -18,7 +27,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Analysis/Verifier.h"
+#include "llvm/IR/Verifier.h"
 #include "AST commands.h"
 
 /*
@@ -37,10 +46,10 @@ llvm::LLVMContext& thread_context = llvm::getGlobalContext();
 template<typename target_type>
 union int_or_ptr
 {
-	uint64_t integer;
-	target_type* pointer;
-	int_or_ptr(uint64_t x) : integer(x) {}
-	int_or_ptr(target_type* x) : pointer(x) {}
+	uint64_t num;
+	target_type* ptr;
+	int_or_ptr(uint64_t x) : num(x) {}
+	int_or_ptr(target_type* x) : ptr(x) {}
 };
 
 const uint64_t max_fields_in_AST = 4; //should accomodate the largest possible AST
@@ -64,23 +73,22 @@ struct Type
 	uint64_t size; //for now, it's just the number of uint64_t in an object. no complex objects allowed.
 };
 
-namespace codegen_status
-{
-	enum {
-		no_error,
-		infinite_loop,
-	};
+enum codegen_status {
+	no_error,
+	infinite_loop,
+	nullptr_AST
 };
 
-struct Compile_Return_Value
+struct Return_Info
 {
+	codegen_status error_code;
 	llvm::Value* llvm_IR_object;
-	Compile_Return_Value(llvm::Value* b)
-		: llvm_IR_object(b) {}
+	Return_Info(codegen_status err, llvm::Value* b) 
+		: error_code(err), llvm_IR_object(b) {}
 };
 
 
-struct compiler_state
+struct compiler_object
 {
 	llvm::Module *TheModule;
 	llvm::IRBuilder<> Builder;
@@ -90,7 +98,7 @@ struct compiler_state
 	//these are the labels which we just passed by. you can jump to them without checking finiteness, but you still have to check the type stack
 	std::stack<AST*> future_labels;
 
-	compiler_state() : error_location(nullptr), the_return_value(nullptr), Builder(thread_context)
+	compiler_object() : error_location(nullptr), Builder(thread_context)
 	{
 		TheModule = new llvm::Module("temp module", thread_context); //todo: memleak
 	}
@@ -99,13 +107,12 @@ public:
 
 
 	AST* error_location;
-	Compile_Return_Value the_return_value;
-	//exists when codegen_status == no_error. the purpose of this is so that we don't have to copy a return object over and over if we fail to compile
-
+	//exists when codegen_status has an error.
+	
 
 	llvm::AllocaInst* CreateEntryBlockAlloca(uint64_t size);
 
-	unsigned generate_IR(AST* target, bool on_stack);
+	Return_Info generate_IR(AST* target, bool on_stack);
 	unsigned compile_AST(AST* target)
 	{
 		using namespace llvm;
@@ -115,7 +122,7 @@ public:
 		BasicBlock *BB = BasicBlock::Create(thread_context, "entry", F);
 		Builder.SetInsertPoint(BB);
 
-		if (generate_IR(target, false))
+		if (generate_IR(target, false).error_code)
 			return 1; //error
 		Builder.CreateRetVoid();
 
@@ -128,61 +135,64 @@ public:
 };
 
 
-//generate llvm code. propre return value goes into Compile_Return_Value/error_location; the unsigned return is an error code.
-unsigned compiler_state::generate_IR(AST* target, bool on_stack)
+//generate llvm code. propre return value goes into Return_Info/error_location; the unsigned return is an error code.
+Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 {
 	if (target == nullptr)
 	{
-		the_return_value = nullptr;
-		return codegen_status::no_error;
+		error_location = target;
+		return Return_Info(codegen_status::nullptr_AST, nullptr);
 	}
+
+	std::cerr << "entering generate_IR with address " << target << " with tag " << target->tag << '\n';
+	std::cerr << "fields are " << target->fields[0].num << ' ' << target->fields[1].num << ' ' << target->fields[2].num << ' ' << target->fields[3].num << '\n';
+	std::cerr << "otherwise: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
 
 	if (this->loop_catcher.find(target) != this->loop_catcher.end())
 	{
-		this->error_location = target;
-		return codegen_status::infinite_loop;
+		error_location = target;
+		return Return_Info(codegen_status::infinite_loop, nullptr);
 	}
 	this->loop_catcher.insert(target);
 
 	//this creates a dtor that takes care of loop_catcher removal.
 	struct temp_RAII{
 		//compiler_state can only be used if it is passed in.
-		compiler_state* object; AST* targ;
-		temp_RAII(compiler_state* x, AST* t) : object(x), targ(t) {}
+		compiler_object* object; AST* targ;
+		temp_RAII(compiler_object* x, AST* t) : object(x), targ(t) {}
 		~temp_RAII() { object->loop_catcher.erase(targ); }
 	} temp_object(this, target);
 
 
-	//compile the things that survive.
-	unsigned previous_elements = generate_IR(target->preceding_BB_element, true);
-	if (!previous_elements) return previous_elements;
-	//auto first_pointer = the_return_value;
+	//compile the previous elements in the basic block.
+	if (target->preceding_BB_element)
+
+	{
+		auto previous_elements = generate_IR(target->preceding_BB_element, true);
+		if (previous_elements.error_code) return previous_elements;
+	}//auto first_pointer = the_return_value;
 
 	//storage for superdependency compilation
-	std::vector<Compile_Return_Value> field_results;
+	std::vector<llvm::Value*> field_results;
 
 	auto generate_internal = [&](unsigned position)
 	{
-		unsigned result = generate_IR(target->fields[position].pointer, false);
-		if (!result) return result; //error
-		field_results.push_back(the_return_value);
-		return 0u;
+		auto result = generate_IR(target->fields[position].ptr, false);
+		if (result.error_code) return result.error_code; //error
+		field_results.push_back(result.llvm_IR_object);
+		return codegen_status::no_error;
 	};
 	if (target->tag != ASTn("if")) //if statement requires special handling
 	{
+
 		for (unsigned x = 0; x < AST_vector[target->tag].number_of_AST_fields; ++x)
 		{
-			unsigned result = generate_internal(x);
-			if (result != codegen_status::no_error) return result;
+			codegen_status result = generate_internal(x);
+			if (result != codegen_status::no_error) return Return_Info(result, nullptr);
 
 			//normally we'd also want to verify the types here. but we're assuming that every return value is a uint64 for now.
 		}
 	}
-	auto finish = [&](llvm::Value* produced_IR) -> uint64_t
-	{
-		the_return_value = Compile_Return_Value(produced_IR);
-		return codegen_status::no_error;
-	};
 
 
 	switch (target->tag)
@@ -190,11 +200,11 @@ unsigned compiler_state::generate_IR(AST* target, bool on_stack)
 	case ASTn("static integer"):
 	{
 		llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
-		the_return_value = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].integer));
-		return codegen_status::no_error;
+		return Return_Info(codegen_status::no_error, llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)));
 	}
 	case ASTn("add"): //add two integers.
-		return finish(Builder.CreateAdd(field_results[0].llvm_IR_object, field_results[1].llvm_IR_object));
+		std::cerr << "compiling further \n";
+		return Return_Info(codegen_status::no_error, Builder.CreateAdd(field_results[0], field_results[1]));
 	case ASTn("label"):
 		//remove the label from future_labels, because it's no longer in front of anything
 		//assert(future_labels.top() == target, "ordering issue in generate_IR");
@@ -206,14 +216,13 @@ unsigned compiler_state::generate_IR(AST* target, bool on_stack)
 #endif
 		{
 			//the condition statement
-			unsigned result = generate_internal(0);
-			if (result != codegen_status::no_error) return result;
+			codegen_status result = generate_internal(0);
+			if (result != codegen_status::no_error) return Return_Info(result, nullptr);
 		}
 
 		{
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
-			llvm::Value* comparison = Builder.CreateICmpNE(field_results[0].llvm_IR_object,
-				llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
+			llvm::Value* comparison = Builder.CreateICmpNE(field_results[0], llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
 			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
 			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
@@ -226,9 +235,10 @@ unsigned compiler_state::generate_IR(AST* target, bool on_stack)
 
 			//first branch.
 			Builder.SetInsertPoint(ThenBB);
-
-			unsigned result = generate_internal(1);
-			if (result != codegen_status::no_error) return result;
+			{
+				codegen_status result = generate_internal(1);
+				if (result != codegen_status::no_error) return Return_Info(result, nullptr);
+			}
 
 			Builder.CreateBr(MergeBB);
 			ThenBB = Builder.GetInsertBlock();
@@ -237,8 +247,8 @@ unsigned compiler_state::generate_IR(AST* target, bool on_stack)
 			Builder.SetInsertPoint(ElseBB);
 
 			{
-				unsigned result = generate_internal(2);
-				if (result != codegen_status::no_error) return result;
+				codegen_status result = generate_internal(2);
+				if (result != codegen_status::no_error) return Return_Info(result, nullptr);
 			}
 
 			//for the second branch
@@ -250,9 +260,9 @@ unsigned compiler_state::generate_IR(AST* target, bool on_stack)
 			Builder.SetInsertPoint(MergeBB);
 			llvm::PHINode *PN = Builder.CreatePHI(llvm::Type::getDoubleTy(thread_context), 2);
 
-			PN->addIncoming(field_results[1].llvm_IR_object, ThenBB);
-			PN->addIncoming(field_results[2].llvm_IR_object, ElseBB);
-			return finish(PN);
+			PN->addIncoming(field_results[1], ThenBB);
+			PN->addIncoming(field_results[2], ElseBB);
+			return Return_Info(codegen_status::no_error, PN);
 		}
 	}
 
@@ -261,9 +271,13 @@ unsigned compiler_state::generate_IR(AST* target, bool on_stack)
 
 int main()
 {
+	//seems cout doesn't work, so we have to use cerr
 	AST get1("static integer", 0, 3);
 	AST get2("static integer", 0, 5);
 	AST addthem("add", 0, &get1, &get2);
-	compiler_state compiler;
+	std::cerr << "address of get1 is " << &get1 << '\n';
+	std::cerr << "tag of get1 is " << get1.tag << '\n';
+
+	compiler_object compiler;
 	compiler.compile_AST(&addthem);
 }

@@ -21,6 +21,9 @@
     <ClCompile Include="AST commands.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="kaleidoscope4.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AST commands.h">
