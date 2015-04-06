@@ -29,6 +29,7 @@ we need the packages libedit-dev and zlib1g-dev if there are errors about lz and
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "AST commands.h"
+#include "llvm/PassManager.h"
 
 /*
 structure: each AST has:
@@ -64,7 +65,7 @@ struct AST
 	std::array<int_or_ptr<AST>, max_fields_in_AST> fields;
 	AST(const char name[], AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> f2 = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
 		: tag(ASTn(name)), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 }
-	{}//VS complains about aggregate initialization, but I don't care
+	{} //VS complains about aggregate initialization, but I don't care
 	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };
 
@@ -122,14 +123,23 @@ public:
 		BasicBlock *BB = BasicBlock::Create(thread_context, "entry", F);
 		Builder.SetInsertPoint(BB);
 
-		if (generate_IR(target, false).error_code)
-			return 1; //error
-		Builder.CreateRetVoid();
+		auto return_object = generate_IR(target, false);
+		if (return_object.error_code)
+			return return_object.error_code; //error
+
+		Builder.CreateRet(return_object.llvm_IR_object);
 
 		// Validate the generated code, checking for consistency.
 		llvm::verifyFunction(*F);
 
 		TheModule->dump();
+		auto *FPM = new llvm::FunctionPassManager(TheModule);
+		Module::iterator it;
+		Module::iterator end = TheModule->end();
+		for (it = TheModule->begin(); it != end; ++it) {
+			// Run the FPM on this function
+			FPM->run(*it);
+		}
 		return 0;
 	}
 };
@@ -144,10 +154,11 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 		return Return_Info(codegen_status::nullptr_AST, nullptr);
 	}
 
-	std::cerr << "entering generate_IR with address " << target << " with tag " << target->tag << '\n';
+	TheModule->dump();
+	/*std::cerr << "entering generate_IR with address " << target << " with tag " << target->tag << '\n';
 	std::cerr << "fields are " << target->fields[0].num << ' ' << target->fields[1].num << ' ' << target->fields[2].num << ' ' << target->fields[3].num << '\n';
 	std::cerr << "otherwise: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
-
+	*/
 	if (this->loop_catcher.find(target) != this->loop_catcher.end())
 	{
 		error_location = target;
@@ -203,7 +214,6 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 		return Return_Info(codegen_status::no_error, llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)));
 	}
 	case ASTn("add"): //add two integers.
-		std::cerr << "compiling further \n";
 		return Return_Info(codegen_status::no_error, Builder.CreateAdd(field_results[0], field_results[1]));
 	case ASTn("label"):
 		//remove the label from future_labels, because it's no longer in front of anything
@@ -275,9 +285,9 @@ int main()
 	AST get1("static integer", 0, 3);
 	AST get2("static integer", 0, 5);
 	AST addthem("add", 0, &get1, &get2);
-	std::cerr << "address of get1 is " << &get1 << '\n';
-	std::cerr << "tag of get1 is " << get1.tag << '\n';
 
+
+	AST getif("if", &addthem, &get1, &get2, &get1);
 	compiler_object compiler;
-	compiler.compile_AST(&addthem);
+	compiler.compile_AST(&getif);
 }
