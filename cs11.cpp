@@ -1,7 +1,10 @@
+//compile with clang++ -g cs11.cpp `llvm-config --cppflags --libs core --ldflags --system-libs` -o toy -std=c++1y
+//we need the packages libedit-dev and zlib1g-dev 
 #include <cstdint>
-#include <mutex>
+//#include <mutex>
 #include <array>
 #include <stack>
+#include <cassert>
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
@@ -37,7 +40,7 @@ union int_or_ptr
 	uint64_t integer;
 	target_type* pointer;
 	int_or_ptr(uint64_t x) : integer(x) {}
-	int_or_ptr(const target_type* x) : pointer(x) {}
+	int_or_ptr(target_type* x) : pointer(x) {}
 };
 
 const uint64_t max_fields_in_AST = 4; //should accomodate the largest possible AST
@@ -50,6 +53,10 @@ struct AST
 	//AST* braced_element; //this object does not survive on the stack.
 			//for now, we don't worry about 3-tree memory locality.
 	std::array<int_or_ptr<AST>, max_fields_in_AST> fields;
+	AST(const char name[], AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> f2 = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
+		: tag(ASTn(name)), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 }
+	{}//VS complains about aggregate initialization, but I don't care
+	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };
 
 struct Type
@@ -78,7 +85,7 @@ struct compiler_state
 	llvm::Module *TheModule;
 	llvm::IRBuilder<> Builder;
 
-	std::unordered_set<AST*>  loop_catcher; //lists the existing ASTs in a chain. goal is to prevent infinite loops.
+	std::unordered_set<AST*> loop_catcher; //lists the existing ASTs in a chain. goal is to prevent infinite loops.
 
 	//these are the labels which we just passed by. you can jump to them without checking finiteness, but you still have to check the type stack
 	std::stack<AST*> future_labels;
@@ -180,10 +187,12 @@ unsigned compiler_state::generate_IR(AST* target, bool on_stack)
 
 	switch (target->tag)
 	{
-	case ASTn("static_integer"):
+	case ASTn("static integer"):
+	{
 		llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 		the_return_value = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].integer));
 		return codegen_status::no_error;
+	}
 	case ASTn("add"): //add two integers.
 		return finish(Builder.CreateAdd(field_results[0].llvm_IR_object, field_results[1].llvm_IR_object));
 	case ASTn("label"):
@@ -201,50 +210,60 @@ unsigned compiler_state::generate_IR(AST* target, bool on_stack)
 			if (result != codegen_status::no_error) return result;
 		}
 
-		//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
-		llvm::Value* comparison = Builder.CreateICmpNE(field_results[0].llvm_IR_object,
-			llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
-		llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
-
-		// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
-		llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(thread_context, "", TheFunction);
-		llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(thread_context);
-		llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(thread_context); //todo: is this what we're returning? is there a better name?
-
-
-		Builder.CreateCondBr(comparison, ThenBB, ElseBB);
-
-		//first branch.
-		Builder.SetInsertPoint(ThenBB);
-
-		unsigned result = generate_internal(1);
-		if (result != codegen_status::no_error) return result;
-
-		Builder.CreateBr(MergeBB);
-		ThenBB = Builder.GetInsertBlock();
-
-		TheFunction->getBasicBlockList().push_back(ElseBB);
-		Builder.SetInsertPoint(ElseBB);
-
 		{
-			unsigned result = generate_internal(2);
+			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
+			llvm::Value* comparison = Builder.CreateICmpNE(field_results[0].llvm_IR_object,
+				llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
+			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+
+			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
+			llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(thread_context, "", TheFunction);
+			llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(thread_context);
+			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(thread_context); //todo: is this what we're returning? is there a better name?
+
+
+			Builder.CreateCondBr(comparison, ThenBB, ElseBB);
+
+			//first branch.
+			Builder.SetInsertPoint(ThenBB);
+
+			unsigned result = generate_internal(1);
 			if (result != codegen_status::no_error) return result;
+
+			Builder.CreateBr(MergeBB);
+			ThenBB = Builder.GetInsertBlock();
+
+			TheFunction->getBasicBlockList().push_back(ElseBB);
+			Builder.SetInsertPoint(ElseBB);
+
+			{
+				unsigned result = generate_internal(2);
+				if (result != codegen_status::no_error) return result;
+			}
+
+			//for the second branch
+			Builder.CreateBr(MergeBB);
+			ThenBB = Builder.GetInsertBlock();
+
+			// Emit merge block.
+			TheFunction->getBasicBlockList().push_back(MergeBB);
+			Builder.SetInsertPoint(MergeBB);
+			llvm::PHINode *PN = Builder.CreatePHI(llvm::Type::getDoubleTy(thread_context), 2);
+
+			PN->addIncoming(field_results[1].llvm_IR_object, ThenBB);
+			PN->addIncoming(field_results[2].llvm_IR_object, ElseBB);
+			return finish(PN);
 		}
-
-		//for the second branch
-		Builder.CreateBr(MergeBB);
-		ThenBB = Builder.GetInsertBlock();
-
-		// Emit merge block.
-		TheFunction->getBasicBlockList().push_back(MergeBB);
-		Builder.SetInsertPoint(MergeBB);
-		llvm::PHINode *PN = Builder.CreatePHI(llvm::Type::getDoubleTy(thread_context), 2);
-
-		PN->addIncoming(field_results[1].llvm_IR_object, ThenBB);
-		PN->addIncoming(field_results[2].llvm_IR_object, ElseBB);
-		return finish(PN);
-
 	}
 
+	llvm_unreachable("should have returned before here");
+}
 
+int main()
+{
+	AST get1("static integer", 0, 3);
+	AST get2("static integer", 0, 5);
+	AST addthem("add", 0, &get1, &get2);
+	compiler_state compiler;
+	compiler.compile_AST(&addthem);
 }
