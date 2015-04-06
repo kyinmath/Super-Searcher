@@ -30,6 +30,10 @@ we need the packages libedit-dev and zlib1g-dev if there are errors about lz and
 #include "llvm/IR/Verifier.h"
 #include "AST commands.h"
 #include "llvm/PassManager.h"
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/MCJIT.h"
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/Support/TargetSelect.h"
 
 /*
 structure: each AST has:
@@ -93,6 +97,7 @@ struct compiler_object
 {
 	llvm::Module *TheModule;
 	llvm::IRBuilder<> Builder;
+	llvm::ExecutionEngine* engine;
 
 	std::unordered_set<AST*> loop_catcher; //lists the existing ASTs in a chain. goal is to prevent infinite loops.
 
@@ -102,6 +107,21 @@ struct compiler_object
 	compiler_object() : error_location(nullptr), Builder(thread_context)
 	{
 		TheModule = new llvm::Module("temp module", thread_context); //todo: memleak
+
+		llvm::InitializeNativeTarget();
+		llvm::InitializeNativeTargetAsmPrinter();
+		llvm::InitializeNativeTargetAsmParser();
+
+		std::string ErrStr;
+		engine = llvm::EngineBuilder(std::unique_ptr<llvm::Module>(TheModule))
+			.setErrorStr(&ErrStr)
+			.setMCJITMemoryManager(std::unique_ptr<llvm::SectionMemoryManager>(
+			new llvm::SectionMemoryManager))
+			.create();
+		if (!engine) {
+			fprintf(stderr, "Could not create ExecutionEngine: %s\n", ErrStr.c_str());
+			exit(1);
+		}
 	}
 
 public:
@@ -117,7 +137,7 @@ public:
 	unsigned compile_AST(AST* target)
 	{
 		using namespace llvm;
-		FunctionType *FT = FunctionType::get(llvm::Type::getVoidTy(thread_context), false);
+		FunctionType *FT = FunctionType::get(llvm::Type::getInt64Ty(thread_context), false);
 		Function *F = Function::Create(FT, Function::ExternalLinkage, "temp function", TheModule);
 
 		BasicBlock *BB = BasicBlock::Create(thread_context, "entry", F);
@@ -133,13 +153,18 @@ public:
 		llvm::verifyFunction(*F);
 
 		TheModule->dump();
+		/*
 		auto *FPM = new llvm::FunctionPassManager(TheModule);
 		Module::iterator it;
 		Module::iterator end = TheModule->end();
 		for (it = TheModule->begin(); it != end; ++it) {
 			// Run the FPM on this function
 			FPM->run(*it);
-		}
+		}*/
+		engine->finalizeObject();
+		void* fptr = engine->getPointerToFunction(F);
+		uint64_t(*FP)() = (uint64_t(*)())(intptr_t)fptr;
+		fprintf(stderr, "Evaluated to %lu\n", FP());
 		return 0;
 	}
 };
@@ -154,11 +179,12 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 		return Return_Info(codegen_status::nullptr_AST, nullptr);
 	}
 
+#ifdef trace_through_generate_IR
 	TheModule->dump();
-	/*std::cerr << "entering generate_IR with address " << target << " with tag " << target->tag << '\n';
+	std::cerr << "entering generate_IR with address " << target << " with tag " << target->tag << '\n';
 	std::cerr << "fields are " << target->fields[0].num << ' ' << target->fields[1].num << ' ' << target->fields[2].num << ' ' << target->fields[3].num << '\n';
 	std::cerr << "otherwise: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
-	*/
+#endif
 	if (this->loop_catcher.find(target) != this->loop_catcher.end())
 	{
 		error_location = target;
@@ -227,7 +253,7 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 		{
 			//the condition statement
 			codegen_status result = generate_internal(0);
-			if (result != codegen_status::no_error) return Return_Info(result, nullptr);
+			if (result) return Return_Info(result, nullptr);
 		}
 
 		{
@@ -236,39 +262,40 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
 			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
-			llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(thread_context, "", TheFunction);
-			llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(thread_context);
-			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(thread_context); //todo: is this what we're returning? is there a better name?
-
+			llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(thread_context, "then", TheFunction);
+			llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(thread_context, "else");
+			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(thread_context, "ifcont"); //todo: is this what we're returning? is there a better name?
 
 			Builder.CreateCondBr(comparison, ThenBB, ElseBB);
 
 			//first branch.
-			Builder.SetInsertPoint(ThenBB);
+			Builder.SetInsertPoint(ThenBB); //WATCH OUT: this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty.
+			//if there are labels inside, we could be in big trouble.
+
 			{
 				codegen_status result = generate_internal(1);
-				if (result != codegen_status::no_error) return Return_Info(result, nullptr);
+				if (result) return Return_Info(result, nullptr);
 			}
 
 			Builder.CreateBr(MergeBB);
 			ThenBB = Builder.GetInsertBlock();
 
 			TheFunction->getBasicBlockList().push_back(ElseBB);
-			Builder.SetInsertPoint(ElseBB);
+			Builder.SetInsertPoint(ElseBB); //WATCH OUT: same here.
 
 			{
 				codegen_status result = generate_internal(2);
-				if (result != codegen_status::no_error) return Return_Info(result, nullptr);
+				if (result) return Return_Info(result, nullptr);
 			}
 
 			//for the second branch
 			Builder.CreateBr(MergeBB);
-			ThenBB = Builder.GetInsertBlock();
+			ElseBB = Builder.GetInsertBlock();
 
 			// Emit merge block.
 			TheFunction->getBasicBlockList().push_back(MergeBB);
 			Builder.SetInsertPoint(MergeBB);
-			llvm::PHINode *PN = Builder.CreatePHI(llvm::Type::getDoubleTy(thread_context), 2);
+			llvm::PHINode *PN = Builder.CreatePHI(llvm::Type::getInt64Ty(thread_context), 2);
 
 			PN->addIncoming(field_results[1], ThenBB);
 			PN->addIncoming(field_results[2], ElseBB);
@@ -290,4 +317,5 @@ int main()
 	AST getif("if", &addthem, &get1, &get2, &get1);
 	compiler_object compiler;
 	compiler.compile_AST(&getif);
+	//trying to compile getif results in core dump. but addthem works.
 }

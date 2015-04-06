@@ -67,6 +67,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="AST commands.cpp" />
+    <ClCompile Include="console_output_test.cpp" />
     <ClCompile Include="cs11.cpp" />
     <ClCompile Include="kaleidoscope4.cpp" />
   </ItemGroup>
