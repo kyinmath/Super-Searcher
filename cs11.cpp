@@ -35,13 +35,6 @@ we need the packages libedit-dev and zlib1g-dev if there are errors about lz and
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/Support/TargetSelect.h"
 
-/*
-structure: each AST has:
-1. a tag, which says what kind of AST it is
-2. 
-uint64_t is my only object type.
-*/
-
 //todo: threading. create non-global contexts
 #ifndef _MSC_VER
 thread_local
@@ -81,7 +74,7 @@ struct Type
 enum codegen_status {
 	no_error,
 	infinite_loop,
-	nullptr_AST
+	fell_through_switches //if our switch case is missing a value. todo: add a unit test to check this.
 };
 
 struct Return_Info
@@ -100,6 +93,7 @@ struct compiler_object
 	llvm::ExecutionEngine* engine;
 
 	std::unordered_set<AST*> loop_catcher; //lists the existing ASTs in a chain. goal is to prevent infinite loops.
+	std::stack<std::pair<Object_Descriptor, AST*>> object_stack;
 
 	//these are the labels which we just passed by. you can jump to them without checking finiteness, but you still have to check the type stack
 	std::stack<AST*> future_labels;
@@ -132,6 +126,7 @@ public:
 	
 
 	llvm::AllocaInst* CreateEntryBlockAlloca(uint64_t size);
+	uint64_t compiler_object::get_size(AST* target);
 
 	Return_Info generate_IR(AST* target, bool on_stack);
 	unsigned compile_AST(AST* target)
@@ -169,14 +164,52 @@ public:
 	}
 };
 
+struct Object_Descriptor
+{
+	uint64_t size;
+	Object_Descriptor(uint64_t s) : size(s) {}
+};
+
+uint64_t compiler_object::get_size(AST* target)
+{
+
+	if (AST_vector[target->tag].size_of_return != -1) return AST_vector[target->tag].size_of_return;
+	else if (target->tag == ASTn("if"))
+	{
+		//todo: do some type checking? we can defer that to compilation though.
+		return get_size(target->fields[1].ptr);
+	}
+	std::cerr << "couldn't get size of tag " << target->tag;
+}
+
+
+//mem-to-reg only works on entry block variables because it's easier.
+//maybe scalarrepl is more useful for us.
+//clang likes to allocate everything in the beginning
+llvm::AllocaInst* compiler_object::CreateEntryBlockAlloca(uint64_t size) {
+	llvm::BasicBlock& first_block = Builder.GetInsertBlock()->getParent()->getEntryBlock();
+	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
+
+	//we explicitly create the array type instead of allocating multiples, because that's what clang does for C++ arrays.
+	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
+	if (size > 1)
+	{
+		llvm::Type* array_type = llvm::ArrayType::get(int64_type, size);
+		return TmpB.CreateAlloca(array_type);
+	}
+	else
+	{
+		return TmpB.CreateAlloca(int64_type);
+	}
+}
+
 
 //generate llvm code. propre return value goes into Return_Info/error_location; the unsigned return is an error code.
 Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 {
 	if (target == nullptr)
 	{
-		error_location = target;
-		return Return_Info(codegen_status::nullptr_AST, nullptr);
+		return Return_Info(codegen_status::no_error, nullptr);
 	}
 
 #ifdef trace_through_generate_IR
@@ -209,12 +242,22 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 		if (previous_elements.error_code) return previous_elements;
 	}//auto first_pointer = the_return_value;
 
-	//storage for superdependency compilation
+	llvm::AllocaInst* storage_location = nullptr;
+	uint64_t size_result = 0;
+	uint64_t final_stack_position = object_stack.size();
+	if (on_stack)
+	{
+		size_result = get_size(target);
+		if (size_result) storage_location = CreateEntryBlockAlloca(size_result);
+		++final_stack_position;
+	}
+
+	//generated IR of the fields of the AST
 	std::vector<llvm::Value*> field_results;
 
 	auto generate_internal = [&](unsigned position)
 	{
-		auto result = generate_IR(target->fields[position].ptr, false);
+		auto result = generate_IR(target->fields[position].ptr, false); //todo: if it's concatenate(), this should be true.
 		if (result.error_code) return result.error_code; //error
 		field_results.push_back(result.llvm_IR_object);
 		return codegen_status::no_error;
@@ -231,16 +274,43 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 		}
 	}
 
+	//when we add a type system, we better start checking if types work out.
 	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
+
+	auto finish_internal = [&](llvm::Value* return_value) -> Return_Info
+	{
+		//todo: this isn't always necessary. maybe the values were shoved in there before, such as with a concatenate(). in that case, we should do nothing.
+		if (1)
+		{
+			//the type of the stack object is an integer when 1 slot, or an array when multiple slots
+			if (size_result > 1)
+			{
+				for (int i = 0; i < size_result; ++i)
+					Builder.CreateStore(Builder.CreateConstGEP2_64(return_value, 0, i), Builder.CreateConstGEP2_64(storage_location, 0, i));
+				return_value = storage_location;
+			}
+			else
+			{
+				//
+					Builder.CreateStore(return_value, storage_location);
+				return_value = storage_location;
+			}
+		}
+
+
+		//clear the stack
+		return Return_Info(codegen_status::no_error, return_value);
+	};
+#define finish(X) do { return finish_internal(codegen_status::no_error, X); } while (0)
 
 	switch (target->tag)
 	{
 	case ASTn("static integer"):
 	{
-		return Return_Info(codegen_status::no_error, llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)));
+		finish(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)));
 	}
 	case ASTn("add"): //add two integers.
-		return Return_Info(codegen_status::no_error, Builder.CreateAdd(field_results[0], field_results[1]));
+		finish(Builder.CreateAdd(field_results[0], field_results[1]));
 	case ASTn("Hello World!"):
 	{
 		llvm::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!\n");
@@ -254,22 +324,17 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 
 		llvm::Constant *putsFunc = TheModule->getOrInsertFunction("puts", putsType);
 
-		return Return_Info(codegen_status::no_error, Builder.CreateCall(putsFunc, helloWorld));
+		finish(Builder.CreateCall(putsFunc, helloWorld));
 	}
 	case ASTn("if"): //you can see the condition's return object in the branches.
 		//otherwise, the condition is missing, which could be another if function that may be implemented later, but probably not.
-#ifdef _MSC_VER
-		1; //intellisense autoindent won't work if the brace-open{ is right after a :
-#endif
 		{
-			//the condition statement
-			codegen_status result = generate_internal(0);
-			if (result) return Return_Info(result, nullptr);
-		}
+			//the condition statement. todo: should on_stack truly be false?
+			auto condition = generate_IR(target->fields[0].ptr, false);
+			if (condition.error_code) return condition;
 
-		{
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
-			llvm::Value* comparison = Builder.CreateICmpNE(field_results[0], llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
+			llvm::Value* comparison = Builder.CreateICmpNE(condition.llvm_IR_object, llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
 			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
 			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
@@ -283,10 +348,8 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 			Builder.SetInsertPoint(ThenBB); //WATCH OUT: this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty.
 			//if there are labels inside, we could be in big trouble.
 
-			{
-				codegen_status result = generate_internal(1);
-				if (result) return Return_Info(result, nullptr);
-			}
+			auto then_IR = generate_IR(target->fields[1].ptr, false);
+			if (then_IR.error_code) return then_IR;
 
 			Builder.CreateBr(MergeBB);
 			ThenBB = Builder.GetInsertBlock();
@@ -294,10 +357,8 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 			TheFunction->getBasicBlockList().push_back(ElseBB);
 			Builder.SetInsertPoint(ElseBB); //WATCH OUT: same here.
 
-			{
-				codegen_status result = generate_internal(2);
-				if (result) return Return_Info(result, nullptr);
-			}
+			auto else_IR = generate_IR(target->fields[2].ptr, false);
+			if (else_IR.error_code) return else_IR;
 
 			//for the second branch
 			Builder.CreateBr(MergeBB);
@@ -308,13 +369,15 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 			Builder.SetInsertPoint(MergeBB);
 			llvm::PHINode *PN = Builder.CreatePHI(llvm::Type::getInt64Ty(thread_context), 2);
 
-			PN->addIncoming(field_results[1], ThenBB);
-			PN->addIncoming(field_results[2], ElseBB);
+			PN->addIncoming(then_IR.llvm_IR_object, ThenBB);
+			PN->addIncoming(else_IR.llvm_IR_object, ElseBB);
 			return Return_Info(codegen_status::no_error, PN);
 		}
+	case ASTn("bracket"):
+		finish(nullptr);
 	}
 
-	llvm_unreachable("should have returned before here");
+	return Return_Info(codegen_status::fell_through_switches, nullptr);
 }
 
 int main()
@@ -329,5 +392,4 @@ int main()
 	AST helloworld("Hello World!", &getif);
 	compiler_object compiler;
 	compiler.compile_AST(&helloworld);
-	//trying to compile getif results in core dump. but addthem works.
 }

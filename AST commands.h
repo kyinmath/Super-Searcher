@@ -10,10 +10,11 @@
 struct AST_info
 {
 	const char* name;
-	const uint64_t number_of_AST_fields; //how many elements we want to compile
+	const int size_of_return; //size of the return object. -1 if it must be handled in a special way.
+	const unsigned number_of_AST_fields; //how many elements we want to compile
 
 	//for just a series of ASTs
-	constexpr AST_info(const char a[], unsigned number_of_AST_pointers = 0) : name(a), number_of_AST_fields(number_of_AST_pointers)
+	constexpr AST_info(const char a[], int size, unsigned number_of_AST_pointers) : name(a), size_of_return(size), number_of_AST_fields(number_of_AST_pointers)
 	{
 	}
 };
@@ -22,14 +23,15 @@ struct AST_info
 //must be a vector, because we have to return the position.
 constexpr AST_info AST_vector[] =
 {
-	{ "static integer" },
-	{ "Hello World!" },
-	{ "if", 3 }, //test, first branch, second branch
-	{ "get 0" },
+	{ "static integer", 1, 0 },
+	{ "Hello World!", 0, 0 },
+	{ "if", -1, 3 }, //test, first branch, second branch
+	{ "bracket", 0, 1 },
+	{ "add", 1, 2 }, //ints
+
+	{ "get 0", 1, 0 },
 	{ "goto", 2 }, //label and failure branch
 	{ "label" },
-	{ "basic block" },
-	{ "add", 2 }, //ints
 	{ "sub", 2 },
 	{ "mul", 2 },
 	{ "divuu", 3 }, //2x int, subAST* on failure
