@@ -26,7 +26,7 @@ constexpr AST_info AST_vector[] =
 	{ "static integer", 1, 0 },
 	{ "Hello World!", 0, 0 },
 	{ "if", -1, 3 }, //test, first branch, second branch
-	{ "bracket", 0, 1 },
+	{ "scope", 0, 1 }, // fulfills the purpose of {} from C++
 	{ "add", 1, 2 }, //ints
 	{ "no op", 0, 0 },
 	{ "get 0", 1, 0 },

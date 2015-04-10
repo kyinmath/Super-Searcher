@@ -1,0 +1,15 @@
+sets up a module, context, and function.
+structured framework for adding new ASTs.
+AST structure has a reversed basic block structure. reason: pointers only need to go in one direction.
+implemented: constant ASTs
+implemented: addition ASTs
+implemented: branch if ASTs
+produces IR, then dumps the produced IR into console.
+runs the produced IR.
+got it to compile! a finicky compilation. requires specific compiler version (which isn't in the main Ubuntu repository), extra packages, and a strange compilation command.
+
+for a while, I thought it didn't work. if you make a function that adds two integers, the function is there, but no addition commands appear.
+	turns out it works perfectly. the addition command is folded by LLVM as it is produced.
+
+
+class moved to Wednesday at 3:30

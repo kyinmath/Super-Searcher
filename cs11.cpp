@@ -413,7 +413,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 			PN->addIncoming(else_IR.llvm_IR_object, ElseBB);
 			return Return_Info(codegen_status::no_error, PN, then_IR.type);
 		}
-	case ASTn("bracket"):
+	case ASTn("scope"):
 		finish(nullptr, T_null);
 	}
 
@@ -422,14 +422,14 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 
 int main()
 {
-	//seems cout doesn't work, so we have to use cerr
-	AST get1("static integer", 0, 3);
+	AST get1("static integer", 0, 3); //get the integer 3
 	AST get2("static integer", 0, 5);
-	AST addthem("add", 0, &get1, &get2);
+	AST get3("static integer", 0, 7);
+	AST addthem("add", 0, &get1, &get2); //add the 2 integers
 
 
-	AST getif("if", &addthem, &get1, &get2, &get1);
-	AST helloworld("Hello World!", &getif);
+	AST getif("if", &addthem, &get1, &get2, &get3); //first, execute addthem. then, if get1 is true, then return get2. otherwise, return get3.
+	AST helloworld("Hello World!", &getif); //first, execute getif. then output "Hello World!"
 	compiler_object compiler;
 	compiler.compile_AST(&helloworld);
 }
