@@ -40,6 +40,8 @@ AST getif("if", &addthem, &get1, &get2, &get3);
 
 "if" is the tag.
 
-&addthem is the previous basic block element, so that the addthem command will be run before the if command.
+&addthem is the previous basic block element, so that the addthem command will be run before the if command. If we had nullptr instead, then there would be no previous basic block element.
 
 get1 is tested, and since it's non-zero, the if statement will evaluate to true. Thus, the if statement will run the get2 AST, instead of the get3 AST.
+
+Finally, we call compile_AST on the last AST in the block. This outputs the IR and then runs the code.
