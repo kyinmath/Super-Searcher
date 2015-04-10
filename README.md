@@ -21,6 +21,7 @@ The 3.6 branch is necessary because the headers move around every version. If ch
 
 ###AST structure
 Each AST has 3 main components:
+
 1. "tag", signifying what type of AST it is.
 2. "preceding_BB_element", which is a pointer that points to the previous element in its basic block.
 3. "fields", which contains the information necessary for the AST to operate. Depending on the tag, this may be pointers to other ASTs, or integers, or nothing at all. For example, the "add" AST takes two integers in its first two fields, and the remaining fields are ignored.
