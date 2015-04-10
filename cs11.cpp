@@ -80,9 +80,10 @@ enum codegen_status {
 struct Return_Info
 {
 	codegen_status error_code;
+	Object_Descriptor type;
 	llvm::Value* llvm_IR_object;
-	Return_Info(codegen_status err, llvm::Value* b) 
-		: error_code(err), llvm_IR_object(b) {}
+	Return_Info(codegen_status err, Object_Descriptor t, llvm::Value* b) 
+		: error_code(err), type(t), llvm_IR_object(b) {}
 };
 
 
@@ -168,7 +169,11 @@ struct Object_Descriptor
 {
 	uint64_t size;
 	Object_Descriptor(uint64_t s) : size(s) {}
+
 };
+bool operator==(const Object_Descriptor& lhs, const Object_Descriptor& rhs){ return lhs.size == rhs.size; }
+Object_Descriptor T_uint64(1); //describes an integer, used internally. later we'll want more information than just its size
+Object_Descriptor T_null(0); //describes nothing, used internally. later we'll want more information than just its size
 
 uint64_t compiler_object::get_size(AST* target)
 {
@@ -209,7 +214,7 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 {
 	if (target == nullptr)
 	{
-		return Return_Info(codegen_status::no_error, nullptr);
+		return Return_Info(codegen_status::no_error, 0, nullptr);
 	}
 
 #ifdef trace_through_generate_IR
@@ -221,7 +226,7 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 	if (this->loop_catcher.find(target) != this->loop_catcher.end())
 	{
 		error_location = target;
-		return Return_Info(codegen_status::infinite_loop, nullptr);
+		return Return_Info(codegen_status::infinite_loop, 0, nullptr);
 	}
 	this->loop_catcher.insert(target);
 
@@ -277,10 +282,11 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 	//when we add a type system, we better start checking if types work out.
 	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 
-	auto finish_internal = [&](llvm::Value* return_value) -> Return_Info
+	auto finish_internal = [&](llvm::Value* return_value, Object_Descriptor type) -> Return_Info
 	{
+		//todo: reset the stack back to normal, and clear the stack
 		//todo: this isn't always necessary. maybe the values were shoved in there before, such as with a concatenate(). in that case, we should do nothing.
-		if (1)
+		if (on_stack)
 		{
 			//the type of the stack object is an integer when 1 slot, or an array when multiple slots
 			if (size_result > 1)
@@ -299,18 +305,18 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 
 
 		//clear the stack
-		return Return_Info(codegen_status::no_error, return_value);
+		return Return_Info(codegen_status::no_error, type, return_value);
 	};
-#define finish(X) do { return finish_internal(codegen_status::no_error, X); } while (0)
+#define finish(X, type) do { return finish_internal(X, type); } while (0)
 
 	switch (target->tag)
 	{
 	case ASTn("static integer"):
 	{
-		finish(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)));
+		finish(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)), T_uint64);
 	}
 	case ASTn("add"): //add two integers.
-		finish(Builder.CreateAdd(field_results[0], field_results[1]));
+		finish(Builder.CreateAdd(field_results[0], field_results[1]), T_uint64);
 	case ASTn("Hello World!"):
 	{
 		llvm::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!\n");
@@ -324,11 +330,12 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 
 		llvm::Constant *putsFunc = TheModule->getOrInsertFunction("puts", putsType);
 
-		finish(Builder.CreateCall(putsFunc, helloWorld));
+		finish(Builder.CreateCall(putsFunc, helloWorld), T_null);
 	}
 	case ASTn("if"): //you can see the condition's return object in the branches.
 		//otherwise, the condition is missing, which could be another if function that may be implemented later, but probably not.
 		{
+			//todo: pass through on_stack if necessary
 			//the condition statement. todo: should on_stack truly be false?
 			auto condition = generate_IR(target->fields[0].ptr, false);
 			if (condition.error_code) return condition;
@@ -374,7 +381,7 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 			return Return_Info(codegen_status::no_error, PN);
 		}
 	case ASTn("bracket"):
-		finish(nullptr);
+		finish(nullptr, T_null);
 	}
 
 	return Return_Info(codegen_status::fell_through_switches, nullptr);
