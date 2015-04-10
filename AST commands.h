@@ -28,9 +28,9 @@ constexpr AST_info AST_vector[] =
 	{ "if", -1, 3 }, //test, first branch, second branch
 	{ "bracket", 0, 1 },
 	{ "add", 1, 2 }, //ints
-
+	{ "no op", 0, 0 },
 	{ "get 0", 1, 0 },
-	{ "goto", 2 }, //label and failure branch
+/*	{ "goto", 2 }, //label and failure branch
 	{ "label" },
 	{ "sub", 2 },
 	{ "mul", 2 },
@@ -52,8 +52,8 @@ constexpr AST_info AST_vector[] =
 	{ "bitwise not", 1 },
 	{ "bitwise and", 2 },
 	{ "bitwise or", 2 },
-	{ "bitwise xor", 2 },
-	{ "never reached", 0 }
+	{ "bitwise xor", 2 },*/
+	{ "never reached", 0, 0 }
 };
 
 

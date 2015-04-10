@@ -49,6 +49,15 @@ union int_or_ptr
 	int_or_ptr(uint64_t x) : num(x) {}
 	int_or_ptr(target_type* x) : ptr(x) {}
 };
+struct Object_Descriptor
+{
+	uint64_t size;
+	Object_Descriptor(uint64_t s) : size(s) {}
+};
+bool operator==(const Object_Descriptor& lhs, const Object_Descriptor& rhs){ return lhs.size == rhs.size; }
+Object_Descriptor T_uint64(1); //describes an integer, used internally. later we'll want more information than just its size
+Object_Descriptor T_null(0); //describes nothing, used internally. later we'll want more information than just its size
+
 
 const uint64_t max_fields_in_AST = 4; //should accomodate the largest possible AST
 struct AST
@@ -74,16 +83,20 @@ struct Type
 enum codegen_status {
 	no_error,
 	infinite_loop,
-	fell_through_switches //if our switch case is missing a value. todo: add a unit test to check this.
+	active_object_duplication, //we tried to codegen an AST while it was already codegened from another branch, thus resulting in a stack duplication
+	fell_through_switches, //if our switch case is missing a value. todo: add a unit test to check this.
+	type_mismatch, //in an if statement, the two branches had different types.
+	null_AST_compiler_bug, //we tried to generate_IR() a nullptr, which means generate_IR() is bugged
+	null_AST, //tried to generate_IR() a nullptr but was caught, which is normal.
 };
 
 struct Return_Info
 {
 	codegen_status error_code;
-	Object_Descriptor type;
 	llvm::Value* llvm_IR_object;
-	Return_Info(codegen_status err, Object_Descriptor t, llvm::Value* b) 
-		: error_code(err), type(t), llvm_IR_object(b) {}
+	Object_Descriptor type;
+	Return_Info(codegen_status err, llvm::Value* b, Object_Descriptor t)
+		: error_code(err), llvm_IR_object(b), type(t) {}
 };
 
 
@@ -94,7 +107,8 @@ struct compiler_object
 	llvm::ExecutionEngine* engine;
 
 	std::unordered_set<AST*> loop_catcher; //lists the existing ASTs in a chain. goal is to prevent infinite loops.
-	std::stack<std::pair<Object_Descriptor, AST*>> object_stack;
+	std::stack<AST*> object_stack; //it's just a stack for bookkeeping lifetimes. find the actual object information from the "objects" member.
+	std::unordered_map<AST*, std::pair<llvm::Value*, Object_Descriptor>> objects;
 
 	//these are the labels which we just passed by. you can jump to them without checking finiteness, but you still have to check the type stack
 	std::stack<AST*> future_labels;
@@ -124,12 +138,12 @@ public:
 
 	AST* error_location;
 	//exists when codegen_status has an error.
-	
+	void clear_stack(uint64_t desired_stack_size);
 
 	llvm::AllocaInst* CreateEntryBlockAlloca(uint64_t size);
-	uint64_t compiler_object::get_size(AST* target);
+	uint64_t get_size(AST* target);
 
-	Return_Info generate_IR(AST* target, bool on_stack);
+	Return_Info generate_IR(AST* target, unsigned stack_degree);
 	unsigned compile_AST(AST* target)
 	{
 		using namespace llvm;
@@ -165,15 +179,6 @@ public:
 	}
 };
 
-struct Object_Descriptor
-{
-	uint64_t size;
-	Object_Descriptor(uint64_t s) : size(s) {}
-
-};
-bool operator==(const Object_Descriptor& lhs, const Object_Descriptor& rhs){ return lhs.size == rhs.size; }
-Object_Descriptor T_uint64(1); //describes an integer, used internally. later we'll want more information than just its size
-Object_Descriptor T_null(0); //describes nothing, used internally. later we'll want more information than just its size
 
 uint64_t compiler_object::get_size(AST* target)
 {
@@ -208,13 +213,26 @@ llvm::AllocaInst* compiler_object::CreateEntryBlockAlloca(uint64_t size) {
 	}
 }
 
-
-//generate llvm code. propre return value goes into Return_Info/error_location; the unsigned return is an error code.
-Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
+void compiler_object::clear_stack(uint64_t desired_stack_size)
 {
+
+	while (object_stack.size() != desired_stack_size)
+	{
+		//todo: run dtors if necessary, such as for lock elements
+		object_stack.pop();
+	}
+}
+
+
+//generate llvm code. stack_degree measures how stacky the AST is. 0 = the return value won't arrive on the stack. 1 = the return value will arrive on the stack. 2 = the AST is an element in a basic block: it's not a field of another AST, so it's directly on the stack.
+Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
+{
+#define return_code(X) return Return_Info(codegen_status::X, nullptr, T_null);
+
+	//maybe this ought to be checked beforehand.
 	if (target == nullptr)
 	{
-		return Return_Info(codegen_status::no_error, 0, nullptr);
+		return_code(null_AST_compiler_bug);
 	}
 
 #ifdef trace_through_generate_IR
@@ -226,7 +244,7 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 	if (this->loop_catcher.find(target) != this->loop_catcher.end())
 	{
 		error_location = target;
-		return Return_Info(codegen_status::infinite_loop, 0, nullptr);
+		return_code(infinite_loop);
 	}
 	this->loop_catcher.insert(target);
 
@@ -241,20 +259,20 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 
 	//compile the previous elements in the basic block.
 	if (target->preceding_BB_element)
-
 	{
-		auto previous_elements = generate_IR(target->preceding_BB_element, true);
+		auto previous_elements = generate_IR(target->preceding_BB_element, 2);
 		if (previous_elements.error_code) return previous_elements;
+
 	}//auto first_pointer = the_return_value;
 
 	llvm::AllocaInst* storage_location = nullptr;
 	uint64_t size_result = 0;
 	uint64_t final_stack_position = object_stack.size();
-	if (on_stack)
+	if (stack_degree == 2)
 	{
 		size_result = get_size(target);
 		if (size_result) storage_location = CreateEntryBlockAlloca(size_result);
-		++final_stack_position;
+		//++final_stack_position;
 	}
 
 	//generated IR of the fields of the AST
@@ -262,7 +280,8 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 
 	auto generate_internal = [&](unsigned position)
 	{
-		auto result = generate_IR(target->fields[position].ptr, false); //todo: if it's concatenate(), this should be true.
+		Return_Info result(codegen_status::no_error, nullptr, T_null); //default
+		if (target) result = generate_IR(target->fields[position].ptr, false); //todo: if it's concatenate(), this should be true.
 		if (result.error_code) return result.error_code; //error
 		field_results.push_back(result.llvm_IR_object);
 		return codegen_status::no_error;
@@ -273,7 +292,7 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 		for (unsigned x = 0; x < AST_vector[target->tag].number_of_AST_fields; ++x)
 		{
 			codegen_status result = generate_internal(x);
-			if (result != codegen_status::no_error) return Return_Info(result, nullptr);
+			if (result) return Return_Info(result, nullptr, T_null);
 
 			//normally we'd also want to verify the types here. but we're assuming that every return value is a uint64 for now.
 		}
@@ -286,7 +305,7 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 	{
 		//todo: reset the stack back to normal, and clear the stack
 		//todo: this isn't always necessary. maybe the values were shoved in there before, such as with a concatenate(). in that case, we should do nothing.
-		if (on_stack)
+		if (stack_degree == 2)
 		{
 			//the type of the stack object is an integer when 1 slot, or an array when multiple slots
 			if (size_result > 1)
@@ -298,14 +317,19 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 			else
 			{
 				//
-					Builder.CreateStore(return_value, storage_location);
+				Builder.CreateStore(return_value, storage_location);
 				return_value = storage_location;
 			}
+
+			clear_stack(final_stack_position);
+
+			object_stack.push(target);
+			auto insert_result = this->objects.insert({ target, std::make_pair(return_value, type) });
+			if (!insert_result.second) //collision: AST is already there
+				return_code(active_object_duplication);
+
 		}
-
-
-		//clear the stack
-		return Return_Info(codegen_status::no_error, type, return_value);
+		return Return_Info(codegen_status::no_error, return_value, type);
 	};
 #define finish(X, type) do { return finish_internal(X, type); } while (0)
 
@@ -335,9 +359,10 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 	case ASTn("if"): //you can see the condition's return object in the branches.
 		//otherwise, the condition is missing, which could be another if function that may be implemented later, but probably not.
 		{
-			//todo: pass through on_stack if necessary
-			//the condition statement. todo: should on_stack truly be false?
-			auto condition = generate_IR(target->fields[0].ptr, false);
+			//the condition statement. calls with stack_degree as 1 in the called function, if it is 2 outside.
+			if (target->fields[0].ptr == nullptr)
+				return_code(null_AST);
+			auto condition = generate_IR(target->fields[0].ptr, (stack_degree != 0));
 			if (condition.error_code) return condition;
 
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
@@ -355,7 +380,9 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 			Builder.SetInsertPoint(ThenBB); //WATCH OUT: this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty.
 			//if there are labels inside, we could be in big trouble.
 
-			auto then_IR = generate_IR(target->fields[1].ptr, false);
+			Return_Info then_IR(codegen_status::no_error, nullptr, T_null);
+			if (target->fields[1].ptr != nullptr)
+				then_IR = generate_IR(target->fields[1].ptr, false);
 			if (then_IR.error_code) return then_IR;
 
 			Builder.CreateBr(MergeBB);
@@ -364,8 +391,14 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 			TheFunction->getBasicBlockList().push_back(ElseBB);
 			Builder.SetInsertPoint(ElseBB); //WATCH OUT: same here.
 
-			auto else_IR = generate_IR(target->fields[2].ptr, false);
+			Return_Info else_IR(codegen_status::no_error, nullptr, T_null);
+			if (target->fields[2].ptr != nullptr)
+				else_IR = generate_IR(target->fields[2].ptr, false);
 			if (else_IR.error_code) return else_IR;
+
+			//todo: we'll want a more sophisticated type checker later.
+			if (!(then_IR.type == else_IR.type))
+				return_code(type_mismatch);
 
 			//for the second branch
 			Builder.CreateBr(MergeBB);
@@ -378,13 +411,13 @@ Return_Info compiler_object::generate_IR(AST* target, bool on_stack)
 
 			PN->addIncoming(then_IR.llvm_IR_object, ThenBB);
 			PN->addIncoming(else_IR.llvm_IR_object, ElseBB);
-			return Return_Info(codegen_status::no_error, PN);
+			return Return_Info(codegen_status::no_error, PN, then_IR.type);
 		}
 	case ASTn("bracket"):
 		finish(nullptr, T_null);
 	}
 
-	return Return_Info(codegen_status::fell_through_switches, nullptr);
+	return Return_Info(codegen_status::fell_through_switches, nullptr, T_null);
 }
 
 int main()
