@@ -422,9 +422,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 
 int main()
 {
-	AST get1("static integer", 0, 3); //get the integer 3
-	AST get2("static integer", 0, 5);
-	AST get3("static integer", 0, 7);
+	AST get1("static integer", 0, 1); //get the integer 1
+	AST get2("static integer", 0, 2);
+	AST get3("static integer", 0, 3);
 	AST addthem("add", 0, &get1, &get2); //add the 2 integers
 
 
