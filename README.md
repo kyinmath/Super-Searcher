@@ -32,3 +32,14 @@ Note that our basic block structure is reversed: each element points to the _pre
 
 ###Running things
 To run ASTs, you have to first construct them in main(), which contains sample code. The AST constructor takes in the tag, then the preceding basic block element, and then any field elements.
+
+For example,
+```
+AST getif("if", &addthem, &get1, &get2, &get3);
+```
+
+"if" is the tag.
+
+&addthem is the previous basic block element, so that the addthem command will be run before the if command.
+
+get1 is tested, and since it's non-zero, the if statement will evaluate to true. Thus, the if statement will run the get2 AST, instead of the get3 AST.
