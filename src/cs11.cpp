@@ -12,14 +12,12 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "AST commands.h"
-#include "llvm/PassManager.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/MCJIT.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Analysis/Passes.h"
-#include "llvm/IR/InstrTypes.h"
 #include <llvm/Support/raw_ostream.h> 
 
 #define OPTIMIZE 0
