@@ -23,7 +23,7 @@ struct AST_info
 //must be a vector, because we have to return the position.
 constexpr AST_info AST_vector[] =
 {
-	{ "static integer", 0, 1 },
+	{ "integer", 0, 1 },
 	{ "Hello World!", 0, 0 },
 	{ "if", 3, -1 }, //test, first branch, second branch. passes through the return object of each branch; the return objects must be the same.
 	{ "scope", 1, 0 }, // fulfills the purpose of {} from C++

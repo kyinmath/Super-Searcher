@@ -1,5 +1,5 @@
-#include <iostream>
 #include <cstdint>
+#include <iostream>
 //#include <mutex>
 #include <array>
 #include <stack>
@@ -24,6 +24,7 @@
 #include "llvm/ExecutionEngine/MCJIT.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/raw_os_ostream.h"
 
 //todo: threading. create non-global contexts
 #ifndef _MSC_VER
@@ -45,6 +46,7 @@ struct Object_Descriptor
 	Object_Descriptor(uint64_t s) : size(s) {}
 };
 bool operator==(const Object_Descriptor& lhs, const Object_Descriptor& rhs){ return lhs.size == rhs.size; }
+bool operator!=(const Object_Descriptor& lhs, const Object_Descriptor& rhs){ return !(lhs == rhs); }
 Object_Descriptor T_uint64(1); //describes an integer, used internally. later we'll want more information than just its size
 Object_Descriptor T_null(0); //describes nothing, used internally. later we'll want more information than just its size
 
@@ -62,6 +64,9 @@ struct AST
 	AST(const char name[], AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> f2 = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
 		: tag(ASTn(name)), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 }
 	{} //VS complains about aggregate initialization, but I don't care
+	AST(unsigned direct_tag, AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> f2 = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
+		: tag(direct_tag), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 }
+	{}
 	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };
 
@@ -83,10 +88,10 @@ enum codegen_status {
 struct Return_Info
 {
 	codegen_status error_code;
-	llvm::Value* llvm_IR_object;
+	llvm::Value* IR;
 	Object_Descriptor type;
 	Return_Info(codegen_status err, llvm::Value* b, Object_Descriptor t)
-		: error_code(err), llvm_IR_object(b), type(t) {}
+		: error_code(err), IR(b), type(t) {}
 };
 
 
@@ -125,6 +130,7 @@ struct compiler_object
 
 public:
 
+	//llvm::raw_os_ostream for_verification = llvm::raw_os_ostream(std::cerr);
 
 	AST* error_location;
 	//exists when codegen_status has an error.
@@ -134,6 +140,8 @@ public:
 	uint64_t get_size(AST* target);
 
 	Return_Info generate_IR(AST* target, unsigned stack_degree);
+
+#include <llvm/Support/raw_ostream.h> 
 	unsigned compile_AST(AST* target)
 	{
 		using namespace llvm;
@@ -147,10 +155,11 @@ public:
 		if (return_object.error_code)
 			return return_object.error_code; //error
 
-		Builder.CreateRet(return_object.llvm_IR_object);
+		Builder.CreateRet(return_object.IR);
 
 		// Validate the generated code, checking for consistency.
-		llvm::verifyFunction(*F);
+		llvm::verifyFunction(*F, &llvm::outs());
+		//if (llvm::verifyFunction(*F)) std::cerr << "compilation error!\n";
 
 		TheModule->dump();
 		/*
@@ -214,6 +223,13 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 	}
 }
 
+void output_AST(AST* target)
+{
+	std::cerr << "AST " //<< target << " with tag " <<
+		<< AST_vector[target->tag].name << " with prev " << target->preceding_BB_element << '\n';
+	std::cerr << "fields are " << target->fields[0].num << ' ' << target->fields[1].num << ' ' << target->fields[2].num << ' ' << target->fields[3].num << '\n';
+	std::cerr << "otherwise: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
+}
 
 //generate llvm code. stack_degree measures how stacky the AST is. 0 = the return value won't arrive on the stack. 1 = the return value will arrive on the stack. 2 = the AST is an element in a basic block: it's not a field of another AST, so it's directly on the stack.
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
@@ -228,9 +244,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 
 #ifdef trace_through_generate_IR
 	TheModule->dump();
-	std::cerr << "entering generate_IR with address " << target << " with tag " << target->tag << '\n';
-	std::cerr << "fields are " << target->fields[0].num << ' ' << target->fields[1].num << ' ' << target->fields[2].num << ' ' << target->fields[3].num << '\n';
-	std::cerr << "otherwise: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
 #endif
 	if (this->loop_catcher.find(target) != this->loop_catcher.end())
 	{
@@ -267,14 +280,14 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 	}
 
 	//generated IR of the fields of the AST
-	std::vector<llvm::Value*> field_results;
+	std::vector<Return_Info> field_results; //we don't actually need the return code, but we leave it anyway.
 
 	auto generate_internal = [&](unsigned position)
 	{
 		Return_Info result(codegen_status::no_error, nullptr, T_null); //default
-		if (target) result = generate_IR(target->fields[position].ptr, false); //todo: if it's concatenate(), this should be true.
+		if (target->fields[position].ptr) result = generate_IR(target->fields[position].ptr, false); //todo: if it's concatenate(), this should be true.
 		if (result.error_code) return result.error_code; //error
-		field_results.push_back(result.llvm_IR_object);
+		field_results.push_back(result);
 		return codegen_status::no_error;
 	};
 	if (target->tag != ASTn("if")) //if statement requires special handling
@@ -321,14 +334,19 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 	};
 #define finish(X, type) do { return finish_internal(X, type); } while (0)
 
+	std::cerr << "tag is " << target->tag << '\n';
 	switch (target->tag)
 	{
-	case ASTn("static integer"):
+	case ASTn("integer"):
 	{
 		finish(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)), T_uint64);
 	}
 	case ASTn("add"): //add two integers.
-		finish(Builder.CreateAdd(field_results[0], field_results[1]), T_uint64);
+		if (field_results[0].type != T_uint64)
+			return_code(type_mismatch);
+		if (field_results[1].type != T_uint64)
+			return_code(type_mismatch);
+		finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR), T_uint64);
 	case ASTn("Hello World!"):
 	{
 		llvm::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!\n");
@@ -353,8 +371,11 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 			auto condition = generate_IR(target->fields[0].ptr, (stack_degree != 0));
 			if (condition.error_code) return condition;
 
+			if (condition.type != T_uint64)
+				return_code(type_mismatch);
+
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
-			llvm::Value* comparison = Builder.CreateICmpNE(condition.llvm_IR_object, llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
+			llvm::Value* comparison = Builder.CreateICmpNE(condition.IR, llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
 			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
 			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
@@ -385,7 +406,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 			if (else_IR.error_code) return else_IR;
 
 			//todo: we'll want a more sophisticated type checker later.
-			if (!(then_IR.type == else_IR.type))
+			if (then_IR.type != else_IR.type)
 				return_code(type_mismatch);
 
 			//for the second branch
@@ -397,22 +418,72 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 			Builder.SetInsertPoint(MergeBB);
 			llvm::PHINode *PN = Builder.CreatePHI(llvm::Type::getInt64Ty(thread_context), 2);
 
-			PN->addIncoming(then_IR.llvm_IR_object, ThenBB);
-			PN->addIncoming(else_IR.llvm_IR_object, ElseBB);
+			PN->addIncoming(then_IR.IR, ThenBB);
+			PN->addIncoming(else_IR.IR, ElseBB);
 			return Return_Info(codegen_status::no_error, PN, then_IR.type);
-		}
+	}
 	case ASTn("scope"):
 		finish(nullptr, T_null);
+	case ASTn("get 0"):
+		finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_uint64);
 	}
 
 	return Return_Info(codegen_status::fell_through_switches, nullptr, T_null);
 }
 
+#include <chrono>
+#include <random>
+void fuzztester(unsigned iterations)
+{
+
+	AST helloworld("Hello World!", nullptr);
+	AST ifst("if", nullptr);
+	compiler_object compiler2;
+	compiler2.compile_AST(&helloworld);
+	compiler_object compiler3;
+	compiler3.compile_AST(&ifst);
+
+	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+	std::mt19937_64 rand(seed);
+
+	std::vector<AST*> AST_list;
+	AST_list.push_back(nullptr); //make sure we're never trying to read something that doesn't exist
+	while (1)
+	{
+		unsigned number_of_total_fields = rand() % (max_fields_in_AST + 1); //how many fields will be filled in
+		unsigned number_of_AST_fields = rand() % (number_of_total_fields + 1); //how many fields will be AST pointers. they will come at the beginning
+		int_or_ptr<AST> fields[4]{nullptr, nullptr, nullptr, nullptr};
+		int incrementor = 0;
+		for (; incrementor < number_of_AST_fields; ++incrementor)
+			fields[incrementor] = AST_list.at(rand() % AST_list.size()); //get pointers to previous ASTs
+		for (; incrementor < number_of_total_fields; ++incrementor)
+			fields[incrementor] = rand(); //get random integers to previous ASTs
+		
+		AST* previous_AST = nullptr;
+		AST test_AST(rand() % ASTn("never reached"), AST_list.at(rand() % AST_list.size()), fields[0], fields[1], fields[2], fields[3]);
+		output_AST(&test_AST);
+
+
+		compiler_object compiler;
+		unsigned error_code = compiler.compile_AST(&test_AST);
+		if (error_code)
+			std::cerr << "error " << error_code;
+		else
+		{
+			AST_list.push_back(new AST(test_AST));
+			std::cerr << "success\n";
+		}
+		std::cerr << "pause here after compilation\n";
+		std::cin.get();
+	}
+}
+
 int main()
 {
-	AST get1("static integer", nullptr, 1); //get the integer 1
-	AST get2("static integer", nullptr, 2);
-	AST get3("static integer", nullptr, 3);
+	/*
+	AST get1("integer", nullptr, 1); //get the integer 1
+	AST get2("integer", nullptr, 2);
+	AST get3("integer", nullptr, 3);
 	AST addthem("add", nullptr, &get1, &get2); //add integers 1 and 2
 
 
@@ -420,4 +491,7 @@ int main()
 	AST helloworld("Hello World!", &getif); //first, execute getif. then output "Hello World!"
 	compiler_object compiler;
 	compiler.compile_AST(&helloworld);
+	*/
+
+	fuzztester(40);
 }
