@@ -10,6 +10,12 @@
       <Platform>Win32</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\AST commands.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\cs11.cpp" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A3908F65-10ED-4CB5-AC9B-B1D10CDAB936}</ProjectGuid>
     <RootNamespace>backend</RootNamespace>
@@ -65,14 +71,6 @@
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClCompile Include="console_output_test.cpp" />
-    <ClCompile Include="cs11.cpp" />
-    <ClCompile Include="kaleidoscope4.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="AST commands.h" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
