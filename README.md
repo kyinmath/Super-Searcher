@@ -30,6 +30,8 @@ Each AST has 3 main components:
 
 Note that our basic block structure is reversed: each element points to the _previous_ element in the basic block, instead of pointers pointing to the _next_ element. The purpose of this reversal is to make construction easier.
 
+Descriptions of the ASTs are in the AST_vector[] in "AST commands.h". The important things are the first argument, which gives the tag name, and the second argument, which gives the number of fields required.
+
 ###Running things
 To actually use the backend, you'll need to construct ASTs in main(), which contains sample code. The AST constructor takes in the tag, then the preceding basic block element, and then any field elements.
 
