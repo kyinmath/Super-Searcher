@@ -145,23 +145,34 @@ public:
 	unsigned compile_AST(AST* target)
 	{
 		using namespace llvm;
-		FunctionType *FT = FunctionType::get(llvm::Type::getInt64Ty(thread_context), false);
+		FunctionType *FT;
+
+		//todo: our types should be better than this.
+		auto size_of_return = get_size(target);
+		if (size_of_return == T_null)
+			FT = FunctionType::get(llvm::Type::getVoidTy(thread_context), false);
+		else
+			FT = FunctionType::get(llvm::Type::getInt64Ty(thread_context), false);
 		Function *F = Function::Create(FT, Function::ExternalLinkage, "temp function", TheModule);
 
 		BasicBlock *BB = BasicBlock::Create(thread_context, "entry", F);
 		Builder.SetInsertPoint(BB);
 
-		auto return_object = generate_IR(target, false);
+		auto return_object = generate_IR(target, false); //it should probably be true, not false.
 		if (return_object.error_code)
 			return return_object.error_code; //error
 
-		Builder.CreateRet(return_object.IR);
 
-		// Validate the generated code, checking for consistency.
-		llvm::verifyFunction(*F, &llvm::outs());
-		//if (llvm::verifyFunction(*F)) std::cerr << "compilation error!\n";
+		//todo: also relies on the dumb types
+		if (size_of_return)
+			Builder.CreateRet(return_object.IR);
+		else Builder.CreateRetVoid();
 
 		TheModule->dump();
+		// Validate the generated code, checking for consistency.
+		if (llvm::verifyFunction(*F, &llvm::outs())) std::cerr << "verification failed\n";
+		//if (llvm::verifyFunction(*F)) std::cerr << "compilation error!\n";
+
 		/*
 		auto *FPM = new llvm::FunctionPassManager(TheModule);
 		Module::iterator it;
@@ -172,8 +183,15 @@ public:
 		}*/
 		engine->finalizeObject();
 		void* fptr = engine->getPointerToFunction(F);
-		uint64_t(*FP)() = (uint64_t(*)())(intptr_t)fptr;
-		fprintf(stderr, "Evaluated to %lu\n", FP());
+		if (size_of_return)
+		{
+			uint64_t(*FP)() = (uint64_t(*)())(intptr_t)fptr;
+			fprintf(stderr, "Evaluated to %lu\n", FP());
+		}
+		else
+		{
+			void(*FP)() = (void(*)())(intptr_t)fptr;
+		}
 		return 0;
 	}
 };
@@ -181,7 +199,8 @@ public:
 
 uint64_t compiler_object::get_size(AST* target)
 {
-
+	if (target == nullptr)
+		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
 	if (AST_vector[target->tag].size_of_return != -1) return AST_vector[target->tag].size_of_return;
 	else if (target->tag == ASTn("if"))
 	{
@@ -226,15 +245,18 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 void output_AST(AST* target)
 {
 	std::cerr << "AST " //<< target << " with tag " <<
-		<< AST_vector[target->tag].name << " with prev " << target->preceding_BB_element << '\n';
-	std::cerr << "fields are " << target->fields[0].num << ' ' << target->fields[1].num << ' ' << target->fields[2].num << ' ' << target->fields[3].num << '\n';
-	std::cerr << "otherwise: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
+		<< AST_vector[target->tag].name << "(" << target->tag << "), Add " << target << ", prev " << target->preceding_BB_element << '\n';
+	//std::cerr << "fields are " << target->fields[0].num << ' ' << target->fields[1].num << ' ' << target->fields[2].num << ' ' << target->fields[3].num << '\n';
+	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
 }
 
 //generate llvm code. stack_degree measures how stacky the AST is. 0 = the return value won't arrive on the stack. 1 = the return value will arrive on the stack. 2 = the AST is an element in a basic block: it's not a field of another AST, so it's directly on the stack.
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 {
 #define return_code(X) return Return_Info(codegen_status::X, nullptr, T_null);
+#ifdef VERBOSE_DEBUG
+	output_AST(target);
+#endif
 
 	//maybe this ought to be checked beforehand.
 	if (target == nullptr)
@@ -252,6 +274,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 	}
 	this->loop_catcher.insert(target);
 
+#ifdef VERBOSE_DEBUG
+	std::cerr << "got through loop catcher\n";
+#endif
+
 	//this creates a dtor that takes care of loop_catcher removal.
 	struct temp_RAII{
 		//compiler_state can only be used if it is passed in.
@@ -260,7 +286,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 		~temp_RAII() { object->loop_catcher.erase(targ); }
 	} temp_object(this, target);
 
-
 	//compile the previous elements in the basic block.
 	if (target->preceding_BB_element)
 	{
@@ -268,6 +293,11 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 		if (previous_elements.error_code) return previous_elements;
 
 	}//auto first_pointer = the_return_value;
+
+
+#ifdef VERBOSE_DEBUG
+	std::cerr << "got through previous elements\n";
+#endif
 
 	llvm::AllocaInst* storage_location = nullptr;
 	uint64_t size_result = 0;
@@ -316,7 +346,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 					Builder.CreateStore(Builder.CreateConstGEP2_64(return_value, 0, i), Builder.CreateConstGEP2_64(storage_location, 0, i));
 				return_value = storage_location;
 			}
-			else
+			else if (size_result == 1)
 			{
 				Builder.CreateStore(return_value, storage_location);
 				return_value = storage_location;
@@ -435,13 +465,13 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 #include <random>
 void fuzztester(unsigned iterations)
 {
-
+	/*
 	AST helloworld("Hello World!", nullptr);
 	AST ifst("if", nullptr);
 	compiler_object compiler2;
 	compiler2.compile_AST(&helloworld);
 	compiler_object compiler3;
-	compiler3.compile_AST(&ifst);
+	compiler3.compile_AST(&ifst); */
 
 	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 	std::mt19937_64 rand(seed);
@@ -450,8 +480,10 @@ void fuzztester(unsigned iterations)
 	AST_list.push_back(nullptr); //make sure we're never trying to read something that doesn't exist
 	while (1)
 	{
+		unsigned tag = rand() % ASTn("never reached");
 		unsigned number_of_total_fields = rand() % (max_fields_in_AST + 1); //how many fields will be filled in
-		unsigned number_of_AST_fields = rand() % (number_of_total_fields + 1); //how many fields will be AST pointers. they will come at the beginning
+		unsigned number_of_AST_fields = AST_vector[tag].number_of_AST_fields; //how many fields will be AST pointers. they will come at the beginning
+		unsigned prev_AST = rand() % AST_list.size();
 		int_or_ptr<AST> fields[4]{nullptr, nullptr, nullptr, nullptr};
 		int incrementor = 0;
 		for (; incrementor < number_of_AST_fields; ++incrementor)
@@ -460,20 +492,21 @@ void fuzztester(unsigned iterations)
 			fields[incrementor] = rand(); //get random integers to previous ASTs
 		
 		AST* previous_AST = nullptr;
-		AST test_AST(rand() % ASTn("never reached"), AST_list.at(rand() % AST_list.size()), fields[0], fields[1], fields[2], fields[3]);
+		AST test_AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
 		output_AST(&test_AST);
+		std::cerr << "previous AST is " << prev_AST << '\n';
 
 
 		compiler_object compiler;
 		unsigned error_code = compiler.compile_AST(&test_AST);
 		if (error_code)
-			std::cerr << "error " << error_code;
+			std::cerr << "AST malformed: code " << error_code << '\n';
 		else
 		{
 			AST_list.push_back(new AST(test_AST));
-			std::cerr << "success\n";
+			std::cerr << "success with ID " << AST_list.size() - 1 << "\n";
 		}
-		std::cerr << "pause here after compilation\n";
+		std::cerr << "Press enter to continue\n";
 		std::cin.get();
 	}
 }
