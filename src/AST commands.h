@@ -10,11 +10,11 @@
 struct AST_info
 {
 	const char* name;
-	const int size_of_return; //size of the return object. -1 if it must be handled in a special way.
 	const unsigned number_of_AST_fields; //how many elements we want to compile
+	const int size_of_return; //size of the return object. -1 if it must be handled in a special way.
 
 	//for just a series of ASTs
-	constexpr AST_info(const char a[], int size, unsigned number_of_AST_pointers) : name(a), size_of_return(size), number_of_AST_fields(number_of_AST_pointers)
+	constexpr AST_info(const char a[], unsigned number_of_AST_pointers, int size) : name(a), size_of_return(size), number_of_AST_fields(number_of_AST_pointers)
 	{
 	}
 };
@@ -23,15 +23,15 @@ struct AST_info
 //must be a vector, because we have to return the position.
 constexpr AST_info AST_vector[] =
 {
-	{ "static integer", 1, 0 },
+	{ "static integer", 0, 1 },
 	{ "Hello World!", 0, 0 },
-	{ "if", -1, 3 }, //test, first branch, second branch
-	{ "scope", 0, 1 }, // fulfills the purpose of {} from C++
-	{ "add", 1, 2 }, //ints
-	{ "no op", 0, 0 },
-	{ "get 0", 1, 0 },
+	{ "if", 3, -1 }, //test, first branch, second branch. passes through the return object of each branch; the return objects must be the same.
+	{ "scope", 1, 0 }, // fulfills the purpose of {} from C++
+	{ "add", 2, 1 }, //ints
+	{ "get 0", 0, 1 },
 /*	{ "goto", 2 }, //label and failure branch
 	{ "label" },
+	{ "no op", 0, 0 },
 	{ "sub", 2 },
 	{ "mul", 2 },
 	{ "divuu", 3 }, //2x int, subAST* on failure

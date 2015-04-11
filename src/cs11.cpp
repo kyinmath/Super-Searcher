@@ -294,8 +294,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 
 	auto finish_internal = [&](llvm::Value* return_value, Object_Descriptor type) -> Return_Info
 	{
-		//todo: reset the stack back to normal, and clear the stack
-		//todo: this isn't always necessary. maybe the values were shoved in there before, such as with a concatenate(). in that case, we should do nothing.
 		if (stack_degree == 2)
 		{
 			//the type of the stack object is an integer when 1 slot, or an array when multiple slots
@@ -307,7 +305,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 			}
 			else
 			{
-				//
 				Builder.CreateStore(return_value, storage_location);
 				return_value = storage_location;
 			}
@@ -413,13 +410,13 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 
 int main()
 {
-	AST get1("static integer", 0, 1); //get the integer 1
-	AST get2("static integer", 0, 2);
-	AST get3("static integer", 0, 3);
-	AST addthem("add", 0, &get1, &get2); //add the 2 integers
+	AST get1("static integer", nullptr, 1); //get the integer 1
+	AST get2("static integer", nullptr, 2);
+	AST get3("static integer", nullptr, 3);
+	AST addthem("add", nullptr, &get1, &get2); //add integers 1 and 2
 
 
-	AST getif("if", &addthem, &get1, &get2, &get3); //first, execute addthem. then, if get1 is true, then return get2. otherwise, return get3.
+	AST getif("if", &addthem, &get1, &get2, &get3); //first, execute addthem. then, if get1 is non-zero, return get2. otherwise, return get3.
 	AST helloworld("Hello World!", &getif); //first, execute getif. then output "Hello World!"
 	compiler_object compiler;
 	compiler.compile_AST(&helloworld);
