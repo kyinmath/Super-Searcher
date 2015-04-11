@@ -403,7 +403,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 
 			if (condition.type != T_uint64)
 				return_code(type_mismatch);
-			std::cerr << "got here\n";
+
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
 			llvm::Value* comparison = Builder.CreateICmpNE(condition.IR, llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
 			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
@@ -487,7 +487,7 @@ void fuzztester(unsigned iterations)
 
 	std::vector<AST*> AST_list;
 	AST_list.push_back(nullptr); //make sure we're never trying to read something that doesn't exist
-	while (1)
+	while (iterations--)
 	{
 		unsigned tag = rand() % ASTn("never reached");
 		unsigned number_of_total_fields = rand() % (max_fields_in_AST + 1); //how many fields will be filled in
@@ -534,12 +534,6 @@ int main()
 	compiler_object compiler;
 	compiler.compile_AST(&helloworld);
 	*/
-
-
-	AST getint("integer", nullptr, 8590061206300071025);
-	AST ifstate("if", &getint, &getint);
-	compiler_object compiler;
-	compiler.compile_AST(&ifstate);
 
 	fuzztester(40);
 }
