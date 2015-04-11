@@ -4,3 +4,5 @@ I'm using the Builder object to generate IR (http://llvm.org/docs/doxygen/html/c
 The IR description is in the big link. Major note: there are no explicit labels in the IR. Instead, labels are automatically generated after terminating instructions like return or goto.
 
 Eventually, I'll need to worry about MemoryManagers when I start adding discrete functions. FunctionPassManagers perform optimization.
+
+I'm using this tutorial: http://llvm.org/docs/tutorial/index.html

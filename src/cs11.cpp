@@ -1,13 +1,3 @@
-/*
-in Ubuntu, these go in /etc/apt/sources.list :
-deb http://llvm.org/apt/trusty/ llvm-toolchain-trusty-3.6 main
-deb-src http://llvm.org/apt/trusty/ llvm-toolchain-trusty-3.6 main
-then in console, sudo apt-get install clang-3.6 llvm-3.6
-
-clang++-3.6 -g cs11.cpp `llvm-config-3.6 --cxxflags --ldflags --system-libs --libs core mcjit native` -o toy -rdynamic -std=c++1z
-we need the packages libedit-dev and zlib1g-dev if there are errors about lz and ledit
-
-*/
 #include <iostream>
 #include <cstdint>
 //#include <mutex>
@@ -190,6 +180,7 @@ uint64_t compiler_object::get_size(AST* target)
 		return get_size(target->fields[1].ptr);
 	}
 	std::cerr << "couldn't get size of tag " << target->tag;
+	llvm_unreachable("panic here!");
 }
 
 
