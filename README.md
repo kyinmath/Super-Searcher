@@ -33,7 +33,9 @@ Note that our basic block structure is reversed: each element points to the _pre
 Descriptions of the ASTs are in the AST_vector[] in "AST commands.h". The first field in each vector element is the tag name, and the second field is the number of fields required by the AST.
 
 ###Running things
-To actually use the backend, you'll need to construct ASTs in main(), which contains sample code. Then, default-construct a compiler_object, and compile_AST on the last AST in the block. This outputs the IR and then runs the code.
+Just run the program (./toy) and it will automatically generate ASTs and try to run them. Malformed ASTs are fine (they're randomly created by a fuzzer). But segfaults and llvm compilation errors are bugs.
+
+Otherwise, you can construct ASTs in main(), which contains sample code. Then, default-construct a compiler_object, and compile_AST() the last AST in the block. This outputs the IR and then runs the code.
 
 The AST constructor takes in the tag, then the preceding basic block element, and then any field elements.
 
