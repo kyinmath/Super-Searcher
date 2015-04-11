@@ -215,6 +215,7 @@ public:
 		else
 		{
 			void(*FP)() = (void(*)())(intptr_t)fptr;
+			FP();
 		}
 		return 0;
 	}
