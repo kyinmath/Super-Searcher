@@ -6,7 +6,7 @@ The purpose of this backend is to make it easy for code to be self-modifying. By
 
 ###To compile in Ubuntu:
 
-Append this to /etc/apt/sources.list :
+To get llvm, append this to /etc/apt/sources.list :
 ```
 deb http://llvm.org/apt/trusty/ llvm-toolchain-trusty-3.6 main
 deb-src http://llvm.org/apt/trusty/ llvm-toolchain-trusty-3.6 main
@@ -17,19 +17,9 @@ then in console, run
 sudo apt-get install clang-3.6 llvm-3.6
 ```
 
-If there are errors about lz and ledit, apt-get install the packages libedit-dev and zlib1g-dev.
+If there are errors about lz and ledit, apt-get install the packages libedit-dev and zlib1g-dev. The 3.6 branch is necessary at the moment because the headers move around every llvm version.
 
-To compile, run
-```
-clang++-3.6 -g cs11.cpp `llvm-config-3.6 --cxxflags --ldflags --system-libs --libs core mcjit native` -o toy -rdynamic -std=c++1z
-```
-or if your path is clang++ instead of clang++-3.6, run
-```
-clang++ -g cs11.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core mcjit native` -o toy -rdynamic -std=c++1z
-```
-On other distros, you'll need clang 3.6 and llvm 3.6. Then, change the commands "clang++-3.6" and "llvm-config-3.6" as suitable (for example, to "clang++" if that's what it's called).
-
-The 3.6 branch is necessary at the moment because the headers move around every llvm version.
+To compile, run "make". Or if your path is clang++ instead of clang++-3.6, run "make van".
 
 ###AST structure
 Each AST has 3 main components:
@@ -39,6 +29,8 @@ Each AST has 3 main components:
 3. "fields", which contains the information necessary for the AST to operate. Depending on the tag, this may be pointers to other ASTs, or integers, or nothing at all. For example, the "add" AST takes two integers in its first two fields, and the remaining fields are ignored.
 
 Note that our basic block structure is reversed: each element points to the _previous_ element in the basic block, instead of pointers pointing to the _next_ element. The purpose of this reversal is to make construction easier.
+
+Descriptions of the ASTs are in the AST_vector[] in "AST commands.h". The important things are the first argument, which gives the tag name, and the second argument, which gives the number of fields required.
 
 ###Running things
 To actually use the backend, you'll need to construct ASTs in main(), which contains sample code. The AST constructor takes in the tag, then the preceding basic block element, and then any field elements.

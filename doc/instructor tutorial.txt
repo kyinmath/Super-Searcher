@@ -1,7 +1,7 @@
 The big link of everything is http://llvm.org/docs/LangRef.html
 The main structurally interesting things are Modules (in the link) and Functions (in the link). Contexts and ExecutionEngines can be treated as black boxes for now. Each Module must be in a Context, and ExecutionEngines produce executable code from IR.
 I'm using the Builder object to generate IR (http://llvm.org/docs/doxygen/html/classllvm_1_1IRBuilder.html).
-The IR description is in the big link. Major note: there are no explicit labels in the IR. Instead, labels are automatically generated after terminating instructions like return or goto.
+The IR description is in the big link. Major note: there are no explicit labels in the IR. Instead, labels are automatically generated and numbered after terminating instructions like return or goto.
 
 Eventually, I'll need to worry about MemoryManagers when I start adding discrete functions. FunctionPassManagers perform optimization.
 
