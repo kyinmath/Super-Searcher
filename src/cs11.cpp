@@ -25,6 +25,12 @@
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_os_ostream.h"
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/Analysis/Passes.h"
+
+//todo: what happens when you receive stack_degree = 1?
+//you should write things in place. however, we're going to have trouble figuring out where to write them...
 
 //todo: threading. create non-global contexts
 #ifndef _MSC_VER
@@ -171,16 +177,34 @@ public:
 		TheModule->dump();
 		// Validate the generated code, checking for consistency.
 		if (llvm::verifyFunction(*F, &llvm::outs())) std::cerr << "verification failed\n";
-		//if (llvm::verifyFunction(*F)) std::cerr << "compilation error!\n";
 
-		/*
-		auto *FPM = new llvm::FunctionPassManager(TheModule);
-		Module::iterator it;
-		Module::iterator end = TheModule->end();
-		for (it = TheModule->begin(); it != end; ++it) {
-			// Run the FPM on this function
-			FPM->run(*it);
-		}*/
+		std::cerr << "optimized code: \n";
+		//optimization
+		FunctionPassManager FPM(TheModule);
+		TheModule->setDataLayout(engine->getDataLayout());
+		// Provide basic AliasAnalysis support for GVN.
+		FPM.add(createBasicAliasAnalysisPass());
+		// Do simple "peephole" optimizations and bit-twiddling optzns.
+		FPM.add(createInstructionCombiningPass());
+		// Reassociate expressions.
+		FPM.add(createReassociatePass());
+		// Eliminate Common SubExpressions.
+		FPM.add(createGVNPass());
+		// Simplify the control flow graph (deleting unreachable blocks, etc).
+		FPM.add(createCFGSimplificationPass());
+
+		// Promote allocas to registers.
+		FPM.add(createPromoteMemoryToRegisterPass());
+		// Do simple "peephole" optimizations and bit-twiddling optzns.
+		FPM.add(createInstructionCombiningPass());
+		// Reassociate expressions.
+		FPM.add(createReassociatePass());
+
+		FPM.doInitialization();
+		FPM.run(*TheModule->begin());
+
+		TheModule->dump();
+
 		engine->finalizeObject();
 		void* fptr = engine->getPointerToFunction(F);
 		if (size_of_return)
@@ -363,8 +387,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 		return Return_Info(codegen_status::no_error, return_value, type);
 	};
 #define finish(X, type) do { return finish_internal(X, type); } while (0)
-
+#ifdef VERBOSE_DEBUG
 	std::cerr << "tag is " << target->tag << '\n';
+#endif
 	switch (target->tag)
 	{
 	case ASTn("integer"):
@@ -448,18 +473,22 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 			TheFunction->getBasicBlockList().push_back(MergeBB);
 			Builder.SetInsertPoint(MergeBB);
 
-			//todo: fix this typing
-			if (then_IR.type.size)
+			if (stack_degree == 0)
 			{
-				llvm::PHINode *PN = Builder.CreatePHI(int64_type, 2);
-				PN->addIncoming(then_IR.IR, ThenBB);
-				PN->addIncoming(else_IR.IR, ElseBB);
-				return Return_Info(codegen_status::no_error, PN, then_IR.type);
+				//todo: fix this typing
+				if (then_IR.type.size)
+				{
+					llvm::PHINode *PN = Builder.CreatePHI(int64_type, 2);
+					PN->addIncoming(then_IR.IR, ThenBB);
+					PN->addIncoming(else_IR.IR, ElseBB);
+					return Return_Info(codegen_status::no_error, PN, then_IR.type);
+				}
+				else
+				{
+					return_code(no_error);
+				}
 			}
-			else
-			{
-				return_code(no_error);
-			}
+			else return_code(no_error);
 	}
 	case ASTn("scope"):
 		finish(nullptr, T_null);
@@ -535,5 +564,5 @@ int main()
 	compiler.compile_AST(&helloworld);
 	*/
 
-	fuzztester(40);
+	fuzztester(-1);
 }
