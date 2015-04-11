@@ -28,6 +28,7 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Analysis/Passes.h"
+#include "llvm/IR/InstrTypes.h"
 
 //todo: what happens when you receive stack_degree = 1?
 //you should write things in place. however, we're going to have trouble figuring out where to write them...
@@ -37,6 +38,16 @@
 thread_local
 #endif
 llvm::LLVMContext& thread_context = llvm::getGlobalContext();
+
+
+#include <chrono>
+#include <random>
+unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
+std::mt19937_64 mersenne(seed);
+uint64_t generate_random()
+{
+	return mersenne();
+}
 
 template<typename target_type>
 union int_or_ptr
@@ -418,6 +429,14 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 
 		finish(Builder.CreateCall(putsFunc, helloWorld), T_null);
 	}
+	case ASTn("random"):
+	{
+		llvm::FunctionType *twister_type = llvm::FunctionType::get(int64_type, false);
+		llvm::PointerType *twister_ptr_type = llvm::PointerType::getUnqual(twister_type);
+		llvm::Constant *twister_address = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, (uint64_t)&generate_random));
+		llvm::Value *twister_function = Builder.CreateBitOrPointerCast(twister_address, twister_ptr_type);
+		finish(Builder.CreateCall(twister_function), T_uint64);
+	}
 	case ASTn("if"): //you can see the condition's return object in the branches.
 		//otherwise, the condition is missing, which could be another if function that may be implemented later, but probably not.
 		{
@@ -500,8 +519,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 	return Return_Info(codegen_status::fell_through_switches, nullptr, T_null);
 }
 
-#include <chrono>
-#include <random>
 void fuzztester(unsigned iterations)
 {
 	/*
@@ -512,37 +529,37 @@ void fuzztester(unsigned iterations)
 	compiler_object compiler3;
 	compiler3.compile_AST(&ifst); */
 
-	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-	std::mt19937_64 rand(seed);
-
 	std::vector<AST*> AST_list;
 	AST_list.push_back(nullptr); //make sure we're never trying to read something that doesn't exist
 	while (iterations--)
 	{
-		unsigned tag = rand() % ASTn("never reached");
-		unsigned number_of_total_fields = rand() % (max_fields_in_AST + 1); //how many fields will be filled in
+		unsigned tag = mersenne() % ASTn("never reached");
+		unsigned number_of_total_fields = mersenne() % (max_fields_in_AST + 1); //how many fields will be filled in
 		unsigned number_of_AST_fields = AST_vector[tag].number_of_AST_fields; //how many fields will be AST pointers. they will come at the beginning
-		unsigned prev_AST = rand() % AST_list.size();
+		unsigned prev_AST = mersenne() % AST_list.size();
 		int_or_ptr<AST> fields[4]{nullptr, nullptr, nullptr, nullptr};
 		int incrementor = 0;
 		for (; incrementor < number_of_AST_fields; ++incrementor)
-			fields[incrementor] = AST_list.at(rand() % AST_list.size()); //get pointers to previous ASTs
+			fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous ASTs
 		for (; incrementor < number_of_total_fields; ++incrementor)
-			fields[incrementor] = rand(); //get random integers to previous ASTs
+			fields[incrementor] = mersenne(); //get mersenneom integers to previous ASTs
 		
 		AST* previous_AST = nullptr;
-		AST test_AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
-		output_AST(&test_AST);
+		AST* test_AST= new AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
+		output_AST(test_AST);
 		std::cerr << "previous AST is " << prev_AST << '\n';
 
 
 		compiler_object compiler;
-		unsigned error_code = compiler.compile_AST(&test_AST);
+		unsigned error_code = compiler.compile_AST(test_AST);
 		if (error_code)
+		{
 			std::cerr << "AST malformed: code " << error_code << '\n';
+			delete test_AST;
+		}
 		else
 		{
-			AST_list.push_back(new AST(test_AST));
+			AST_list.push_back(test_AST);
 			std::cerr << "success with ID " << AST_list.size() - 1 << "\n";
 		}
 		std::cerr << "Press enter to continue\n";

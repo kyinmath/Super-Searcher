@@ -29,6 +29,7 @@ constexpr AST_info AST_vector[] =
 	{ "scope", 1, 0 }, // fulfills the purpose of {} from C++
 	{ "add", 2, 1 }, //ints
 	{ "get 0", 0, 1 },
+	{ "random", 0, 1 },
 /*	{ "goto", 2 }, //label and failure branch
 	{ "label" },
 	{ "no op", 0, 0 },
