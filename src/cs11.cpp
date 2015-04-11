@@ -245,7 +245,7 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 void output_AST(AST* target)
 {
 	std::cerr << "AST " //<< target << " with tag " <<
-		<< AST_vector[target->tag].name << "(" << target->tag << "), Add " << target << ", prev " << target->preceding_BB_element << '\n';
+		<< AST_vector[target->tag].name << "(" << target->tag << "), Addr " << target << ", prev " << target->preceding_BB_element << '\n';
 	//std::cerr << "fields are " << target->fields[0].num << ' ' << target->fields[1].num << ' ' << target->fields[2].num << ' ' << target->fields[3].num << '\n';
 	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
 }
@@ -395,15 +395,15 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 	case ASTn("if"): //you can see the condition's return object in the branches.
 		//otherwise, the condition is missing, which could be another if function that may be implemented later, but probably not.
 		{
-			//the condition statement. calls with stack_degree as 1 in the called function, if it is 2 outside.
+			//the condition statement
 			if (target->fields[0].ptr == nullptr)
 				return_code(null_AST);
-			auto condition = generate_IR(target->fields[0].ptr, (stack_degree != 0));
+			auto condition = generate_IR(target->fields[0].ptr, 0);
 			if (condition.error_code) return condition;
 
 			if (condition.type != T_uint64)
 				return_code(type_mismatch);
-
+			std::cerr << "got here\n";
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
 			llvm::Value* comparison = Builder.CreateICmpNE(condition.IR, llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
 			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
@@ -419,9 +419,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 			Builder.SetInsertPoint(ThenBB); //WATCH OUT: this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty.
 			//if there are labels inside, we could be in big trouble.
 
+			//calls with stack_degree as 1 in the called function, if it is 2 outside.
 			Return_Info then_IR(codegen_status::no_error, nullptr, T_null);
 			if (target->fields[1].ptr != nullptr)
-				then_IR = generate_IR(target->fields[1].ptr, false);
+				then_IR = generate_IR(target->fields[1].ptr, stack_degree != 0);
 			if (then_IR.error_code) return then_IR;
 
 			Builder.CreateBr(MergeBB);
@@ -432,7 +433,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 
 			Return_Info else_IR(codegen_status::no_error, nullptr, T_null);
 			if (target->fields[2].ptr != nullptr)
-				else_IR = generate_IR(target->fields[2].ptr, false);
+				else_IR = generate_IR(target->fields[2].ptr, stack_degree != 0);
 			if (else_IR.error_code) return else_IR;
 
 			//todo: we'll want a more sophisticated type checker later.
@@ -446,11 +447,19 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 			// Emit merge block.
 			TheFunction->getBasicBlockList().push_back(MergeBB);
 			Builder.SetInsertPoint(MergeBB);
-			llvm::PHINode *PN = Builder.CreatePHI(llvm::Type::getInt64Ty(thread_context), 2);
 
-			PN->addIncoming(then_IR.IR, ThenBB);
-			PN->addIncoming(else_IR.IR, ElseBB);
-			return Return_Info(codegen_status::no_error, PN, then_IR.type);
+			//todo: fix this typing
+			if (then_IR.type.size)
+			{
+				llvm::PHINode *PN = Builder.CreatePHI(int64_type, 2);
+				PN->addIncoming(then_IR.IR, ThenBB);
+				PN->addIncoming(else_IR.IR, ElseBB);
+				return Return_Info(codegen_status::no_error, PN, then_IR.type);
+			}
+			else
+			{
+				return_code(no_error);
+			}
 	}
 	case ASTn("scope"):
 		finish(nullptr, T_null);
@@ -525,6 +534,12 @@ int main()
 	compiler_object compiler;
 	compiler.compile_AST(&helloworld);
 	*/
+
+
+	AST getint("integer", nullptr, 8590061206300071025);
+	AST ifstate("if", &getint, &getint);
+	compiler_object compiler;
+	compiler.compile_AST(&ifstate);
 
 	fuzztester(40);
 }
