@@ -2,6 +2,7 @@
 
 This program (backend) takes in ASTs, converts them into LLVM IR, and then runs them. The AST language will be mostly C-like, supporting things like stacks, functions, structures, destructors, and control flow. The design of the ASTs will emphasize readability and potential for self-modification. The backend will enforce type and memory safety. LLVM's JIT will be doing all the heavy lifting to assemble its IR into executable code.
 
+The purpose of this backend is to make it easy for code to be self-modifying. By avoiding a textual representation, a self-modifying code won't have to lex or parse anything. In addition, memory safety means that the program won't cause too much damage even if it goes haywire.
 
 ###To compile in Ubuntu:
 
@@ -40,7 +41,7 @@ Each AST has 3 main components:
 Note that our basic block structure is reversed: each element points to the _previous_ element in the basic block, instead of pointers pointing to the _next_ element. The purpose of this reversal is to make construction easier.
 
 ###Running things
-To run ASTs, you have to first construct them in main(), which contains sample code. The AST constructor takes in the tag, then the preceding basic block element, and then any field elements.
+To actually use the backend, you'll need to construct ASTs in main(), which contains sample code. The AST constructor takes in the tag, then the preceding basic block element, and then any field elements.
 
 For example,
 ```
