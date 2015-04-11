@@ -3,16 +3,9 @@
 //#include <mutex>
 #include <array>
 #include <stack>
-#include <cassert>
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
-#include <set>
-#include <map>
-#include <memory>
-#include <stack>
-#include <tuple>
-#include <algorithm>
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
@@ -24,11 +17,13 @@
 #include "llvm/ExecutionEngine/MCJIT.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/raw_os_ostream.h"
-#include "llvm/Transforms/Scalar.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/IR/InstrTypes.h"
+#include <llvm/Support/raw_ostream.h> 
+
+#define OPTIMIZE 0
+#define VERBOSE_DEBUG 0
 
 //todo: what happens when you receive stack_degree = 1?
 //you should write things in place. however, we're going to have trouble figuring out where to write them...
@@ -158,7 +153,6 @@ public:
 
 	Return_Info generate_IR(AST* target, unsigned stack_degree);
 
-#include <llvm/Support/raw_ostream.h> 
 	unsigned compile_AST(AST* target)
 	{
 		using namespace llvm;
@@ -189,6 +183,7 @@ public:
 		// Validate the generated code, checking for consistency.
 		if (llvm::verifyFunction(*F, &llvm::outs())) std::cerr << "verification failed\n";
 
+#if OPTIMIZE
 		std::cerr << "optimized code: \n";
 		//optimization
 		FunctionPassManager FPM(TheModule);
@@ -213,6 +208,8 @@ public:
 
 		FPM.doInitialization();
 		FPM.run(*TheModule->begin());
+
+#endif
 
 		TheModule->dump();
 
@@ -290,7 +287,7 @@ void output_AST(AST* target)
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 {
 #define return_code(X) return Return_Info(codegen_status::X, nullptr, T_null);
-#ifdef VERBOSE_DEBUG
+#if VERBOSE_DEBUG
 	output_AST(target);
 #endif
 
@@ -300,7 +297,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 		return_code(null_AST_compiler_bug);
 	}
 
-#ifdef trace_through_generate_IR
+#if VERBOSE_DEBUG
 	TheModule->dump();
 #endif
 	if (this->loop_catcher.find(target) != this->loop_catcher.end())
@@ -310,7 +307,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 	}
 	this->loop_catcher.insert(target);
 
-#ifdef VERBOSE_DEBUG
+#if VERBOSE_DEBUG
 	std::cerr << "got through loop catcher\n";
 #endif
 
@@ -331,7 +328,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 	}//auto first_pointer = the_return_value;
 
 
-#ifdef VERBOSE_DEBUG
+#if VERBOSE_DEBUG
 	std::cerr << "got through previous elements\n";
 #endif
 
@@ -399,7 +396,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 		return Return_Info(codegen_status::no_error, return_value, type);
 	};
 #define finish(X, type) do { return finish_internal(X, type); } while (0)
-#ifdef VERBOSE_DEBUG
+#if VERBOSE_DEBUG
 	std::cerr << "tag is " << target->tag << '\n';
 #endif
 	switch (target->tag)

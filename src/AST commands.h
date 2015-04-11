@@ -1,6 +1,4 @@
-#include <string>
 #include <cstdint>
-#include <cassert>
 
 #ifdef _MSC_VER
 #define constexpr
