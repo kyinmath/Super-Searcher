@@ -42,6 +42,9 @@ constexpr enum_info AST_vector[] =
 	{ "add", 2, 1 }, //ints
 	{ "subtract", 2, 1 },
 	{ "random", 0, 1 },
+	//{ "get pointer", 2, 1 },
+	//{ "dereference pointer", 0, 1 },
+	// { "concatenate", 2, -1 },
 	/*	{ "goto", 2 }, //label and failure branch
 	{ "label" },
 	{ "no op", 0, 0 },

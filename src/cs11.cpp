@@ -68,12 +68,14 @@ struct compiler_object
 	llvm::IRBuilder<> Builder;
 	llvm::ExecutionEngine* engine;
 
-	std::unordered_set<AST*> loop_catcher; //lists the existing ASTs in a chain. goal is to prevent infinite loops.
-	std::stack<AST*> object_stack; //it's just a stack for bookkeeping lifetimes. find the actual object information from the "objects" member.
-	std::unordered_map<AST*, std::pair<llvm::Value*, Type*>> objects;
+	std::unordered_set<AST*> loop_catcher; //lists the ASTs we're currently looking at. goal is to prevent infinite loops.
+	std::stack<AST*> object_stack; //a stack for bookkeeping lifetimes; keeps track of when objects are alive. find the actual object information from the "objects" member.
+	std::unordered_map<AST*, std::pair<llvm::Value*, Type*>> objects; //from an AST pointer, find its generated IR and its return type.
+	//object_stack and objects don't just keep track of objects that belong on the stack - they keep track of temporaries too.
+	//the reason is that we want to be able to refer to these temporaries.
 
 	//these are the labels which we just passed by. you can jump to them without checking finiteness, but you still have to check the type stack
-	std::stack<AST*> future_labels;
+	//std::stack<AST*> future_labels;
 
 	compiler_object() : error_location(nullptr), Builder(thread_context)
 	{
@@ -112,12 +114,13 @@ public:
 		using namespace llvm;
 		FunctionType *FT;
 
-		//todo: our types should be better than this.
 		auto size_of_return = get_size(target);
 		if (size_of_return == 0)
 			FT = FunctionType::get(llvm::Type::getVoidTy(thread_context), false);
-		else
+		else if (size_of_return == 1)
 			FT = FunctionType::get(llvm::Type::getInt64Ty(thread_context), false);
+		else
+			FT = FunctionType::get(llvm::ArrayType::get(llvm::Type::getInt64Ty(thread_context), size_of_return), false);
 		Function *F = Function::Create(FT, Function::ExternalLinkage, "temp function", TheModule);
 
 		BasicBlock *BB = BasicBlock::Create(thread_context, "entry", F);
@@ -259,9 +262,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 	//maybe this ought to be checked beforehand.
 	if (target == nullptr)
-	{
 		return_code(null_AST_compiler_bug);
-	}
 
 #if VERBOSE_DEBUG
 	TheModule->dump();
@@ -333,38 +334,44 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//when we add a type system, we better start checking if types work out.
 	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 
+	//internally used. after you've constructed something, this stores it on the stack.
+	auto move_into_stack_position = [&](llvm::Value* return_value, Type* type)
+	{
+		//the type of the stack object is an integer when 1 slot, or an array when multiple slots
+		if (size_result > 1)
+		{
+			for (int i = 0; i < size_result; ++i)
+				Builder.CreateStore(Builder.CreateConstGEP2_64(return_value, 0, i), Builder.CreateConstGEP2_64(storage_location, 0, i));
+			return_value = storage_location;
+		}
+		else if (size_result == 1)
+		{
+			Builder.CreateStore(return_value, storage_location);
+			return_value = storage_location;
+		}
+	};
+
+	//internally used. after you've constructed something, this handles stack logic such as stack clearing and making your result visible to other ASTs
 	auto finish_internal = [&](llvm::Value* return_value, Type* type) -> Return_Info
 	{
 		if (stack_degree == 2)
-		{
-			//the type of the stack object is an integer when 1 slot, or an array when multiple slots
-			if (size_result > 1)
-			{
-				for (int i = 0; i < size_result; ++i)
-					Builder.CreateStore(Builder.CreateConstGEP2_64(return_value, 0, i), Builder.CreateConstGEP2_64(storage_location, 0, i));
-				return_value = storage_location;
-			}
-			else if (size_result == 1)
-			{
-				Builder.CreateStore(return_value, storage_location);
-				return_value = storage_location;
-			}
-
 			clear_stack(final_stack_position);
 
+		if (size_result >= 1)
+		{
 			object_stack.push(target);
 			auto insert_result = this->objects.insert({ target, std::make_pair(return_value, type) });
 			if (!insert_result.second) //collision: AST is already there
 				return_code(active_object_duplication);
-
-		}
-		else if (stack_degree == 1)
-		{
-
 		}
 		return Return_Info(codegen_status::no_error, return_value, type);
 	};
-#define finish(X, type) do { return finish_internal(X, type); } while (0)
+
+	//call these when you've constructed something.
+#define finish(X, type) do { if (stack_degree >= 1) move_into_stack_position(X, type); return finish_internal(X, type); } while (0)
+#define finish_previously_constructed(X, type) do { return finish_internal(X, type); } while (0)
+//finish_previously_constructed is if your AST is not the one constructing the return object. for example, concatenate() and if() do not, so they should use this.
+
 #if VERBOSE_DEBUG
 	std::cerr << "tag is " << target->tag << '\n';
 #endif
@@ -425,7 +432,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
 			llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(thread_context, "then", TheFunction);
 			llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(thread_context, "else");
-			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(thread_context, "ifcont"); //todo: is this what we're returning? is there a better name?
+			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(thread_context, "ifcont");
 
 			Builder.CreateCondBr(comparison, ThenBB, ElseBB);
 
@@ -479,7 +486,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				PN->addIncoming(else_IR.IR, ElseBB);
 				return Return_Info(codegen_status::no_error, PN, then_IR.type);
 			}
-			else return_code(no_error); //if stack_degree is 1 or 2, the things have already been written properly.
+			finish_previously_constructed(storage_location, then_IR.type);
 	}
 	case ASTn("scope"):
 		finish(nullptr, T_null);
@@ -492,33 +499,20 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 void fuzztester(unsigned iterations)
 {
-	/*
-	AST helloworld("Hello World!", nullptr);
-	AST ifst("if", nullptr);
-	compiler_object compiler2;
-	compiler2.compile_AST(&helloworld);
-	compiler_object compiler3;
-	compiler3.compile_AST(&ifst); */
-
-	std::vector<AST*> AST_list;
-	AST_list.push_back(nullptr); //make sure we're never trying to read something that doesn't exist
+	std::vector<AST*> AST_list{ nullptr }; //we start with nullptr as the default referenceable AST
 	while (iterations--)
 	{
+		//create a random AST
 		unsigned tag = mersenne() % ASTn("never reached");
-		unsigned number_of_total_fields = mersenne() % (max_fields_in_AST + 1); //how many fields will be filled in
 		unsigned pointer_fields = AST_vector[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
 		unsigned prev_AST = mersenne() % AST_list.size();
 		int_or_ptr<AST> fields[4]{nullptr, nullptr, nullptr, nullptr};
 		int incrementor = 0;
 		for (; incrementor < pointer_fields; ++incrementor)
 			fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous ASTs
-		for (; incrementor < number_of_total_fields; ++incrementor)
-			fields[incrementor] = mersenne(); //get mersenneom integers to previous ASTs
-		
-		AST* previous_AST = nullptr;
+		for (; incrementor < max_fields_in_AST; ++incrementor)
+			fields[incrementor] = (mersenne() % 2) ? mersenne() : 0; //get random integers and fill in the remaining fields
 		AST* test_AST= new AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
-		//output_AST(test_AST);
-		//std::cerr << "previous AST is " << prev_AST << '\n';
 		output_AST_and_previous(test_AST);
 
 		compiler_object compiler;
