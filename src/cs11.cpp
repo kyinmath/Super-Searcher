@@ -38,8 +38,8 @@ uint64_t generate_random()
 {
 	return mersenne();
 }
-Object_Descriptor T_uint64(1); //describes an integer, used internally. later we'll want more information than just its size
-Object_Descriptor T_null(0); //describes nothing, used internally. later we'll want more information than just its size
+Type* T_uint64 = new Type("integer"); //describes an integer, used internally. later we'll want more information than just its size
+Type* T_null = nullptr; //describes nothing, used internally. later we'll want more information than just its size
 
 
 enum codegen_status {
@@ -56,8 +56,8 @@ struct Return_Info
 {
 	codegen_status error_code;
 	llvm::Value* IR;
-	Object_Descriptor type;
-	Return_Info(codegen_status err, llvm::Value* b, Object_Descriptor t)
+	Type* type;
+	Return_Info(codegen_status err, llvm::Value* b, Type* t)
 		: error_code(err), IR(b), type(t) {}
 };
 
@@ -70,7 +70,7 @@ struct compiler_object
 
 	std::unordered_set<AST*> loop_catcher; //lists the existing ASTs in a chain. goal is to prevent infinite loops.
 	std::stack<AST*> object_stack; //it's just a stack for bookkeeping lifetimes. find the actual object information from the "objects" member.
-	std::unordered_map<AST*, std::pair<llvm::Value*, Object_Descriptor>> objects;
+	std::unordered_map<AST*, std::pair<llvm::Value*, Type*>> objects;
 
 	//these are the labels which we just passed by. you can jump to them without checking finiteness, but you still have to check the type stack
 	std::stack<AST*> future_labels;
@@ -114,7 +114,7 @@ public:
 
 		//todo: our types should be better than this.
 		auto size_of_return = get_size(target);
-		if (size_of_return == T_null)
+		if (size_of_return == 0)
 			FT = FunctionType::get(llvm::Type::getVoidTy(thread_context), false);
 		else
 			FT = FunctionType::get(llvm::Type::getInt64Ty(thread_context), false);
@@ -163,9 +163,9 @@ public:
 		FPM.doInitialization();
 		FPM.run(*TheModule->begin());
 
-#endif
-
 		TheModule->dump();
+
+#endif
 
 		engine->finalizeObject();
 		void* fptr = engine->getPointerToFunction(F);
@@ -235,6 +235,17 @@ void output_AST(AST* target)
 		<< AST_vector[target->tag].name << "(" << target->tag << "), Addr " << target << ", prev " << target->preceding_BB_element << '\n';
 	//std::cerr << "fields are " << target->fields[0].num << ' ' << target->fields[1].num << ' ' << target->fields[2].num << ' ' << target->fields[3].num << '\n';
 	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
+}
+
+
+void output_AST_and_previous(AST* target)
+{
+	output_AST(target);
+	unsigned further_outputs = AST_vector[target->tag].pointer_fields;
+	//I kind of want to use boost's irange here, but pulling in a big library may not be the best idea
+	for (int x = 0; x < further_outputs; ++x)
+		if (target->fields[x].ptr != nullptr)
+			output_AST_and_previous(target->fields[x].ptr);
 }
 
 //generate llvm code. stack_degree measures how stacky the AST is. 0 = the return value won't arrive on the stack. 1 = the return value will arrive on the stack. 2 = the AST is an element in a basic block: it's not a field of another AST, so it's directly on the stack.
@@ -322,7 +333,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//when we add a type system, we better start checking if types work out.
 	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 
-	auto finish_internal = [&](llvm::Value* return_value, Object_Descriptor type) -> Return_Info
+	auto finish_internal = [&](llvm::Value* return_value, Type* type) -> Return_Info
 	{
 		if (stack_degree == 2)
 		{
@@ -364,12 +375,13 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		finish(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)), T_uint64);
 	}
 	case ASTn("add"): //add two integers.
-		if (field_results[0].type != T_uint64) return_code(type_mismatch);
-		if (field_results[1].type != T_uint64) return_code(type_mismatch);
+		//todo: why does this comparison work? we must replace it with type_check.
+		if (type_check(RVO, field_results[0].type, T_uint64)) return_code(type_mismatch);
+		if (type_check(RVO, field_results[1].type, T_uint64)) return_code(type_mismatch);
 		finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR), T_uint64);
 	case ASTn("subtract"):
-		if (field_results[0].type != T_uint64) return_code(type_mismatch);
-		if (field_results[1].type != T_uint64) return_code(type_mismatch);
+		if (type_check(RVO, field_results[0].type, T_uint64)) return_code(type_mismatch);
+		if (type_check(RVO, field_results[1].type, T_uint64)) return_code(type_mismatch);
 		finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR), T_uint64);
 	case ASTn("Hello World!"):
 	{
@@ -403,7 +415,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			auto condition = generate_IR(target->fields[0].ptr, 0);
 			if (condition.error_code) return condition;
 
-			if (condition.type != T_uint64)
+			if (type_check(RVO, condition.type, T_uint64))
 				return_code(type_mismatch);
 
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
@@ -438,8 +450,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				else_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, storage_location);
 			if (else_IR.error_code) return else_IR;
 
-			//todo: we'll want a more sophisticated type checker later.
-			if (then_IR.type != else_IR.type)
+			//RVO, because that's what defines the slot.
+			if (type_check(RVO, then_IR.type, else_IR.type))
 				return_code(type_mismatch);
 
 			//for the second branch
@@ -452,20 +464,22 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 			if (stack_degree == 0)
 			{
-				//todo: fix this typing
-				if (then_IR.type.size)
-				{
-					llvm::PHINode *PN = Builder.CreatePHI(int64_type, 2);
-					PN->addIncoming(then_IR.IR, ThenBB);
-					PN->addIncoming(else_IR.IR, ElseBB);
-					return Return_Info(codegen_status::no_error, PN, then_IR.type);
-				}
+				if (size_result == 0)
+					return_code(no_error);
+
+				llvm::PHINode *PN;
+				if (size_result == 1)
+					PN = Builder.CreatePHI(int64_type, 2);
 				else
 				{
-					return_code(no_error);
+					llvm::Type* array_type = llvm::ArrayType::get(int64_type, size_result);
+					PN = Builder.CreatePHI(array_type, 2);
 				}
+				PN->addIncoming(then_IR.IR, ThenBB);
+				PN->addIncoming(else_IR.IR, ElseBB);
+				return Return_Info(codegen_status::no_error, PN, then_IR.type);
 			}
-			else return_code(no_error);
+			else return_code(no_error); //if stack_degree is 1 or 2, the things have already been written properly.
 	}
 	case ASTn("scope"):
 		finish(nullptr, T_null);
@@ -503,9 +517,9 @@ void fuzztester(unsigned iterations)
 		
 		AST* previous_AST = nullptr;
 		AST* test_AST= new AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
-		output_AST(test_AST);
-		std::cerr << "previous AST is " << prev_AST << '\n';
-
+		//output_AST(test_AST);
+		//std::cerr << "previous AST is " << prev_AST << '\n';
+		output_AST_and_previous(test_AST);
 
 		compiler_object compiler;
 		unsigned error_code = compiler.compile_AST(test_AST);

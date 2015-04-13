@@ -11,14 +11,6 @@ union int_or_ptr
 	int_or_ptr(uint64_t x) : num(x) {}
 	int_or_ptr(target_type* x) : ptr(x) {}
 };
-struct Object_Descriptor
-{
-	uint64_t size;
-	Object_Descriptor(uint64_t s) : size(s) {}
-};
-inline bool operator==(const Object_Descriptor& lhs, const Object_Descriptor& rhs){ return lhs.size == rhs.size; }
-inline bool operator!=(const Object_Descriptor& lhs, const Object_Descriptor& rhs){ return !(lhs == rhs); }
-
 
 #ifdef _MSC_VER
 #define constexpr
@@ -85,6 +77,9 @@ constexpr enum_info type_vector[] =
 	{ "fixed integer", 1, 1 }, //the integer is placed in the type.
 	{ "cheap pointer", 1, 1 },
 	//ASTs, locks, types
+	//full pointer's lifetime isn't too picky, since nothing is GCed until the threads are placed in suspension. that means they can RVO into cheap pointer slots. this is because we're using tracing.
+	//that also means they don't have to tweak any GC flags on their targets if they're on the stack. only full pointers on the heap must be worried about.
+	//however, we still need cheap pointers, so that we can point to things on the stack
 	{ "never reached", 0, 0 }
 };
 
@@ -120,7 +115,8 @@ struct Type
 {
 	uint64_t tag;
 	std::array<int_or_ptr<Type>, 2> fields;
-	Type(const uint64_t t, const int_or_ptr<Type> a, const int_or_ptr<Type> b) : tag(t), fields{ a, b } {}
+	Type(const char name[], const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(Typen(name)), fields{ a, b } {}
+	Type(const uint64_t t, const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(t), fields{ a, b } {}
 };
 
 
@@ -135,10 +131,14 @@ struct AST
 	//for now, we don't worry about 3-tree memory locality.
 	std::array<int_or_ptr<AST>, max_fields_in_AST> fields;
 	AST(const char name[], AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> f2 = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
-		: tag(ASTn(name)), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 }
-	{} //VS complains about aggregate initialization, but I don't care
+		: tag(ASTn(name)), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {} //VS complains about aggregate initialization, but I don't care
 	AST(unsigned direct_tag, AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> f2 = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
-		: tag(direct_tag), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 }
-	{}
+		: tag(direct_tag), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {}
 	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };
+
+
+
+enum type_status { RVO, reference }; //distinguishes between RVOing an object, or just creating a reference
+
+unsigned type_check(type_status version, Type* existing_reference, Type* new_reference);
