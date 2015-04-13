@@ -252,7 +252,7 @@ void output_AST_and_previous(AST* target)
 //if stack_degree = 1, you should Store your final result in storaget_location. if stack_degree = 2, that means you should create your own storage_location instead.
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location)
 {
-#define return_code(X) return Return_Info(codegen_status::X, nullptr, T_null);
+#define return_code(X) do { error_location = target; return Return_Info(codegen_status::X, nullptr, T_null); } while (0)
 #if VERBOSE_DEBUG
 	output_AST(target);
 #endif
@@ -525,7 +525,7 @@ void fuzztester(unsigned iterations)
 		unsigned error_code = compiler.compile_AST(test_AST);
 		if (error_code)
 		{
-			std::cerr << "AST malformed: code " << error_code << '\n';
+			std::cerr << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << '\n';
 			delete test_AST;
 		}
 		else
