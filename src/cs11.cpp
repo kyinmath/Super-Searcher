@@ -6,25 +6,22 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
-#include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/Verifier.h"
-#include "AST commands.h"
-#include "llvm/ExecutionEngine/ExecutionEngine.h"
-#include "llvm/ExecutionEngine/MCJIT.h"
-#include "llvm/ExecutionEngine/SectionMemoryManager.h"
-#include "llvm/Support/TargetSelect.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/Analysis/Passes.h"
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <llvm/ExecutionEngine/MCJIT.h>
+#include <llvm/ExecutionEngine/SectionMemoryManager.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/Analysis/Passes.h>
 #include <llvm/Support/raw_ostream.h> 
+#include "types.h"
 
 #define OPTIMIZE 0
 #define VERBOSE_DEBUG 0
-
-//todo: what happens when you receive stack_degree = 1?
-//you should write things in place. however, we're going to have trouble figuring out where to write them...
 
 //todo: threading. create non-global contexts
 #ifndef _MSC_VER
@@ -41,55 +38,15 @@ uint64_t generate_random()
 {
 	return mersenne();
 }
-
-template<typename target_type>
-union int_or_ptr
-{
-	uint64_t num;
-	target_type* ptr;
-	int_or_ptr(uint64_t x) : num(x) {}
-	int_or_ptr(target_type* x) : ptr(x) {}
-};
-struct Object_Descriptor
-{
-	uint64_t size;
-	Object_Descriptor(uint64_t s) : size(s) {}
-};
-bool operator==(const Object_Descriptor& lhs, const Object_Descriptor& rhs){ return lhs.size == rhs.size; }
-bool operator!=(const Object_Descriptor& lhs, const Object_Descriptor& rhs){ return !(lhs == rhs); }
 Object_Descriptor T_uint64(1); //describes an integer, used internally. later we'll want more information than just its size
 Object_Descriptor T_null(0); //describes nothing, used internally. later we'll want more information than just its size
 
 
-const uint64_t max_fields_in_AST = 4; //should accomodate the largest possible AST
-struct AST
-{
-	//std::mutex lock;
-	uint64_t tag;
-	AST* preceding_BB_element; //this object survives on the stack and can be referenced. it's the previous basic block element.
-	//we use a reverse basic block order so that all pointers point backwards in the stack, instead of having some pointers going forward, and some pointers going backwards.
-	//AST* braced_element; //this object does not survive on the stack.
-			//for now, we don't worry about 3-tree memory locality.
-	std::array<int_or_ptr<AST>, max_fields_in_AST> fields;
-	AST(const char name[], AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> f2 = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
-		: tag(ASTn(name)), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 }
-	{} //VS complains about aggregate initialization, but I don't care
-	AST(unsigned direct_tag, AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> f2 = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
-		: tag(direct_tag), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 }
-	{}
-	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
-};
-
-struct Type
-{
-	uint64_t size; //for now, it's just the number of uint64_t in an object. no complex objects allowed.
-};
-
 enum codegen_status {
 	no_error,
-	infinite_loop,
-	active_object_duplication, //we tried to codegen an AST while it was already codegened from another branch, thus resulting in a stack duplication
-	fell_through_switches, //if our switch case is missing a value. todo: add a unit test to check this.
+	infinite_loop, //ASTs point to each other in a loop
+	active_object_duplication, //tried to codegen an AST while it was already codegened from another branch, thus resulting in a stack duplication
+	fell_through_switches, //if our switch case is missing a value. generate_IR() is bugged
 	type_mismatch, //in an if statement, the two branches had different types.
 	null_AST_compiler_bug, //we tried to generate_IR() a nullptr, which means generate_IR() is bugged
 	null_AST, //tried to generate_IR() a nullptr but was caught, which is normal.
@@ -140,7 +97,6 @@ struct compiler_object
 
 public:
 
-	//llvm::raw_os_ostream for_verification = llvm::raw_os_ostream(std::cerr);
 
 	AST* error_location;
 	//exists when codegen_status has an error.
@@ -149,7 +105,7 @@ public:
 	llvm::AllocaInst* CreateEntryBlockAlloca(uint64_t size);
 	uint64_t get_size(AST* target);
 
-	Return_Info generate_IR(AST* target, unsigned stack_degree);
+	Return_Info generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location = nullptr);
 
 	unsigned compile_AST(AST* target)
 	{
@@ -282,7 +238,8 @@ void output_AST(AST* target)
 }
 
 //generate llvm code. stack_degree measures how stacky the AST is. 0 = the return value won't arrive on the stack. 1 = the return value will arrive on the stack. 2 = the AST is an element in a basic block: it's not a field of another AST, so it's directly on the stack.
-Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
+//if stack_degree = 1, you should Store your final result in storaget_location. if stack_degree = 2, that means you should create your own storage_location instead.
+Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location)
 {
 #define return_code(X) return Return_Info(codegen_status::X, nullptr, T_null);
 #if VERBOSE_DEBUG
@@ -330,7 +287,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 	std::cerr << "got through previous elements\n";
 #endif
 
-	llvm::AllocaInst* storage_location = nullptr;
 	uint64_t size_result = 0;
 	uint64_t final_stack_position = object_stack.size();
 	if (stack_degree == 2)
@@ -351,10 +307,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 		field_results.push_back(result);
 		return codegen_status::no_error;
 	};
-	if (target->tag != ASTn("if")) //if statement requires special handling
+	if (target->tag != ASTn("if")) //if statement requires special handling. todo: concatenate also.
 	{
 
-		for (unsigned x = 0; x < AST_vector[target->tag].number_of_AST_fields; ++x)
+		for (unsigned x = 0; x < AST_vector[target->tag].pointer_fields; ++x)
 		{
 			codegen_status result = generate_internal(x);
 			if (result) return Return_Info(result, nullptr, T_null);
@@ -391,6 +347,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 				return_code(active_object_duplication);
 
 		}
+		else if (stack_degree == 1)
+		{
+
+		}
 		return Return_Info(codegen_status::no_error, return_value, type);
 	};
 #define finish(X, type) do { return finish_internal(X, type); } while (0)
@@ -404,11 +364,13 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 		finish(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)), T_uint64);
 	}
 	case ASTn("add"): //add two integers.
-		if (field_results[0].type != T_uint64)
-			return_code(type_mismatch);
-		if (field_results[1].type != T_uint64)
-			return_code(type_mismatch);
+		if (field_results[0].type != T_uint64) return_code(type_mismatch);
+		if (field_results[1].type != T_uint64) return_code(type_mismatch);
 		finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR), T_uint64);
+	case ASTn("subtract"):
+		if (field_results[0].type != T_uint64) return_code(type_mismatch);
+		if (field_results[1].type != T_uint64) return_code(type_mismatch);
+		finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR), T_uint64);
 	case ASTn("Hello World!"):
 	{
 		llvm::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!\n");
@@ -462,7 +424,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 			//calls with stack_degree as 1 in the called function, if it is 2 outside.
 			Return_Info then_IR(codegen_status::no_error, nullptr, T_null);
 			if (target->fields[1].ptr != nullptr)
-				then_IR = generate_IR(target->fields[1].ptr, stack_degree != 0);
+				then_IR = generate_IR(target->fields[1].ptr, stack_degree != 0, storage_location);
 			if (then_IR.error_code) return then_IR;
 
 			Builder.CreateBr(MergeBB);
@@ -473,7 +435,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 
 			Return_Info else_IR(codegen_status::no_error, nullptr, T_null);
 			if (target->fields[2].ptr != nullptr)
-				else_IR = generate_IR(target->fields[2].ptr, stack_degree != 0);
+				else_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, storage_location);
 			if (else_IR.error_code) return else_IR;
 
 			//todo: we'll want a more sophisticated type checker later.
@@ -507,8 +469,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree)
 	}
 	case ASTn("scope"):
 		finish(nullptr, T_null);
-	case ASTn("get 0"):
-		finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_uint64);
+	/*case ASTn("get 0"):
+		finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_uint64);*/
 	}
 
 	return Return_Info(codegen_status::fell_through_switches, nullptr, T_null);
@@ -530,11 +492,11 @@ void fuzztester(unsigned iterations)
 	{
 		unsigned tag = mersenne() % ASTn("never reached");
 		unsigned number_of_total_fields = mersenne() % (max_fields_in_AST + 1); //how many fields will be filled in
-		unsigned number_of_AST_fields = AST_vector[tag].number_of_AST_fields; //how many fields will be AST pointers. they will come at the beginning
+		unsigned pointer_fields = AST_vector[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
 		unsigned prev_AST = mersenne() % AST_list.size();
 		int_or_ptr<AST> fields[4]{nullptr, nullptr, nullptr, nullptr};
 		int incrementor = 0;
-		for (; incrementor < number_of_AST_fields; ++incrementor)
+		for (; incrementor < pointer_fields; ++incrementor)
 			fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous ASTs
 		for (; incrementor < number_of_total_fields; ++incrementor)
 			fields[incrementor] = mersenne(); //get mersenneom integers to previous ASTs

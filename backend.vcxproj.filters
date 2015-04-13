@@ -15,7 +15,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\AST commands.h">
+    <ClInclude Include="src\types.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\types.cpp">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
