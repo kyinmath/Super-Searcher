@@ -39,7 +39,7 @@ uint64_t generate_random()
 	return mersenne();
 }
 Type* T_uint64 = new Type("integer"); //describes an integer, used internally. later we'll want more information than just its size
-Type* T_null = nullptr; //describes nothing, used internally. later we'll want more information than just its size
+Type* T_null = nullptr; //describes nothing, used internally. later we'll want more information than just its size-
 
 
 enum codegen_status {

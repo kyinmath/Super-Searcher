@@ -1,0 +1,36 @@
+Axiom: the target of a pointer must survive longer than the pointer.
+	when creating a pointer, we must ensure that this axiom remains true.
+	when using pointers, we get this axiom as a privilege.
+to enforce this, pointers need bounds on their lifetimes.
+	and we must enforce expiration, because sometimes objects (like locks) do expire in a significant way
+this axiom is the only information we have for stored pointers (which means heaps, function signatures). for active pointers, we get bounds information
+	except: functions can take ALL cheap pointers
+	heaps can take NO cheap pointers
+well, we still need bounds to be able to concatenate or TU pointers.
+
+this means we only have to keep track of one layer of lifetimes? but we might be losing information.
+and we have to encode this information in function definitions, so we can't combine full and cheap pointers and let the system figure out which is which.
+
+
+
+the return object cannot copy objects from the parameter list, because it might end up in a full object, vector, or =.
+
+= has to be an operator which takes a cheap pointer as one of its arguments, because it must be able to write to offset locations.
+	
+
+
+
+
+we still can't get pointers to temporary objects. in llvm, modifying a temporary object would require creating an alloca, and then copying it into the correct slot.
+	in C++, you also can't get pointers to temporary objects, since they're not lvalues.
+but even so, we should be able to copy them.
+
+when stack degree >= 1, the type should be a pointer
+and just like in LLVM, we don't need an "address-of" pointer.
+	instead, "get stack location" returns a pointer.
+	and "dereference" gets the value of the pointer. CreateLoad.
+the problem is now that an AST's type depends on whether it's in a first-pointer or not. it's context dependent.
+	which doesn't make sense, because we can't reuse ASTs in different places anymore.
+&copy() operates differently on temps and stack objects. for stack objects, it must transparently create a CreateLoad, and then copy the loaded object.
+	the type of the stack object is a pointer
+&meanwhile, pointer() simply grabs the stack object directly, because it is already a pointer.

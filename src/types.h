@@ -38,11 +38,11 @@ constexpr enum_info AST_vector[] =
 	{ "integer", 0, 1 },
 	{ "Hello World!", 0, 0 },
 	{ "if", 3, -1 }, //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
-	{ "scope", 1, 0 }, // fulfills the purpose of {} from C++
-	{ "add", 2, 1 }, //ints
+	{ "scope", 1, 0 }, //fulfills the purpose of {} from C++
+	{ "add", 2, 1 }, //adds two integers
 	{ "subtract", 2, 1 },
-	{ "random", 0, 1 },
-	{ "pointer", 1, 1 }, //this AST acquires a pointer to an alloca'd element. it takes one field, but does NOT compile it - instead, it searches for it in <>objects.
+	{ "random", 0, 1 }, //returns a random integer
+	{ "pointer", 1, 1 }, //acquires a pointer to an alloca'd element. it takes one field, but does NOT compile it - instead, it searches for it in <>objects.
 	{ "never reached", 0, 0 }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	//{ "dereference pointer", 0, 1 },
 	{ "concatenate", 2, -1 },

@@ -1,0 +1,3 @@
+Implemented type system
+Implemented pointers
+Implemented variables
