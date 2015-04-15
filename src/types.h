@@ -42,9 +42,10 @@ constexpr enum_info AST_vector[] =
 	{ "add", 2, 1 }, //ints
 	{ "subtract", 2, 1 },
 	{ "random", 0, 1 },
-	//{ "get pointer", 2, 1 },
+	{ "pointer", 1, 1 }, //this AST acquires a pointer to an alloca'd element. it takes one field, but does NOT compile it - instead, it searches for it in <>objects.
+	{ "never reached", 0, 0 }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	//{ "dereference pointer", 0, 1 },
-	// { "concatenate", 2, -1 },
+	{ "concatenate", 2, -1 },
 	/*	{ "goto", 2 }, //label and failure branch
 	{ "label" },
 	{ "no op", 0, 0 },
@@ -69,7 +70,6 @@ constexpr enum_info AST_vector[] =
 	{ "bitwise and", 2 },
 	{ "bitwise or", 2 },
 	{ "bitwise xor", 2 },*/
-	{ "never reached", 0, 0 }
 };
 
 

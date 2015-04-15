@@ -50,6 +50,7 @@ enum codegen_status {
 	type_mismatch, //in an if statement, the two branches had different types.
 	null_AST_compiler_bug, //we tried to generate_IR() a nullptr, which means generate_IR() is bugged
 	null_AST, //tried to generate_IR() a nullptr but was caught, which is normal.
+	pointer_without_stack_target, //tried to get a pointer to an AST, but it was not found. either the AST was not compiled, or it was not placed on the stack.
 };
 
 struct Return_Info
@@ -57,8 +58,23 @@ struct Return_Info
 	codegen_status error_code;
 	llvm::Value* IR;
 	Type* type;
-	Return_Info(codegen_status err, llvm::Value* b, Type* t)
-		: error_code(err), IR(b), type(t) {}
+
+	//this lifetime information is only used when a pointer is in the type. see pointers.txt
+	//higher number = dies sooner
+	//2^64 - 1 = temp. 0 = on the heap.
+	uint64_t self_lifetime; //for stack objects, determines when you will fall off the stack. it's a deletion time, not a creation time. these are not in perfect stack configuration, because temporaries are created before the base object, and die just after.
+	uint64_t target_upper_lifetime; //higher is stricter. must last longer than this.
+	//measures the pointer's target's lifetime, for when the pointer wants to be written into a memory location
+	uint64_t target_lower_lifetime; //lower is stricter. must die faster than this.
+	//measures the pointer's target's lifetime, for when the pointed-to memory location wants something to be written into it.
+	//to write a pointer into a pointed-to memory location, we must have upper of pointer < lower of memory location
+	//there's only one pair of values per object, which can be a problem for objects which concatenate many cheap pointers. but those objects can be split up because the only times we need concatenation is heap and parameters and function return; in these cases, the memory order doesn't matter
+
+	Return_Info(codegen_status err, llvm::Value* b, Type* t, uint64_t s, uint64_t u, uint64_t l)
+		: error_code(err), IR(b), type(t), self_lifetime(s), target_upper_lifetime(u), target_lower_lifetime(l) {}
+
+	//default constructor for a null object. make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
+	Return_Info() : error_code(codegen_status::no_error), IR(nullptr), type(T_null), self_lifetime(0), target_upper_lifetime(0), target_lower_lifetime(-1ull) {}
 };
 
 
@@ -70,12 +86,15 @@ struct compiler_object
 
 	std::unordered_set<AST*> loop_catcher; //lists the ASTs we're currently looking at. goal is to prevent infinite loops.
 	std::stack<AST*> object_stack; //a stack for bookkeeping lifetimes; keeps track of when objects are alive. find the actual object information from the "objects" member.
-	std::unordered_map<AST*, std::pair<llvm::Value*, Type*>> objects; //from an AST pointer, find its generated IR and its return type.
+	std::unordered_map<AST*, Return_Info> objects; //from an AST pointer, find its generated IR and its return type.
 	//object_stack and objects don't just keep track of objects that belong on the stack - they keep track of temporaries too.
 	//the reason is that we want to be able to refer to these temporaries.
 
 	//these are the labels which we just passed by. you can jump to them without checking finiteness, but you still have to check the type stack
 	//std::stack<AST*> future_labels;
+
+	std::deque<Type> type_scratch_space; //for storing temporary types. will be cleared at the end of compilation.
+	//basically a memory pool. even though the constant impact of deque (memory) is bad for small compilations, it MUST be a deque so that memory locations stay valid after push_back().
 
 	compiler_object() : error_location(nullptr), Builder(thread_context)
 	{
@@ -96,6 +115,9 @@ struct compiler_object
 			exit(1);
 		}
 	}
+
+	//to determine a pointer's lifetime, we get this incrementor just before looking at superdependencies to see where the pointer lives on the stack
+	uint64_t incrementor_for_lifetime = 0;
 
 public:
 
@@ -255,18 +277,20 @@ void output_AST_and_previous(AST* target)
 //if stack_degree = 1, you should Store your final result in storaget_location. if stack_degree = 2, that means you should create your own storage_location instead.
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location)
 {
-#define return_code(X) do { error_location = target; return Return_Info(codegen_status::X, nullptr, T_null); } while (0)
+	//return_code: an error has occurred. return the error code, and don't construct a return object.
+#define return_code(X) do { error_location = target; return Return_Info(codegen_status::X, nullptr, T_null, 0, 0, 0); } while (0)
+
 #if VERBOSE_DEBUG
 	output_AST(target);
 #endif
 
-	//maybe this ought to be checked beforehand.
-	if (target == nullptr)
-		return_code(null_AST_compiler_bug);
+	//this should never happen, because we always check if a pointer is nullptr before calling generate_IR on it.
+	if (target == nullptr) return_code(null_AST_compiler_bug);
 
 #if VERBOSE_DEBUG
 	TheModule->dump();
 #endif
+
 	if (this->loop_catcher.find(target) != this->loop_catcher.end())
 	{
 		error_location = target;
@@ -292,8 +316,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		auto previous_elements = generate_IR(target->preceding_BB_element, 2);
 		if (previous_elements.error_code) return previous_elements;
 
-	}//auto first_pointer = the_return_value;
+	}
 
+	uint64_t lifetime_of_return_value = incrementor_for_lifetime++;
 
 #if VERBOSE_DEBUG
 	std::cerr << "got through previous elements\n";
@@ -311,23 +336,19 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//generated IR of the fields of the AST
 	std::vector<Return_Info> field_results; //we don't actually need the return code, but we leave it anyway.
 
-	auto generate_internal = [&](unsigned position)
-	{
-		Return_Info result(codegen_status::no_error, nullptr, T_null); //default
-		if (target->fields[position].ptr) result = generate_IR(target->fields[position].ptr, false); //todo: if it's concatenate(), this should be true.
-		if (result.error_code) return result.error_code; //error
-		field_results.push_back(result);
-		return codegen_status::no_error;
-	};
-	if (target->tag != ASTn("if")) //if statement requires special handling. todo: concatenate also.
+	if (target->tag != ASTn("if") && target->tag != ASTn("pointer")) //these statements require special handling. todo: concatenate also.
 	{
 
 		for (unsigned x = 0; x < AST_vector[target->tag].pointer_fields; ++x)
 		{
-			codegen_status result = generate_internal(x);
-			if (result) return Return_Info(result, nullptr, T_null);
-
-			//normally we'd also want to verify the types here. but we're assuming that every return value is a uint64 for now.
+			Return_Info result; //default constructed for null object
+			if (target->fields[x].ptr)
+			{
+				result = generate_IR(target->fields[x].ptr, false); //todo: if it's concatenate(), this would be true.
+				if (result.error_code) return result; //error
+			}
+			field_results.push_back(result);
+			//todo: normally we'd also want to verify the types here. 
 		}
 	}
 
@@ -335,7 +356,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 
 	//internally used. after you've constructed something, this stores it on the stack.
-	auto move_into_stack_position = [&](llvm::Value* return_value, Type* type)
+	auto move_into_stack_position = [&](llvm::Value* return_value)
 	{
 		//the type of the stack object is an integer when 1 slot, or an array when multiple slots
 		if (size_result > 1)
@@ -352,24 +373,31 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	};
 
 	//internally used. after you've constructed something, this handles stack logic such as stack clearing and making your result visible to other ASTs
-	auto finish_internal = [&](llvm::Value* return_value, Type* type) -> Return_Info
+	auto finish_internal = [&](llvm::Value* return_value, Type* type, uint64_t upper_life, uint64_t lower_life) -> Return_Info
 	{
 		if (stack_degree == 2)
 			clear_stack(final_stack_position);
 
-		if (size_result >= 1)
+		if (stack_degree >= 1)
 		{
-			object_stack.push(target);
-			auto insert_result = this->objects.insert({ target, std::make_pair(return_value, type) });
-			if (!insert_result.second) //collision: AST is already there
-				return_code(active_object_duplication);
+			if (size_result >= 1)
+			{
+				object_stack.push(target);
+				auto insert_result = this->objects.insert({ target, Return_Info(codegen_status::no_error, return_value, type, lifetime_of_return_value, upper_life, lower_life) });
+				if (!insert_result.second) //collision: AST is already there
+					return_code(active_object_duplication);
+			}
+			type_scratch_space.push_back(Type("cheap pointer", type)); //stack objects are always pointers, just like in llvm.
+			type = &type_scratch_space.back();
 		}
-		return Return_Info(codegen_status::no_error, return_value, type);
+		return Return_Info(codegen_status::no_error, return_value, type, lifetime_of_return_value, upper_life, lower_life);
 	};
 
-	//call these when you've constructed something.
-#define finish(X, type) do { if (stack_degree >= 1) move_into_stack_position(X, type); return finish_internal(X, type); } while (0)
-#define finish_previously_constructed(X, type) do { return finish_internal(X, type); } while (0)
+	//call these when you've constructed something. the p suffix is when you are returning a pointer, and need lifetime information.
+#define finish(X, type) do { if (stack_degree >= 1) move_into_stack_position(X); return finish_internal(X, type, 0, -1ull); } while (0)
+#define finishp(X, type, u, l) do { if (stack_degree >= 1) move_into_stack_position(X); return finish_internal(X, type, u, l); } while (0)
+#define finish_previously_constructed(X, type) do { return finish_internal(X, type, 0, -1ull); } while (0)
+#define finish_previously_constructedp(X, type, u, l) do { return finish_internal(X, type, u, l); } while (0)
 //finish_previously_constructed is if your AST is not the one constructing the return object. for example, concatenate() and if() do not, so they should use this.
 
 #if VERBOSE_DEBUG
@@ -437,11 +465,11 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			Builder.CreateCondBr(comparison, ThenBB, ElseBB);
 
 			//first branch.
-			Builder.SetInsertPoint(ThenBB); //WATCH OUT: this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty.
+			Builder.SetInsertPoint(ThenBB); //WATCH OUT: this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty. might cause trouble when we want to make labels.
 			//if there are labels inside, we could be in big trouble.
 
 			//calls with stack_degree as 1 in the called function, if it is 2 outside.
-			Return_Info then_IR(codegen_status::no_error, nullptr, T_null);
+			Return_Info then_IR; //default constructor for null object
 			if (target->fields[1].ptr != nullptr)
 				then_IR = generate_IR(target->fields[1].ptr, stack_degree != 0, storage_location);
 			if (then_IR.error_code) return then_IR;
@@ -452,7 +480,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			TheFunction->getBasicBlockList().push_back(ElseBB);
 			Builder.SetInsertPoint(ElseBB); //WATCH OUT: same here.
 
-			Return_Info else_IR(codegen_status::no_error, nullptr, T_null);
+			Return_Info else_IR; //default constructor for null object
 			if (target->fields[2].ptr != nullptr)
 				else_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, storage_location);
 			if (else_IR.error_code) return else_IR;
@@ -484,19 +512,29 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				}
 				PN->addIncoming(then_IR.IR, ThenBB);
 				PN->addIncoming(else_IR.IR, ElseBB);
-				return Return_Info(codegen_status::no_error, PN, then_IR.type);
+				finishp(PN, then_IR.type, std::max(then_IR.target_upper_lifetime, else_IR.target_upper_lifetime), std::min(then_IR.target_lower_lifetime, else_IR.target_lower_lifetime));
 			}
-			finish_previously_constructed(storage_location, then_IR.type);
+			finish_previously_constructedp(storage_location, then_IR.type, std::max(then_IR.target_upper_lifetime, else_IR.target_upper_lifetime), std::min(then_IR.target_lower_lifetime, else_IR.target_lower_lifetime));
 	}
 	case ASTn("scope"):
 		finish(nullptr, T_null);
+	case ASTn("pointer"):
+		auto found_AST = objects.find(target->fields[0].ptr);
+		if (found_AST == objects.end())
+		{
+			error_location = target;
+			return_code(pointer_without_stack_target);
+		}
+		finish(found_AST->second.IR, found_AST->second.type, found_AST->second.self_lifetime, found_AST->second.self_lifetime);
 	/*case ASTn("get 0"):
 		finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_uint64);*/
 	}
 
-	return Return_Info(codegen_status::fell_through_switches, nullptr, T_null);
+	return_code(fell_through_switches);
 }
 
+//generates random ASTs, and attempts to compile them. some invalid ASTs will be rejected. some ASTs will succeed. this is normal.
+//however, segfaults are errors, and some error_codes indicate compiler errors. see codegen_status to see which errors are acceptable or not
 void fuzztester(unsigned iterations)
 {
 	std::vector<AST*> AST_list{ nullptr }; //we start with nullptr as the default referenceable AST
