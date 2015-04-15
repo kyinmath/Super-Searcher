@@ -1,3 +1,5 @@
+Added high level overview in docs.
+Added pointer description.
 Implemented type system
 Implemented pointers
 Implemented variables
