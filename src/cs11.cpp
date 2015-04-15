@@ -525,7 +525,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			error_location = target;
 			return_code(pointer_without_stack_target);
 		}
-		finish(found_AST->second.IR, found_AST->second.type, found_AST->second.self_lifetime, found_AST->second.self_lifetime);
+		finishp(found_AST->second.IR, found_AST->second.type, found_AST->second.self_lifetime, found_AST->second.self_lifetime);
 	/*case ASTn("get 0"):
 		finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_uint64);*/
 	}
