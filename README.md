@@ -14,10 +14,12 @@ deb-src http://llvm.org/apt/trusty/ llvm-toolchain-trusty-3.6 main
 
 then in console, run
 ```
+sudo apt-get update
 sudo apt-get install clang-3.6 llvm-3.6
 ```
 
 If there are errors about lz and ledit, apt-get install the packages libedit-dev and zlib1g-dev. The 3.6 branch is necessary at the moment because the headers move around every llvm version.
+My instructor says that there were some errors about unsigned packages also, but I don't remember exactly what happened.
 
 To compile, run "make". Or if your path is clang++ instead of clang++-3.6, run "make van".
 
