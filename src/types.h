@@ -75,13 +75,12 @@ constexpr enum_info AST_descriptor[] =
 
 constexpr enum_info type_descriptor[] =
 {
-	{ "concatenate", 2, -1 },
-	{ "integer", 0, 1 },
+	{ "concatenate", 2, -1 }, //concatenate two types
+	{ "integer", 0, 1 }, //64-bit integer
 	{ "fixed integer", 1, 1 }, //the integer is placed in the type.
-	{ "cheap pointer", 1, 1 },
+	{ "cheap pointer", 1, 1 }, //pointer to anything
 	//ASTs, locks, types
-	//full pointer's lifetime isn't too picky, since nothing is GCed until the threads are placed in suspension. that means they can RVO into cheap pointer slots. this is because we're using tracing.
-	//that also means they don't have to tweak any GC flags on their targets if they're on the stack. only full pointers on the heap must be worried about.
+	//full pointer's lifetime isn't picky, since nothing is GCed until the threads are placed in suspension. that means they can RVO into cheap pointer slots. this is because we're using tracing.
 	//however, we still need cheap pointers, so that we can point to things on the stack
 	{ "never reached", 0, 0 }
 };
@@ -106,13 +105,9 @@ template<constexpr enum_info vector_name[]> constexpr uint64_t get_enum_from_nam
 	}
 }
 constexpr uint64_t ASTn(const char name[])
-{
-	return get_enum_from_name<AST_descriptor>(name);
-}
+{ return get_enum_from_name<AST_descriptor>(name); }
 constexpr uint64_t Typen(const char name[])
-{
-	return get_enum_from_name<type_descriptor>(name);
-}
+{ return get_enum_from_name<type_descriptor>(name); }
 
 struct Type
 {
@@ -122,16 +117,15 @@ struct Type
 	Type(const uint64_t t, const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(t), fields{ a, b } {}
 };
 
+#define max_fields_in_AST 4u
+//should accomodate the largest possible AST
 
-#define max_fields_in_AST 4u //should accomodate the largest possible AST
 struct AST
 {
 	//std::mutex lock;
 	uint64_t tag;
 	AST* preceding_BB_element; //this object survives on the stack and can be referenced. it's the previous basic block element.
 	//we use a reverse basic block order so that all pointers point backwards in the stack, instead of having some pointers going forward, and some pointers going backwards.
-	//AST* braced_element; //this object does not survive on the stack.
-	//for now, we don't worry about 3-tree memory locality.
 	std::array<int_or_ptr<AST>, max_fields_in_AST> fields;
 	AST(const char name[], AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> f2 = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
 		: tag(ASTn(name)), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {} //VS complains about aggregate initialization, but I don't care

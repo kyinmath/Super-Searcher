@@ -38,15 +38,15 @@ uint64_t generate_random()
 {
 	return mersenne();
 }
-Type* T_uint64 = new Type("integer"); //describes an integer, used internally. later we'll want more information than just its size
-Type* T_null = nullptr; //describes nothing, used internally. later we'll want more information than just its size-
+Type* T_uint64 = new Type("integer"); //describes an integer type
+Type* T_null = nullptr; //describes an object consisting of nothing
 
 
 enum codegen_status {
 	no_error,
 	infinite_loop, //ASTs point to each other in a loop
 	active_object_duplication, //tried to codegen an AST while it was already codegened from another branch, thus resulting in a stack duplication
-	fell_through_switches, //if our switch case is missing a value. generate_IR() is bugged
+	fell_through_switches, //our switch case is missing a value. generate_IR() is bugged
 	type_mismatch, //in an if statement, the two branches had different types.
 	null_AST_compiler_bug, //we tried to generate_IR() a nullptr, which means generate_IR() is bugged
 	null_AST, //tried to generate_IR() a nullptr but was caught, which is normal.
@@ -131,7 +131,7 @@ public:
 
 	Return_Info generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location = nullptr);
 
-	unsigned compile_AST(AST* target)
+	unsigned compile_AST(AST* target) //we can't combine this with the ctor, because it needs to return an int
 	{
 		using namespace llvm;
 		FunctionType *FT;
@@ -148,7 +148,7 @@ public:
 		BasicBlock *BB = BasicBlock::Create(thread_context, "entry", F);
 		Builder.SetInsertPoint(BB);
 
-		auto return_object = generate_IR(target, false); //it should probably be true, not false.
+		auto return_object = generate_IR(target, false);
 		if (return_object.error_code)
 			return return_object.error_code; //error
 
@@ -224,7 +224,8 @@ uint64_t compiler_object::get_size(AST* target)
 }
 
 
-//mem-to-reg only works on entry block variables because it's easier.
+//mem-to-reg only works on entry block variables, so we allocate all stack objects in the entry block.
+//this function does that for us by building llvm::Allocas in the beginning
 //maybe scalarrepl is more useful for us.
 //clang likes to allocate everything in the beginning
 llvm::AllocaInst* compiler_object::CreateEntryBlockAlloca(uint64_t size) {
@@ -383,7 +384,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			if (size_result >= 1)
 			{
 				object_stack.push(target);
-				auto insert_result = this->objects.insert({ target, Return_Info(codegen_status::no_error, return_value, type, lifetime_of_return_value, upper_life, lower_life) });
+				auto insert_result = objects.insert({ target, Return_Info(codegen_status::no_error, return_value, type, lifetime_of_return_value, upper_life, lower_life) });
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication);
 			}
@@ -464,7 +465,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 			Builder.CreateCondBr(comparison, ThenBB, ElseBB);
 
-			//first branch.
+			//start inserting code in the "then" block
 			Builder.SetInsertPoint(ThenBB); //WATCH OUT: this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty. might cause trouble when we want to make labels.
 			//if there are labels inside, we could be in big trouble.
 
@@ -533,8 +534,15 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	return_code(fell_through_switches);
 }
 
-//generates random ASTs, and attempts to compile them. some invalid ASTs will be rejected. some ASTs will succeed. this is normal.
-//however, segfaults are errors, and some error_codes indicate compiler errors. see codegen_status to see which errors are acceptable or not
+/*
+the fuzztester generates random ASTs, and attempts to compile them. some invalid ASTs will be rejected. some ASTs will succeed. this is normal.
+however, segfaults are errors, and some error_codes indicate compiler errors. see codegen_status to see which errors are acceptable or not
+to do this, fuzztester starts with a vector of pointers to working, compilable ASTs (originally just a nullptr).
+then, it checks AST_descriptor[] for how many AST pointers it needs, then chooses these pointers randomly from the vector of working ASTs.
+then, each remaining field has a 50-50 chance of either being a random number, or 0.
+finally, it attempts to compile this created AST. if successful, it adds the created AST to the vector of working ASTs.
+if successful, it tries again.
+*/
 void fuzztester(unsigned iterations)
 {
 	std::vector<AST*> AST_list{ nullptr }; //we start with nullptr as the default referenceable AST
