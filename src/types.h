@@ -32,8 +32,8 @@ struct enum_info
 //when looking at stack_degree, figure out if your AST is the one creating the object (such as static_integer), or simply passing it through (if, concatenate).
 //if it's not creating it, it should not store.
 
-
-constexpr enum_info AST_vector[] =
+//this is an enum which has extra information for each element. it is constexpr so that it can be used in a switch-case statement.
+constexpr enum_info AST_descriptor[] =
 {
 	{ "integer", 0, 1 },
 	{ "Hello World!", 0, 0 },
@@ -73,7 +73,7 @@ constexpr enum_info AST_vector[] =
 };
 
 
-constexpr enum_info type_vector[] =
+constexpr enum_info type_descriptor[] =
 {
 	{ "concatenate", 2, -1 },
 	{ "integer", 0, 1 },
@@ -107,11 +107,11 @@ template<constexpr enum_info vector_name[]> constexpr uint64_t get_enum_from_nam
 }
 constexpr uint64_t ASTn(const char name[])
 {
-	return get_enum_from_name<AST_vector>(name);
+	return get_enum_from_name<AST_descriptor>(name);
 }
 constexpr uint64_t Typen(const char name[])
 {
-	return get_enum_from_name<type_vector>(name);
+	return get_enum_from_name<type_descriptor>(name);
 }
 
 struct Type

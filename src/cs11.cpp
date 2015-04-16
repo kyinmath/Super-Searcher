@@ -213,7 +213,7 @@ uint64_t compiler_object::get_size(AST* target)
 {
 	if (target == nullptr)
 		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
-	if (AST_vector[target->tag].size_of_return != -1) return AST_vector[target->tag].size_of_return;
+	if (AST_descriptor[target->tag].size_of_return != -1) return AST_descriptor[target->tag].size_of_return;
 	else if (target->tag == ASTn("if"))
 	{
 		//todo: do some type checking? we can defer that to compilation though.
@@ -257,7 +257,7 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 void output_AST(AST* target)
 {
 	std::cerr << "AST " //<< target << " with tag " <<
-		<< AST_vector[target->tag].name << "(" << target->tag << "), Addr " << target << ", prev " << target->preceding_BB_element << '\n';
+		<< AST_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << ", prev " << target->preceding_BB_element << '\n';
 	//std::cerr << "fields are " << target->fields[0].num << ' ' << target->fields[1].num << ' ' << target->fields[2].num << ' ' << target->fields[3].num << '\n';
 	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
 }
@@ -266,7 +266,7 @@ void output_AST(AST* target)
 void output_AST_and_previous(AST* target)
 {
 	output_AST(target);
-	unsigned further_outputs = AST_vector[target->tag].pointer_fields;
+	unsigned further_outputs = AST_descriptor[target->tag].pointer_fields;
 	//I kind of want to use boost's irange here, but pulling in a big library may not be the best idea
 	for (int x = 0; x < further_outputs; ++x)
 		if (target->fields[x].ptr != nullptr)
@@ -339,7 +339,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	if (target->tag != ASTn("if") && target->tag != ASTn("pointer")) //these statements require special handling. todo: concatenate also.
 	{
 
-		for (unsigned x = 0; x < AST_vector[target->tag].pointer_fields; ++x)
+		for (unsigned x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
 		{
 			Return_Info result; //default constructed for null object
 			if (target->fields[x].ptr)
@@ -542,7 +542,7 @@ void fuzztester(unsigned iterations)
 	{
 		//create a random AST
 		unsigned tag = mersenne() % ASTn("never reached");
-		unsigned pointer_fields = AST_vector[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
+		unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
 		unsigned prev_AST = mersenne() % AST_list.size();
 		int_or_ptr<AST> fields[4]{nullptr, nullptr, nullptr, nullptr};
 		int incrementor = 0;
