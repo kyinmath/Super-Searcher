@@ -1,8 +1,11 @@
 Axiom: the target of a pointer must survive longer than the pointer.
 	when creating a pointer, we must ensure that this axiom remains true.
 	when using pointers, we get this axiom as a privilege.
-to enforce this, pointers need bounds on their lifetimes.
-	and we must enforce expiration, because sometimes objects (like locks) do expire in a significant way
+
+We have two types of pointers: "cheap pointers" and "full pointers". Cheap pointers are just normal pointers. Full pointers are heap pointers, and thus are relevant to the tracing garbage collector.
+We need this distinction because heap objects cannot contain pointers to stack objects because of our axiom; they can only contain pointers to other heap objects.
+
+to enforce our axiom, we must keep track of object and pointer lifetimes.
 this axiom is the only information we have for stored pointers (which means heaps, function signatures). for active pointers, we get bounds information
 	except: functions can take ALL cheap pointers
 	heaps can take NO cheap pointers
@@ -12,8 +15,8 @@ this means we only have to keep track of one layer of lifetimes? but we might be
 and we have to encode this information in function definitions, so we can't combine full and cheap pointers and let the system figure out which is which.
 
 
-
-the return object cannot copy objects from the parameter list, because it might end up in a full object, vector, or =.
+objects in the parameter list of a function may have limited lifetime. however, the return object may end up in a heap object, which has infinite lifetime.
+thus, the return object cannot contain objects from the parameter list.
 
 = has to be an operator which takes a cheap pointer as one of its arguments, because it must be able to write to offset locations.
 	

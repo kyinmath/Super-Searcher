@@ -27,3 +27,6 @@ To compile, run "make". Or if your path is clang++ instead of clang++-3.6, run "
 Just run the program (./toy) and it will automatically generate ASTs and try to run them. Malformed ASTs are fine (they're randomly created by a fuzzer). If you downloaded toy directly instead of compiling, then mark "toy" as executable before running ./toy.
 
 If you don't want to use the fuzzer, you can construct ASTs in main(). There is sample code there, demonstrating how to use the AST constructor, construct a compiler_object, and compile_AST() the last AST in the block. This outputs the IR and then runs the code.
+
+###Understanding the program
+To get started on the design of the program, read "generate IR.txt" and "AST structure.md". The type information is in "type information.txt".
