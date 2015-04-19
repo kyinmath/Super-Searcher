@@ -34,10 +34,7 @@ llvm::LLVMContext& thread_context = llvm::getGlobalContext();
 #include <random>
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937_64 mersenne(seed);
-uint64_t generate_random()
-{
-	return mersenne();
-}
+uint64_t generate_random() { return mersenne(); }
 Type* T_uint64 = new Type("integer"); //describes an integer type
 Type* T_null = nullptr; //describes an object consisting of nothing
 
@@ -121,7 +118,7 @@ class compiler_object
 	Return_Info generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location = nullptr);
 
 public:
-	compiler_object() : error_location(nullptr), Builder(thread_context);
+	compiler_object();
 	unsigned compile_AST(AST* target); //we can't combine this with the ctor, because it needs to return an int
 	AST* error_location;
 
@@ -405,7 +402,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	};
 
 	//call these when you've constructed something. the _pointer suffix is when you are returning a pointer, and need lifetime information.
-	//finish_previously_constructed is if your AST is not the one constructing the return object. for example, concatenate() and if() do not, so they should use this.
+	//use finish_previously_constructed if your AST is not the one constructing the return object.
+	//for example, concatenate() and if() use previously constructed return objects, and simply pass them through.
+
 #define finish(X, type) do { if (stack_degree >= 1) move_into_stack_position(X); return finish_internal(X, type, 0, -1ull); } while (0)
 #define finish_pointer(X, type, u, l) do { if (stack_degree >= 1) move_into_stack_position(X); return finish_internal(X, type, u, l); } while (0)
 #define finish_previously_constructed(X, type) do { return finish_internal(X, type, 0, -1ull); } while (0)
@@ -434,9 +433,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		std::vector<llvm::Type *> putsArgs;
 		putsArgs.push_back(Builder.getInt8Ty()->getPointerTo());
 		llvm::ArrayRef<llvm::Type*> argsRef(putsArgs);
-		llvm::FunctionType *putsType =
-			llvm::FunctionType::get(Builder.getInt32Ty(), argsRef, false);
+		llvm::FunctionType *putsType = llvm::FunctionType::get(Builder.getInt32Ty(), argsRef, false);
 
+		//get the actual function
 		llvm::Constant *putsFunc = TheModule->getOrInsertFunction("puts", putsType);
 
 		finish(Builder.CreateCall(putsFunc, helloWorld), T_null);
@@ -449,8 +448,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		llvm::Value *twister_function = Builder.CreateBitOrPointerCast(twister_address, twister_ptr_type);
 		finish(Builder.CreateCall(twister_function), T_uint64);
 	}
-	case ASTn("if"): //you can see the condition's return object in the branches.
-		//otherwise, the condition is missing, which could be another if function that may be implemented later, but probably not.
+	case ASTn("if"): //todo: you can see the condition's return object in the branches.
+		//we could have another version where the condition's return object is invisible.
+		//this lets us goto the inside of the if statement.
 		{
 			//the condition statement
 			if (target->fields[0].ptr == nullptr)
@@ -473,8 +473,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			Builder.CreateCondBr(comparison, ThenBB, ElseBB);
 
 			//start inserting code in the "then" block
-			Builder.SetInsertPoint(ThenBB); //WATCH OUT: this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty.
+			//WATCH OUT: this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty.
 			//if there are already labels inside the "Then" basic block, we could be in big trouble.
+			Builder.SetInsertPoint(ThenBB);
 
 			//calls with stack_degree as 1 in the called function, if it is 2 outside.
 			Return_Info then_IR; //default constructor for null object
@@ -543,18 +544,21 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	return_code(fell_through_switches);
 }
 
-/*
-the fuzztester generates random ASTs and attempts to compile them. some invalid ASTs will be rejected. some ASTs will succeed. this is normal.
-however, segfaults are errors, and some error_codes indicate compiler errors. see codegen_status to see which errors are acceptable or not
-to do this, fuzztester starts with a vector of pointers to working, compilable ASTs (originally just a nullptr).
-then, it checks AST_descriptor[] for how many AST pointers it needs, then chooses these pointers randomly from the vector of working ASTs.
-then, each remaining field has a 50-50 chance of either being a random number, or 0.
-finally, it attempts to compile this created AST. if successful, it adds the created AST to the vector of working ASTs.
-if successful, it tries again.
+/**
+The fuzztester generates random ASTs and attempts to compile them.
+"Malformed AST" is fine. not all randomly-generated ASTs will be well-formed.
+However, "ERROR" is not fine, and means there is a bug.
+
+fuzztester starts with a vector of pointers to working, compilable ASTs (originally just a nullptr).
+it chooses a random AST tag. this tag requires AST_descriptor[tag].pointer_fields pointers
+then, it chooses pointers randomly from the vector of working ASTs.
+these pointers go in the first few fields.
+each remaining field has a 50-50 chance of either being a random number, or 0.
+finally, if the created AST successfully compiles, it is added to the vector of working ASTs.
 */
 void fuzztester(unsigned iterations)
 {
-	std::vector<AST*> AST_list{ nullptr }; //we start with nullptr as the default referenceable AST
+	std::vector<AST*> AST_list{ nullptr }; //start with nullptr as the default referenceable AST
 	while (iterations--)
 	{
 		//create a random AST
@@ -574,13 +578,22 @@ void fuzztester(unsigned iterations)
 		unsigned error_code = compiler.compile_AST(test_AST);
 		if (error_code)
 		{
-			std::cerr << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << '\n';
-			delete test_AST;
+			if ((error_code == codegen_status::fell_through_switches) ||
+				(error_code == codegen_status::null_AST_compiler_bug))
+			{
+				std::cerr << "ERROR: code " << error_code << " at AST " << compiler.error_location << '\n';
+				llvm_unreachable("fuzztester detected compiler error");
+			}
+			else
+			{
+				std::cerr << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << '\n';
+				delete test_AST;
+			}
 		}
 		else
 		{
 			AST_list.push_back(test_AST);
-			std::cerr << "success with ID " << AST_list.size() - 1 << "\n";
+			std::cerr << "Successful compile " << AST_list.size() - 1 << "\n";
 		}
 		std::cerr << "Press enter to continue\n";
 		std::cin.get();

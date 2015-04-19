@@ -1,0 +1,12 @@
+generate_IR() is the main code that transforms AST into LLVM IR. it is called with the AST to be transformed, which must not be nullptr.
+
+the purpose of the argument llvm::AllocaInst* storage_location is for RVO. it tells generate_IR() that whatever is produced should be stored into the storage_location.
+stack_degree helps with RVO. ASTs that are directly inside basic blocks should allocate their own stack_memory, so they are passed in stack_degree = 2, which tells them to create a memory location.
+	the function that creates these memory locations is CreateEntryBlockAlloca(). this generates an empty object on the stack.
+	minor note: the stack object is generated at the very beginning of the function so that the llvm optimization pass mem2reg can recognize it.
+
+generate_IR returns the struct Return_Info. if generate_IR() encounters an error, it returns an error code. otherwise, it returns the status "no_error", and fills in Return_Info relevant data. these are:
+	1. pointer to the generated IR
+	2. type of the object returned
+	3. some lifetime bounds.
+see the comments on the Return_Info struct for more information.

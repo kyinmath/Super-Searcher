@@ -27,17 +27,15 @@ this reduces the potential for careless errors.
 struct enum_info
 {
 	const char* name;
-	const unsigned pointer_fields; //how many further elements we want to compile
-	const int size_of_return; //size of the return object. -1 if it must be handled in a special way. or in the case of types, the size of the actual object.
+	const unsigned pointer_fields; //how many field elements must be pointers
 
-	//for just a series of ASTs
-	constexpr enum_info(const char a[], unsigned number_of_AST_pointers, int size) : name(a), size_of_return(size), pointer_fields(number_of_AST_pointers)
-	{
-	}
+	//in ASTs, this is the size of the return object. -1 if it must be handled in a special way.
+	//in the case of types, the size of the actual object.
+	const int size_of_return;
+
+	constexpr enum_info(const char a[], unsigned n, int s)
+		: name(a), pointer_fields(n), size_of_return(s) {}
 };
-
-//when looking at stack_degree, figure out if your AST is the one creating the object (such as static_integer), or simply passing it through (if, concatenate).
-//if it's not creating it, it should not store.
 
 //this is an enum which has extra information for each element. it is constexpr so that it can be used in a switch-case statement.
 constexpr enum_info AST_descriptor[] =

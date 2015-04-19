@@ -15,6 +15,7 @@
     <ClInclude Include="src\types.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="80charformatter.cpp" />
     <ClCompile Include="src\cs11.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

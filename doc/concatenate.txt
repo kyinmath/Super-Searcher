@@ -1,0 +1,4 @@
+with concatenate(), we want to concatenate small objects to create a larger object. however, we don't want to copy things over and over. thus, we utilize RVO.
+if stack_degree = 2, it calls get_size, which creates a stack that remembers all size information. the purpose is so that if we have a large tree of concatenate()s, we don't want to get_size over and over. thus, we preserve the size_information in a stack.
+if stack_degree = 1, then it retrieves the size of the object from the stack instead of calling get_size.
+if stack_degree = 0, it first builds the object inside stack memory, so that we have RVO. then, it copies the object from stack memory to become a pointer.
