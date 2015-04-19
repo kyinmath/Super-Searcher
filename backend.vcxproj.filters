@@ -26,8 +26,5 @@
     <ClCompile Include="src\cs11.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="80charformatter.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
 </Project>

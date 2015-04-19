@@ -1,17 +1,14 @@
 //mostly stolen from stackexchange http://stackoverflow.com/questions/5815227/fix-improve-word-wrap-function
 #include <iostream>
-#include <sstream>
+#include <fstream>
 #include <string>
 #include <vector>
 
 using namespace std;
 
-void WordWrap(const string& inputString, vector<string>& outputString, unsigned int lineLength)
+void WordWrap(ifstream& iss, vector<string>& outputString, unsigned int lineLength)
 {
-	istringstream iss(inputString);
-
 	string line;
-
 	do
 	{
 		if (iss.peek() == '\n')
@@ -21,15 +18,25 @@ void WordWrap(const string& inputString, vector<string>& outputString, unsigned 
 			iss.ignore(1);
 			continue;
 		}
+		if (iss.peek() == '\t')
+		{
+			line.append("  ");
+			iss.ignore(1);
+			continue;
+		}
 		string word;
 		iss >> word;
 
-		if (line.length() + word.length() > lineLength)
+		if (line.length() + word.length() + 2 > lineLength)
 		{
-			outputString.push_back(line + '\\');
+			outputString.push_back(line + "\\");
 			line.clear();
 		}
 		line += word + " ";
+		if (line.length() > lineLength)
+		{
+			//cout << "how";
+		}
 
 	} while (iss);
 
@@ -46,9 +53,6 @@ vector<string> get_all_files_names_within_folder(string folder)
 {
 	vector<string> names;
 	char search_path[200];
-#ifdef _MSC_VER
-#define _CRT_SECURE_NO_WARNINGS
-#endif
 	sprintf_s(search_path, "%s*.*", folder.c_str());
 	WIN32_FIND_DATA fd;
 	HANDLE hFind = ::FindFirstFile(search_path, &fd);
@@ -65,27 +69,31 @@ vector<string> get_all_files_names_within_folder(string folder)
 	return names;
 }
 
-#include <fstream>
 #include <streambuf>
 //stolen from http://stackoverflow.com/questions/2602013/read-whole-ascii-file-into-c-stdstring
 int main()
 {
-	vector<string> k = get_all_files_names_within_folder("src/");
+	vector<string> k = get_all_files_names_within_folder("C:\\Users\\CompAcc\\Stuff\\CS11backend\\src\\");
 	for (auto &x : k)
 	{
-		std::ifstream t(x);
-		std::string str;
-
-		t.seekg(0, std::ios::end);
-		str.reserve(t.tellg());
-		t.seekg(0, std::ios::beg);
-
-		str.assign((std::istreambuf_iterator<char>(t)),
-			std::istreambuf_iterator<char>());
+		std::ifstream t("C:\\Users\\CompAcc\\Stuff\\CS11backend\\src\\" + x);
+		if (!t.is_open()) cerr << "Error: " << strerror(errno);
+		cout << "C:\\Users\\CompAcc\\Stuff\\CS11backend\\src\\" + x << '\n';
+		/*
+		while (1)
+		{
+			string word;
+			t >> word;
+			cout << word;
+		}*/
 		vector<string> wrapped;
-		WordWrap(str, wrapped, 100);
+		WordWrap(t, wrapped, 100);
 
-		std::ofstream outfile("/wrapped/" + x);
+		std::ofstream outfile("C:\\Users\\CompAcc\\Stuff\\CS11backend\\wrapped\\"  + x);
+		if (!outfile.is_open())
+			cout << "panic!\n";
+		cout << "C:\\Users\\CompAcc\\Stuff\\CS11backend\\wrapped\\" + x;
+		cin.get();
 
 		for (auto &y : wrapped)
 		{
@@ -94,6 +102,6 @@ int main()
 			outfile.write("\n", 1);
 		}
 		outfile.close();
-		return 0;
+		t.close();
 	}
 }
