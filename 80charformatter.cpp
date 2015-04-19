@@ -79,13 +79,6 @@ int main()
 		std::ifstream t("C:\\Users\\CompAcc\\Stuff\\CS11backend\\src\\" + x);
 		if (!t.is_open()) cerr << "Error: " << strerror(errno);
 		cout << "C:\\Users\\CompAcc\\Stuff\\CS11backend\\src\\" + x << '\n';
-		/*
-		while (1)
-		{
-			string word;
-			t >> word;
-			cout << word;
-		}*/
 		vector<string> wrapped;
 		WordWrap(t, wrapped, 100);
 
@@ -93,7 +86,6 @@ int main()
 		if (!outfile.is_open())
 			cout << "panic!\n";
 		cout << "C:\\Users\\CompAcc\\Stuff\\CS11backend\\wrapped\\" + x;
-		cin.get();
 
 		for (auto &y : wrapped)
 		{
@@ -104,4 +96,5 @@ int main()
 		outfile.close();
 		t.close();
 	}
+	cin.get();
 }

@@ -48,6 +48,7 @@ constexpr enum_info AST_descriptor[] =
 	{ "subtract", 2, 1 },
 	{ "random", 0, 1 }, //returns a random integer
 	{ "pointer", 1, 1 }, //acquires a pointer to an alloca'd element. it takes one field, but does NOT compile it - instead, it searches for it in <>objects.
+	{ "copy", 1, 1 }, //creates a copy of an element. takes one field, but does NOT compile it.
 	{ "never reached", 0, 0 }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	//{ "dereference pointer", 0, 1 },
 	{ "concatenate", 2, -1 },

@@ -1,4 +1,4 @@
-###AST structure
+###AST format
 Each AST has 3 main components:
 
 1. "tag", signifying what type of AST it is.

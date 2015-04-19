@@ -16,12 +16,14 @@
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include "llvm/Transforms/Scalar.h"
 #include <llvm/Analysis/Passes.h>
 #include <llvm/Support/raw_ostream.h> 
 #include "types.h"
 
-#define OPTIMIZE 0
-#define VERBOSE_DEBUG 0
+const bool OPTIMIZE = false;
+const bool VERBOSE_DEBUG = false;
+const bool INTERACTIVE = false;
 
 //todo: threading. create non-global contexts
 #ifndef _MSC_VER
@@ -47,7 +49,8 @@ enum codegen_status {
 	type_mismatch, //in an if statement, the two branches had different types.
 	null_AST_compiler_bug, //we tried to generate_IR() a nullptr, which means generate_IR() is bugged
 	null_AST, //tried to generate_IR() a nullptr but was caught, which is normal.
-	pointer_without_stack_target, //tried to get a pointer to an AST, but it was not found. either the AST was not compiled, or it was not placed on the stack.
+	pointer_without_target, //tried to get a pointer to an AST, but it was not found at all
+	pointer_to_temporary, //tried to get a pointer to an AST, but it was not placed on the stack.
 };
 
 struct Return_Info
@@ -57,6 +60,9 @@ struct Return_Info
 	llvm::Value* IR;
 		
 	Type* type;
+	uint64_t size; //we memorize the size, so we don't have to recalculate it later.
+	bool on_stack; //if the return value refers to an alloca.
+	//in that case, the type is actually a pointer.
 
 	//this lifetime information is only used when a cheap pointer is in the type. see pointers.txt
 	//to write a pointer into a pointed-to memory location, we must have upper of pointer < lower of memory location
@@ -72,11 +78,11 @@ struct Return_Info
 	uint64_t target_lower_lifetime; //lower is stricter. the target must die faster than this.
 	//measures the pointer's target's lifetime, for when the pointed-to memory location wants something to be written into it.
 	
-	Return_Info(codegen_status err, llvm::Value* b, Type* t, uint64_t s, uint64_t u, uint64_t l)
-		: error_code(err), IR(b), type(t), self_lifetime(s), target_upper_lifetime(u), target_lower_lifetime(l) {}
+	Return_Info(codegen_status err, llvm::Value* b, Type* t, uint64_t si, bool o, uint64_t s, uint64_t u, uint64_t l)
+		: error_code(err), IR(b), type(t), size(si), on_stack(o), self_lifetime(s), target_upper_lifetime(u), target_lower_lifetime(l) {}
 
 	//default constructor for a null object. make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
-	Return_Info() : error_code(codegen_status::no_error), IR(nullptr), type(T_null), self_lifetime(0), target_upper_lifetime(0), target_lower_lifetime(-1ull) {}
+	Return_Info() : error_code(codegen_status::no_error), IR(nullptr), type(T_null), size(0), on_stack(false), self_lifetime(0), target_upper_lifetime(0), target_lower_lifetime(-1ull) {}
 };
 
 /** main compiler. holds state.
@@ -135,8 +141,7 @@ compiler_object::compiler_object() : error_location(nullptr), Builder(thread_con
 	std::string ErrStr;
 	engine = llvm::EngineBuilder(std::unique_ptr<llvm::Module>(TheModule))
 		.setErrorStr(&ErrStr)
-		.setMCJITMemoryManager(std::unique_ptr<llvm::SectionMemoryManager>(
-		new llvm::SectionMemoryManager))
+		.setMCJITMemoryManager(std::unique_ptr<llvm::SectionMemoryManager>(new llvm::SectionMemoryManager))
 		.create();
 	if (!engine) {
 		fprintf(stderr, "Could not create ExecutionEngine: %s\n", ErrStr.c_str());
@@ -150,12 +155,10 @@ unsigned compiler_object::compile_AST(AST* target)
 	FunctionType *FT;
 
 	auto size_of_return = get_size(target);
-	if (size_of_return == 0)
-		FT = FunctionType::get(llvm::Type::getVoidTy(thread_context), false);
-	else if (size_of_return == 1)
-		FT = FunctionType::get(llvm::Type::getInt64Ty(thread_context), false);
-	else
-		FT = FunctionType::get(llvm::ArrayType::get(llvm::Type::getInt64Ty(thread_context), size_of_return), false);
+	if (size_of_return == 0) FT = FunctionType::get(llvm::Type::getVoidTy(thread_context), false);
+	else if (size_of_return == 1) FT = FunctionType::get(llvm::Type::getInt64Ty(thread_context), false);
+	else FT = FunctionType::get(llvm::ArrayType::get(llvm::Type::getInt64Ty(thread_context), size_of_return), false);
+
 	Function *F = Function::Create(FT, Function::ExternalLinkage, "temp function", TheModule);
 
 	BasicBlock *BB = BasicBlock::Create(thread_context, "entry", F);
@@ -173,34 +176,35 @@ unsigned compiler_object::compile_AST(AST* target)
 	// Validate the generated code, checking for consistency.
 	if (llvm::verifyFunction(*F, &llvm::outs())) std::cerr << "verification failed\n";
 
-#if OPTIMIZE
-	std::cerr << "optimized code: \n";
-	//optimization
-	FunctionPassManager FPM(TheModule);
-	TheModule->setDataLayout(engine->getDataLayout());
-	// Provide basic AliasAnalysis support for GVN.
-	FPM.add(createBasicAliasAnalysisPass());
-	// Do simple "peephole" optimizations and bit-twiddling optzns.
-	FPM.add(createInstructionCombiningPass());
-	// Reassociate expressions.
-	FPM.add(createReassociatePass());
-	// Eliminate Common SubExpressions.
-	FPM.add(createGVNPass());
-	// Simplify the control flow graph (deleting unreachable blocks, etc).
-	FPM.add(createCFGSimplificationPass());
+	if (OPTIMIZE)
+	{
+		std::cerr << "optimized code: \n";
+		//optimization
+		llvm::legacy::FunctionPassManager FPM(TheModule);
+		TheModule->setDataLayout(engine->getDataLayout());
+		// Provide basic AliasAnalysis support for GVN.
+		FPM.add(createBasicAliasAnalysisPass());
+		// Do simple "peephole" optimizations and bit-twiddling optzns.
+		FPM.add(createInstructionCombiningPass());
+		// Reassociate expressions.
+		FPM.add(createReassociatePass());
+		// Eliminate Common SubExpressions.
+		FPM.add(createGVNPass());
+		// Simplify the control flow graph (deleting unreachable blocks, etc).
+		FPM.add(createCFGSimplificationPass());
 
-	// Promote allocas to registers.
-	FPM.add(createPromoteMemoryToRegisterPass());
-	// Do simple "peephole" optimizations and bit-twiddling optzns.
-	FPM.add(createInstructionCombiningPass());
-	// Reassociate expressions.
-	FPM.add(createReassociatePass());
+		// Promote allocas to registers.
+		FPM.add(createPromoteMemoryToRegisterPass());
+		// Do simple "peephole" optimizations and bit-twiddling optzns.
+		FPM.add(createInstructionCombiningPass());
+		// Reassociate expressions.
+		FPM.add(createReassociatePass());
 
-	FPM.doInitialization();
-	FPM.run(*TheModule->begin());
+		FPM.doInitialization();
+		FPM.run(*TheModule->begin());
 
-	TheModule->dump();
-#endif
+		TheModule->dump();
+	}
 
 	engine->finalizeObject();
 	void* fptr = engine->getPointerToFunction(F);
@@ -239,20 +243,16 @@ maybe scalarrepl is more useful for us.
 clang likes to allocate everything in the beginning, so we follow their lead
 */
 llvm::AllocaInst* compiler_object::create_alloca_in_entry_block(uint64_t size) {
+	if (size == 0)
+		llvm_unreachable("tried to create a 0-size alloca");
 	llvm::BasicBlock& first_block = Builder.GetInsertBlock()->getParent()->getEntryBlock();
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
 
 	//we explicitly create the array type instead of allocating multiples, because that's what clang does for C++ arrays.
 	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 	if (size > 1)
-	{
-		llvm::Type* array_type = llvm::ArrayType::get(int64_type, size);
-		return TmpB.CreateAlloca(array_type);
-	}
-	else
-	{
-		return TmpB.CreateAlloca(int64_type);
-	}
+		return TmpB.CreateAlloca(llvm::ArrayType::get(int64_type, size));
+	else return TmpB.CreateAlloca(int64_type);
 }
 
 void compiler_object::clear_stack(uint64_t desired_stack_size)
@@ -267,8 +267,8 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 
 void output_AST(AST* target)
 {
-	std::cerr << "AST " //<< target << " with tag " <<
-		<< AST_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << ", prev " << target->preceding_BB_element << '\n';
+	std::cerr << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target <<
+		", prev " << target->preceding_BB_element << '\n';
 	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
 }
 
@@ -276,6 +276,8 @@ void output_AST(AST* target)
 void output_AST_and_previous(AST* target)
 {
 	output_AST(target);
+	if (target->preceding_BB_element != nullptr)
+		output_AST_and_previous(target->preceding_BB_element);
 	unsigned further_outputs = AST_descriptor[target->tag].pointer_fields;
 	//I kind of want to use boost's irange here, but pulling in a big library may not be the best idea
 	for (int x = 0; x < further_outputs; ++x)
@@ -283,6 +285,22 @@ void output_AST_and_previous(AST* target)
 			output_AST_and_previous(target->fields[x].ptr);
 }
 
+void output_type(Type* target)
+{
+	std::cerr << "type " << type_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << "\n";
+	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
+}
+
+
+void output_type_and_previous(Type* target)
+{
+	output_type(target);
+	unsigned further_outputs = type_descriptor[target->tag].pointer_fields;
+	//I kind of want to use boost's irange here, but pulling in a big library may not be the best idea
+	for (int x = 0; x < further_outputs; ++x)
+		if (target->fields[x].ptr != nullptr)
+			output_type_and_previous(target->fields[x].ptr);
+}
 /** generate_IR() is the main code that transforms AST into LLVM IR. it is called with the AST to be transformed, which must not be nullptr.
 
 the purpose of the argument llvm::AllocaInst* storage_location is for RVO. it tells generate_IR() that whatever is produced should be stored into the storage_location.
@@ -297,12 +315,13 @@ minor note: the stack object is generated at the very beginning of the function 
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
-#define return_code(X) do { error_location = target; return Return_Info(codegen_status::X, nullptr, T_null, 0, 0, 0); } while (0)
-
-#if VERBOSE_DEBUG
-	output_AST(target);
-	TheModule->dump();
-#endif
+#define return_code(X) do { error_location = target; return Return_Info(codegen_status::X, nullptr, T_null, 0, false, 0, 0, 0); } while (0)
+	if (VERBOSE_DEBUG)
+	{
+		std::cout << "starting generate_IR\n";
+		output_AST(target);
+		TheModule->dump();
+	}
 
 	//target should never be nullptr.
 	if (target == nullptr) return_code(null_AST_compiler_bug);
@@ -313,7 +332,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		return_code(infinite_loop);
 	loop_catcher.insert(target); //we've seen this AST now.
 
-	//after we're done with this AST, we should remove it from loop_catcher.
+	//after we're done with this AST, we remove it from loop_catcher.
 	struct loop_catcher_destructor_cleanup{
 		//compiler_state can only be used if it is passed in.
 		compiler_object* object; AST* targ;
@@ -343,7 +362,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	std::vector<Return_Info> field_results; //we don't actually need the return code, but we leave it anyway.
 
 	//these statements require special handling. todo: concatenate also.
-	if (target->tag != ASTn("if") && target->tag != ASTn("pointer"))
+	if (target->tag != ASTn("if") && target->tag != ASTn("pointer") && target->tag != ASTn("copy"))
 	{
 
 		for (unsigned x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
@@ -364,25 +383,35 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 	//internal: do not call this directly. use the finish macro instead
 	//places a constructed object into storage_location.
-	auto move_into_stack_position = [&](llvm::Value* return_value)
+	auto move_into_stack_position = [&](llvm::Value* return_value) -> llvm::Value*
 	{
 		if (size_result > 1)
 		{
 			for (int i = 0; i < size_result; ++i)
 				Builder.CreateStore(Builder.CreateConstGEP2_64(return_value, 0, i), Builder.CreateConstGEP2_64(storage_location, 0, i));
-			return_value = storage_location;
+			return storage_location;
 		}
 		else if (size_result == 1)
 		{
 			Builder.CreateStore(return_value, storage_location);
-			return_value = storage_location;
+			return storage_location;
 		}
+		return return_value;
 	};
 
 	//internal: do not call this directly. use the finish macro instead
 	//clears dead objects off the stack, and makes your result visible to other ASTs
 	auto finish_internal = [&](llvm::Value* return_value, Type* type, uint64_t upper_life, uint64_t lower_life) -> Return_Info
 	{
+		if (VERBOSE_DEBUG)
+		{
+			std::cerr << "finishing IR generation, called value is";
+			return_value->print(llvm::outs());
+			std::cerr << "\nand the llvm type is ";
+			return_value->getType()->print(llvm::outs());
+			std::cerr << "\nand the internal type is ";
+			output_type_and_previous(type);
+		}
 		if (stack_degree == 2)
 			clear_stack(final_stack_position);
 
@@ -391,21 +420,21 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			if (size_result >= 1)
 			{
 				object_stack.push(target);
-				auto insert_result = objects.insert({ target, Return_Info(codegen_status::no_error, return_value, type, lifetime_of_return_value, upper_life, lower_life) });
+				auto insert_result = objects.insert({ target, Return_Info(codegen_status::no_error, return_value, type, size_result, true, lifetime_of_return_value, upper_life, lower_life) });
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication);
 			}
 			type_scratch_space.push_back(Type("cheap pointer", type)); //stack objects are always pointers, just like in llvm.
 			type = &type_scratch_space.back();
 		}
-		return Return_Info(codegen_status::no_error, return_value, type, lifetime_of_return_value, upper_life, lower_life);
+		return Return_Info(codegen_status::no_error, return_value, type, size_result, false, lifetime_of_return_value, upper_life, lower_life);
 	};
 
 	//call these when you've constructed something. the _pointer suffix is when you are returning a pointer, and need lifetime information.
 	//use finish_previously_constructed if your AST is not the one constructing the return object.
 	//for example, concatenate() and if() use previously constructed return objects, and simply pass them through.
 
-#define finish(X, type) do { if (stack_degree >= 1) move_into_stack_position(X); return finish_internal(X, type, 0, -1ull); } while (0)
+#define finish(X, type) do { llvm::Value* end_value = stack_degree >= 1 ? move_into_stack_position(X) : X; return finish_internal(end_value, type, 0, -1ull); } while (0)
 #define finish_pointer(X, type, u, l) do { if (stack_degree >= 1) move_into_stack_position(X); return finish_internal(X, type, u, l); } while (0)
 #define finish_previously_constructed(X, type) do { return finish_internal(X, type, 0, -1ull); } while (0)
 #define finish_previously_constructed_pointer(X, type, u, l) do { return finish_internal(X, type, u, l); } while (0)
@@ -530,13 +559,39 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	case ASTn("scope"):
 		finish(nullptr, T_null);
 	case ASTn("pointer"):
+	{
 		auto found_AST = objects.find(target->fields[0].ptr);
 		if (found_AST == objects.end())
 		{
 			error_location = target;
-			return_code(pointer_without_stack_target);
+			return_code(pointer_without_target);
 		}
-		finish_pointer(found_AST->second.IR, found_AST->second.type, found_AST->second.self_lifetime, found_AST->second.self_lifetime);
+		if (found_AST->second.on_stack == false)
+		{
+			error_location = target;
+			return_code(pointer_to_temporary);
+		}
+		//our new pointer type
+		type_scratch_space.push_back(Type("cheap pointer", found_AST->second.type));
+		finish_pointer(found_AST->second.IR, &type_scratch_space.back(), found_AST->second.self_lifetime, found_AST->second.self_lifetime);
+	}
+	case ASTn("copy"):
+	{
+		auto found_AST = objects.find(target->fields[0].ptr);
+		if (found_AST == objects.end())
+		{
+			error_location = target;
+			return_code(pointer_without_target);
+		}
+		if (found_AST->second.on_stack == false) //it's not an AllocaInst
+		{
+			finish_pointer(found_AST->second.IR, found_AST->second.type, found_AST->second.self_lifetime, found_AST->second.self_lifetime);
+		}
+		else
+		{
+			finish(Builder.CreateLoad(found_AST->second.IR), found_AST->second.type);
+		}
+	}
 	/*case ASTn("get 0"):
 		finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_uint64);*/
 	}
@@ -595,8 +650,11 @@ void fuzztester(unsigned iterations)
 			AST_list.push_back(test_AST);
 			std::cerr << "Successful compile " << AST_list.size() - 1 << "\n";
 		}
-		std::cerr << "Press enter to continue\n";
-		std::cin.get();
+		if (INTERACTIVE)
+		{
+			std::cerr << "Press enter to continue\n";
+			std::cin.get();
+		}
 	}
 }
 
