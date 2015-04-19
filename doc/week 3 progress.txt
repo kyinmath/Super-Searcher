@@ -6,3 +6,4 @@ Cleaned up comments so that the "src/" files don't wrap on my screen.
 Implemented type system
 Implemented pointers
 Implemented variables
+New command line arguments

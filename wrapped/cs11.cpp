@@ -20,9 +20,9 @@
 #include <llvm/Analysis/Passes.h> 
 #include <llvm/Support/raw_ostream.h> #include "types.h" 
 
-const bool OPTIMIZE = false; 
-const bool VERBOSE_DEBUG = false; 
-const bool INTERACTIVE = false; 
+bool OPTIMIZE = false; 
+bool VERBOSE_DEBUG = false; 
+bool INTERACTIVE = true; 
 
 //todo: threading. create non-global contexts 
 #ifndef _MSC_VER 
@@ -725,8 +725,17 @@ fields[3]);
   } 
 } 
 
-int main() 
+int main(int argc, char* argv[]) 
 { 
+  for (int x = 1; x < argc; ++x) 
+  { 
+    if (strcmp(argv[x], "noninteractive") == 0) 
+      INTERACTIVE = false; 
+    if (strcmp(argv[x], "verbose") == 0) 
+      VERBOSE_DEBUG = true; 
+    if (strcmp(argv[x], "optimize") == 0) 
+      OPTIMIZE = true; 
+  } 
   /* 
   AST get1("integer", nullptr, 1); //get the integer 1 
   AST get2("integer", nullptr, 2); 

@@ -85,7 +85,7 @@ int main()
 		std::ofstream outfile("C:\\Users\\CompAcc\\Stuff\\CS11backend\\wrapped\\"  + x);
 		if (!outfile.is_open())
 			cout << "panic!\n";
-		cout << "C:\\Users\\CompAcc\\Stuff\\CS11backend\\wrapped\\" + x;
+		cout << "C:\\Users\\CompAcc\\Stuff\\CS11backend\\wrapped\\" + x << '\n';
 
 		for (auto &y : wrapped)
 		{
