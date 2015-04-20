@@ -18,7 +18,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Analysis/Passes.h>
-#include <llvm/Support/raw_ostream.h>  
+#include <llvm/Support/raw_ostream.h> 
 #include "types.h"
 
 bool OPTIMIZE = false;
@@ -45,7 +45,7 @@ enum codegen_status {
   no_error,
   infinite_loop, //ASTs point to each other in a loop
   active_object_duplication, //tried to codegen an AST while it was already codegened from another 
-  branch, thus resulting in a stack duplication
+  //branch, thus resulting in a stack duplication
   fell_through_switches, //our switch case is missing a value. generate_IR() is bugged
   type_mismatch, //in an if statement, the two branches had different types.
   null_AST_compiler_bug, //we tried to generate_IR() a nullptr, which means generate_IR() is bugged
@@ -73,7 +73,7 @@ struct Return_Info
   //however, we need concatenation only for heap objects, parameters, function return; in these 
   //cases, the memory order doesn't matter
   uint64_t self_lifetime; //for stack objects, determines when you will fall off the stack. it's a 
-  deletion time, not a creation time.
+  //deletion time, not a creation time.
   //it's important that it is a deletion time, because deletion and creation are not in perfect 
   //stack configuration.
   //because temporaries are created before the base object, and die just after.
@@ -142,7 +142,7 @@ class compiler_object
 public:
   compiler_object();
   unsigned compile_AST(AST* target); //we can't combine this with the ctor, because it needs to 
-  return an int
+  //return an int
   AST* error_location;
 
 };
@@ -246,7 +246,7 @@ uint64_t compiler_object::get_size(AST* target)
 {
   if (target == nullptr)
     return 0; //for example, if you try to get the size of an if statement with nullptr fields as 
-    the return object.
+    //the return object.
   if (AST_descriptor[target->tag].size_of_return != -1) return 
   AST_descriptor[target->tag].size_of_return;
   else if (target->tag == ASTn("if"))
@@ -331,19 +331,15 @@ void output_type_and_previous(Type* target)
 /** generate_IR() is the main code that transforms AST into LLVM IR. it is called with the AST to 
 be transformed, which must not be nullptr.
 
-the purpose of the argument llvm::AllocaInst* storage_location is for RVO. it tells generate_IR() 
-that whatever is produced should be stored into the storage_location.
-stack_degree helps with RVO.
 ASTs that are directly inside basic blocks should allocate their own stack_memory, so they are 
-given stack_degree = 2, which tells them to create a memory location.
+given stack_degree = 2.
+  this tells them to create a memory location and to place the return value inside it.
 ASTs that should place their return object inside an already-created memory location are given 
 stack_degree = 1, and storage_location.
-ASTs that can return temps normally are given stack_degree = 0.
+  then, they store the return value into storage_location
+ASTs that return SSA objects are given stack_degree = 0.
 
-the function that creates these memory locations is create_alloca_in_entry_block(). this generates 
-an empty object on the stack.
-minor note: the stack object is generated at the very beginning of the function so that the llvm 
-optimization pass mem2reg can recognize it.
+create_alloca_in_entry_block() is used to create the memory locations.
 */
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* 
 storage_location)
@@ -396,7 +392,7 @@ nullptr, T_null, 0, false, 0, 0, 0); } while (0)
 
   //generated IR of the fields of the AST
   std::vector<Return_Info> field_results; //we don't actually need the return code, but we leave it 
-  anyway.
+  //anyway.
 
   //these statements require special handling. todo: concatenate also.
   if (target->tag != ASTn("if") && target->tag != ASTn("pointer") && target->tag != ASTn("copy"))
@@ -411,8 +407,8 @@ nullptr, T_null, 0, false, 0, 0, 0); } while (0)
         if (result.error_code) return result;
       }
       field_results.push_back(result);
-      //todo: normally we'd also want to verify the types here.  
-    }
+      //todo: normally we'd also want to verify the types here. 
+		}
   }
 
   //when we add a type system, we better start checking if types work out.
@@ -466,7 +462,7 @@ nullptr, T_null, 0, false, 0, 0, 0); } while (0)
           return_code(active_object_duplication);
       }
       type_scratch_space.push_back(Type("cheap pointer", type)); //stack objects are always 
-      pointers, just like in llvm.
+      //pointers, just like in llvm.
       type = &type_scratch_space.back();
     }
     return Return_Info(codegen_status::no_error, return_value, type, size_result, false, 
@@ -681,16 +677,16 @@ void fuzztester(unsigned iterations)
     //create a random AST
     unsigned tag = mersenne() % ASTn("never reached");
     unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST 
-    pointers. they will come at the beginning
+    //pointers. they will come at the beginning
     unsigned prev_AST = mersenne() % AST_list.size();
     int_or_ptr<AST> fields[4]{nullptr, nullptr, nullptr, nullptr};
     int incrementor = 0;
     for (; incrementor < pointer_fields; ++incrementor)
       fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous 
-      ASTs
+      //ASTs
     for (; incrementor < max_fields_in_AST; ++incrementor)
       fields[incrementor] = (mersenne() % 2) ? mersenne() : 0; //get random integers and fill in 
-      the remaining fields
+      //the remaining fields
     AST* test_AST= new AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
     output_AST_and_previous(test_AST);
 
@@ -743,7 +739,7 @@ int main(int argc, char* argv[])
 
 
   AST getif("if", &addthem, &get1, &get2, &get3); //first, execute addthem. then, if get1 is 
-  non-zero, return get2. otherwise, return get3.
+  //non-zero, return get2. otherwise, return get3.
   AST helloworld("Hello World!", &getif); //first, execute getif. then output "Hello World!"
   compiler_object compiler;
   compiler.compile_AST(&helloworld);

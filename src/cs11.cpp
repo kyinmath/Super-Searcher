@@ -304,14 +304,13 @@ void output_type_and_previous(Type* target)
 }
 /** generate_IR() is the main code that transforms AST into LLVM IR. it is called with the AST to be transformed, which must not be nullptr.
 
-the purpose of the argument llvm::AllocaInst* storage_location is for RVO. it tells generate_IR() that whatever is produced should be stored into the storage_location.
-stack_degree helps with RVO.
-ASTs that are directly inside basic blocks should allocate their own stack_memory, so they are given stack_degree = 2, which tells them to create a memory location.
+ASTs that are directly inside basic blocks should allocate their own stack_memory, so they are given stack_degree = 2.
+	this tells them to create a memory location and to place the return value inside it.
 ASTs that should place their return object inside an already-created memory location are given stack_degree = 1, and storage_location.
-ASTs that can return temps normally are given stack_degree = 0.
+	then, they store the return value into storage_location
+ASTs that return SSA objects are given stack_degree = 0.
 
-the function that creates these memory locations is create_alloca_in_entry_block(). this generates an empty object on the stack.
-minor note: the stack object is generated at the very beginning of the function so that the llvm optimization pass mem2reg can recognize it.
+create_alloca_in_entry_block() is used to create the memory locations.
 */
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location)
 {

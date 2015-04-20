@@ -36,7 +36,7 @@ unsigned type_check(type_status version, Type* existing_reference, Type* new_ref
   std::array<Type*, 2> iter = { existing_reference, new_reference };
   if (iter[0] == iter[1])// && (lock[0] == lock[1] || version == RVO))
     return 3; //easy way out, if lucky. we can't do this later, because our stack might have extra 
-    things to look at.
+    //things to look at.
 
   //this stack enables two-part recursion using both type objects, which isn't possible otherwise.
   //fully_immut must always be exactly the same for both types, so we technically don't need to 
@@ -75,7 +75,7 @@ check_next_token:
   if (iter[0] == nullptr || iter[1] == nullptr) //at least one is nullptr
   {
     bool found_no_further_things_to_do = true; //we check our stack for more elements. if we find 
-    one, then this becomes 0.
+    //one, then this becomes 0.
     for (unsigned x : {0, 1})
     {
       if (!stack[x].empty() && iter[x] == nullptr)

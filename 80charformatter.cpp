@@ -33,13 +33,6 @@ void WordWrap(ifstream& iss, vector<string>& outputString, unsigned int lineLeng
 			++tab_length;
 			continue;
 		}
-		if (iss.peek() == '/')
-		{
-			iss.seekg(1, ios_base::cur);
-			if (iss.peek() == '/')
-				comment_mode = true;
-			iss.seekg(-1, ios_base::cur);
-		}
 		if (iss.peek() == ' ')
 		{
 			line.append(" ");
@@ -54,9 +47,10 @@ void WordWrap(ifstream& iss, vector<string>& outputString, unsigned int lineLeng
 		{
 			break;
 		}*/
-		//we need to skip a space too.
-		{
-			iss.seekg(1, ios_base::cur);
+
+		string word;
+		do {
+
 			if (iss.peek() == '/')
 			{
 				iss.seekg(1, ios_base::cur);
@@ -64,10 +58,7 @@ void WordWrap(ifstream& iss, vector<string>& outputString, unsigned int lineLeng
 					comment_mode = true;
 				iss.seekg(-1, ios_base::cur);
 			}
-			iss.seekg(-1, ios_base::cur);
-		}
-		string word;
-		do {
+
 			if (iss.peek() == '\"')
 				string_mode ^= 1;
 			word += iss.peek();

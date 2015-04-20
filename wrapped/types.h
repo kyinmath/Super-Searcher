@@ -44,16 +44,16 @@ constexpr enum_info AST_descriptor[] =
   { "integer", 0, 1 },
   { "Hello World!", 0, 0 },
   { "if", 3, -1 }, //test, first branch, fields[0] branch. passes through the return object of each 
-  branch; the return objects must be the same.
+  //branch; the return objects must be the same.
   { "scope", 1, 0 }, //fulfills the purpose of {} from C++
   { "add", 2, 1 }, //adds two integers
   { "subtract", 2, 1 },
   { "random", 0, 1 }, //returns a random integer
   { "pointer", 1, 1 }, //acquires a pointer to an alloca'd element. it takes one field, but does 
-  NOT compile it - instead, it searches for it in <>objects.
+  //NOT compile it - instead, it searches for it in <>objects.
   { "copy", 1, 1 }, //creates a copy of an element. takes one field, but does NOT compile it.
   { "never reached", 0, 0 }, //marks the end of the currently-implemented ASTs. beyond this is 
-  rubbish.
+  //rubbish.
   //{ "dereference pointer", 0, 1 },
   { "concatenate", 2, -1 },
   /*	{ "goto", 2 }, //label and failure branch
@@ -134,12 +134,12 @@ struct AST
   //std::mutex lock;
   uint64_t tag;
   AST* preceding_BB_element; //this object survives on the stack and can be referenced. it's the 
-  previous basic block element.
+  //previous basic block element.
   std::array<int_or_ptr<AST>, max_fields_in_AST> fields;
   AST(const char name[], AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> f2 
   = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
     : tag(ASTn(name)), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {} //VS complains 
-    about aggregate initialization, but it is wrong.
+    //about aggregate initialization, but it is wrong.
   AST(unsigned direct_tag, AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> 
   f2 = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
     : tag(direct_tag), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {}
@@ -149,6 +149,6 @@ struct AST
 
 
 enum type_status { RVO, reference }; //distinguishes between RVOing an object, or just creating a 
-reference
+//reference
 
 unsigned type_check(type_status version, Type* existing_reference, Type* new_reference);
