@@ -43,14 +43,15 @@ Type* T_null = nullptr; //describes an object consisting of nothing
 
 enum codegen_status {
 	no_error,
-	infinite_loop, //ASTs point to each other in a loop
-	active_object_duplication, //tried to codegen an AST while it was already codegened from another branch, thus resulting in a stack duplication
-	fell_through_switches, //our switch case is missing a value. generate_IR() is bugged
+	infinite_loop, //ASTs have pointers in a loop
+	active_object_duplication, //an AST has two return values active simultaneously, making the AST-to-object map ambiguous
 	type_mismatch, //in an if statement, the two branches had different types.
-	null_AST_compiler_bug, //we tried to generate_IR() a nullptr, which means generate_IR() is bugged
 	null_AST, //tried to generate_IR() a nullptr but was caught, which is normal.
 	pointer_without_target, //tried to get a pointer to an AST, but it was not found at all
 	pointer_to_temporary, //tried to get a pointer to an AST, but it was not placed on the stack.
+	after_this_are_compiler_bugs, //the bugs before this are benign malformed AST errors.
+	fell_through_switches, //our switch case is missing a value. generate_IR() is bugged
+	null_AST_compiler_bug, //we tried to generate_IR() a nullptr, which means generate_IR() is bugged
 };
 
 struct Return_Info
@@ -175,7 +176,11 @@ unsigned compiler_object::compile_AST(AST* target)
 
 	TheModule->dump();
 	// Validate the generated code, checking for consistency.
-	if (llvm::verifyFunction(*F, &llvm::outs())) std::cerr << "verification failed\n";
+	if (llvm::verifyFunction(*F, &llvm::outs()))
+	{
+		std::cerr << "verification failed\n";
+		abort();
+	}
 
 	if (OPTIMIZE)
 	{
@@ -633,8 +638,7 @@ void fuzztester(unsigned iterations)
 		unsigned error_code = compiler.compile_AST(test_AST);
 		if (error_code)
 		{
-			if ((error_code == codegen_status::fell_through_switches) ||
-				(error_code == codegen_status::null_AST_compiler_bug))
+			if (error_code > codegen_status::after_this_are_compiler_bugs)
 			{
 				std::cerr << "ERROR: code " << error_code << " at AST " << compiler.error_location << '\n';
 				llvm_unreachable("fuzztester detected compiler error");

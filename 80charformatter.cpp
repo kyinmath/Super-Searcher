@@ -1,4 +1,4 @@
-//mostly stolen from stackexchange http://stackoverflow.com/questions/5815227/fix-improve-word-wrap-function
+//a little stolen from stackexchange http://stackoverflow.com/questions/5815227/fix-improve-word-wrap-function
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -8,12 +8,11 @@ using namespace std;
 
 void WordWrap(ifstream& iss, vector<string>& outputString, unsigned int lineLength)
 {
-	string line;
+	string line; //warning: Visual Studio has a small max string size.
 	bool comment_mode = false;
 	int tab_length = 0;
 	bool string_mode = false;
 	bool define_mode = false;
-	int incrementor = 100000; //our function isn't terminating, so we do this stupid trick to force it to terminate.
 	do
 	{
 		if (iss.peek() == '\n')
@@ -42,12 +41,6 @@ void WordWrap(ifstream& iss, vector<string>& outputString, unsigned int lineLeng
 		{
 			define_mode = true;
 		}
-		/*
-		if (--incrementor) //just forcibly exit.
-		{
-			break;
-		}*/
-
 		string word;
 		do {
 

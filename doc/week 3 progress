@@ -7,3 +7,5 @@ Implemented type system
 Implemented pointers
 Implemented variables
 New command line arguments - see readme.md
+
+Right now, the fuzzer produces errors after a while. This is because the function signature states that the return type is an "integer", and sometimes we return a "pointer". This will be fixed in the final AST design which should involve entire functions. Since I want my fuzzer to produce no errors, I'll probably work on functions next.
