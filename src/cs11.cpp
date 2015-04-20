@@ -16,7 +16,7 @@
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/IR/LegacyPassManager.h>
-#include "llvm/Transforms/Scalar.h"
+#include <llvm/Transforms/Scalar.h>
 #include <llvm/Analysis/Passes.h>
 #include <llvm/Support/raw_ostream.h> 
 #include "types.h"
@@ -67,7 +67,7 @@ struct Return_Info
 	//this lifetime information is only used when a cheap pointer is in the type. see pointers.txt
 	//to write a pointer into a pointed-to memory location, we must have upper of pointer < lower of memory location
 	//there's only one pair of target lifetime values per object, which can be a problem for objects which concatenate many cheap pointers.
-	//however, concatenated objects can be split up because we need concatenation for heap objects, parameters, function return; in these cases, the memory order doesn't matter
+	//however, we need concatenation only for heap objects, parameters, function return; in these cases, the memory order doesn't matter
 	uint64_t self_lifetime; //for stack objects, determines when you will fall off the stack. it's a deletion time, not a creation time.
 	//it's important that it is a deletion time, because deletion and creation are not in perfect stack configuration.
 	//because temporaries are created before the base object, and die just after.
@@ -81,7 +81,8 @@ struct Return_Info
 	Return_Info(codegen_status err, llvm::Value* b, Type* t, uint64_t si, bool o, uint64_t s, uint64_t u, uint64_t l)
 		: error_code(err), IR(b), type(t), size(si), on_stack(o), self_lifetime(s), target_upper_lifetime(u), target_lower_lifetime(l) {}
 
-	//default constructor for a null object. make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
+	//default constructor for a null object
+	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
 	Return_Info() : error_code(codegen_status::no_error), IR(nullptr), type(T_null), size(0), on_stack(false), self_lifetime(0), target_upper_lifetime(0), target_lower_lifetime(-1ull) {}
 };
 
@@ -370,8 +371,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			Return_Info result; //default constructed for null object
 			if (target->fields[x].ptr)
 			{
-				result = generate_IR(target->fields[x].ptr, false); //todo: if it's concatenate(), this would be true.
-				if (result.error_code) return result; //error
+				result = generate_IR(target->fields[x].ptr, false);
+				if (result.error_code) return result;
 			}
 			field_results.push_back(result);
 			//todo: normally we'd also want to verify the types here. 
@@ -383,7 +384,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 	//internal: do not call this directly. use the finish macro instead
 	//places a constructed object into storage_location.
-	auto move_into_stack_position = [&](llvm::Value* return_value) -> llvm::Value*
+	auto move_to_stack = [&](llvm::Value* return_value) -> llvm::Value*
 	{
 		if (size_result > 1)
 		{
@@ -434,8 +435,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//use finish_previously_constructed if your AST is not the one constructing the return object.
 	//for example, concatenate() and if() use previously constructed return objects, and simply pass them through.
 
-#define finish(X, type) do { llvm::Value* end_value = stack_degree >= 1 ? move_into_stack_position(X) : X; return finish_internal(end_value, type, 0, -1ull); } while (0)
-#define finish_pointer(X, type, u, l) do { if (stack_degree >= 1) move_into_stack_position(X); return finish_internal(X, type, u, l); } while (0)
+#define finish(X, type) do { llvm::Value* end_value = stack_degree >= 1 ? move_to_stack(X) : X; return finish_internal(end_value, type, 0, -1ull); } while (0)
+#define finish_pointer(X, type, u, l) do { if (stack_degree >= 1) move_to_stack(X); return finish_internal(X, type, u, l); } while (0)
 #define finish_previously_constructed(X, type) do { return finish_internal(X, type, 0, -1ull); } while (0)
 #define finish_previously_constructed_pointer(X, type, u, l) do { return finish_internal(X, type, u, l); } while (0)
 

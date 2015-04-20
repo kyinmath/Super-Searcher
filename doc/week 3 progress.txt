@@ -1,9 +1,0 @@
-Added lots of documentation, both in "doc/" and in comments in the code.
-Wrote a line wrapper. Please don't try to run it, because it only runs on Windows, requires the _CRT_SECURE_NO_WARNING preprocessor macro if compiled for Visual Studio, and has my local folder paths built in.
-100-column files are now in "wrapped/".
-Cleaned up comments so that the "src/" files don't wrap on my screen.
-
-Implemented type system
-Implemented pointers
-Implemented variables
-New command line arguments
