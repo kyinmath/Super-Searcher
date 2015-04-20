@@ -9,6 +9,11 @@ using namespace std;
 void WordWrap(ifstream& iss, vector<string>& outputString, unsigned int lineLength)
 {
 	string line;
+	bool comment_mode = false;
+	int tab_length = 0;
+	bool string_mode = false;
+	bool define_mode = false;
+	int incrementor = 100000; //our function isn't terminating, so we do this stupid trick to force it to terminate.
 	do
 	{
 		if (iss.peek() == '\n')
@@ -16,23 +21,96 @@ void WordWrap(ifstream& iss, vector<string>& outputString, unsigned int lineLeng
 			outputString.push_back(line);
 			line.clear();
 			iss.ignore(1);
+			comment_mode = false;
+			define_mode = false;
+			tab_length = 0;
 			continue;
 		}
 		if (iss.peek() == '\t')
 		{
 			line.append("  ");
 			iss.ignore(1);
+			++tab_length;
 			continue;
 		}
-		string word;
-		iss >> word;
-
-		if (line.length() + word.length() + 2 > lineLength)
+		if (iss.peek() == '/')
 		{
-			outputString.push_back(line + "\\");
-			line.clear();
+			iss.seekg(1, ios_base::cur);
+			if (iss.peek() == '/')
+				comment_mode = true;
+			iss.seekg(-1, ios_base::cur);
 		}
-		line += word + " ";
+		if (iss.peek() == ' ')
+		{
+			line.append(" ");
+			iss.ignore(1);
+		}
+		if (iss.peek() == '#') //we assume it won't happen in the middle of a line
+		{
+			define_mode = true;
+		}
+		/*
+		if (--incrementor) //just forcibly exit.
+		{
+			break;
+		}*/
+		//we need to skip a space too.
+		{
+			iss.seekg(1, ios_base::cur);
+			if (iss.peek() == '/')
+			{
+				iss.seekg(1, ios_base::cur);
+				if (iss.peek() == '/')
+					comment_mode = true;
+				iss.seekg(-1, ios_base::cur);
+			}
+			iss.seekg(-1, ios_base::cur);
+		}
+		string word;
+		do {
+			if (iss.peek() == '\"')
+				string_mode ^= 1;
+			word += iss.peek();
+			iss.ignore(1);
+		} while (iss.peek() != ' ' && iss.peek() != '\n' && iss.peek() != EOF && iss);
+		//iss >> word;
+		if (comment_mode)
+		{
+			if (line.length() + word.length() + 1 > lineLength)
+			{
+				outputString.push_back(line);
+				line.clear();
+				for (int x = 0; x < tab_length; ++x)
+				{
+					line.append("  ");
+				}
+				line.append("//");
+			}
+
+		}
+		else if (string_mode || define_mode)
+		{
+			if (line.length() + word.length() + 2 > lineLength)
+			{
+				outputString.push_back(line + "\\");
+				line.clear();
+			}
+		}
+
+		else
+		{
+			if (line.length() + word.length() + 1 > lineLength)
+			{
+				outputString.push_back(line);
+				line.clear();
+				for (int x = 0; x < tab_length; ++x)
+				{
+					line.append("  ");
+				}
+			}
+
+		}
+		line += word;
 		if (line.length() > lineLength)
 		{
 			//cout << "how";

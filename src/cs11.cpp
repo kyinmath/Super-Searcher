@@ -279,9 +279,9 @@ void output_AST_and_previous(AST* target)
 	output_AST(target);
 	if (target->preceding_BB_element != nullptr)
 		output_AST_and_previous(target->preceding_BB_element);
-	unsigned further_outputs = AST_descriptor[target->tag].pointer_fields;
-	//I kind of want to use boost's irange here, but pulling in a big library may not be the best idea
-	for (int x = 0; x < further_outputs; ++x)
+	unsigned number_of_further_ASTs = AST_descriptor[target->tag].pointer_fields;
+	//boost::irange may be useful, but pulling in unnecessary (possibly-buggy) code is bad
+	for (int x = 0; x < number_of_further_ASTs; ++x)
 		if (target->fields[x].ptr != nullptr)
 			output_AST_and_previous(target->fields[x].ptr);
 }
