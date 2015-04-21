@@ -134,19 +134,21 @@ public:
 
 compiler_object::compiler_object() : error_location(nullptr), Builder(thread_context)
 {
-	TheModule = new llvm::Module("temp module", thread_context); //todo: memleak
+	TheModule = new llvm::Module("temp module", thread_context);
 
 	llvm::InitializeNativeTarget();
 	llvm::InitializeNativeTargetAsmPrinter();
 	llvm::InitializeNativeTargetAsmParser();
 
 	std::string ErrStr;
+	
+	//todo: memleak with our memory manager
 	engine = llvm::EngineBuilder(std::unique_ptr<llvm::Module>(TheModule))
 		.setErrorStr(&ErrStr)
 		.setMCJITMemoryManager(std::unique_ptr<llvm::SectionMemoryManager>(new llvm::SectionMemoryManager))
 		.create();
 	if (!engine) {
-		fprintf(stderr, "Could not create ExecutionEngine: %s\n", ErrStr.c_str());
+		std::cerr << "Could not create ExecutionEngine: " << ErrStr.c_str() << '\n';
 		exit(1);
 	}
 }
@@ -178,14 +180,13 @@ unsigned compiler_object::compile_AST(AST* target)
 	// Validate the generated code, checking for consistency.
 	if (llvm::verifyFunction(*F, &llvm::outs()))
 	{
-		std::cerr << "verification failed\n";
+		std::cerr << "\nverification failed\n";
 		abort();
 	}
 
 	if (OPTIMIZE)
 	{
 		std::cerr << "optimized code: \n";
-		//optimization
 		llvm::legacy::FunctionPassManager FPM(TheModule);
 		TheModule->setDataLayout(engine->getDataLayout());
 		// Provide basic AliasAnalysis support for GVN.
@@ -566,16 +567,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	case ASTn("pointer"):
 	{
 		auto found_AST = objects.find(target->fields[0].ptr);
-		if (found_AST == objects.end())
-		{
-			error_location = target;
-			return_code(pointer_without_target);
-		}
-		if (found_AST->second.on_stack == false)
-		{
-			error_location = target;
-			return_code(pointer_to_temporary);
-		}
+		if (found_AST == objects.end()) return_code(pointer_without_target);
+		if (found_AST->second.on_stack == false) return_code(pointer_to_temporary);
 		//our new pointer type
 		type_scratch_space.push_back(Type("cheap pointer", found_AST->second.type));
 		finish_pointer(found_AST->second.IR, &type_scratch_space.back(), found_AST->second.self_lifetime, found_AST->second.self_lifetime);
@@ -584,18 +577,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	{
 		auto found_AST = objects.find(target->fields[0].ptr);
 		if (found_AST == objects.end())
-		{
-			error_location = target;
 			return_code(pointer_without_target);
-		}
 		if (found_AST->second.on_stack == false) //it's not an AllocaInst
-		{
 			finish_pointer(found_AST->second.IR, found_AST->second.type, found_AST->second.self_lifetime, found_AST->second.self_lifetime);
-		}
-		else
-		{
-			finish(Builder.CreateLoad(found_AST->second.IR), found_AST->second.type);
-		}
+		else finish(Builder.CreateLoad(found_AST->second.IR), found_AST->second.type);
 	}
 	/*case ASTn("get 0"):
 		finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_uint64);*/
