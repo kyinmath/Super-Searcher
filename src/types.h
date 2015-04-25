@@ -17,11 +17,11 @@ union int_or_ptr
 #endif
 
 struct Type;
-extern const Type T_int_internal;
-extern const Type T_nonexistent_internal;
-constexpr const Type* T_nonexistent = &T_nonexistent_internal;
-constexpr const Type* T_int = &T_int_internal; //describes an integer type
-constexpr const Type* T_null = nullptr;
+extern Type T_int_internal;
+extern Type T_nonexistent_internal;
+constexpr Type* T_nonexistent = &T_nonexistent_internal;
+constexpr Type* T_int = &T_int_internal; //describes an integer type
+constexpr Type* T_null = nullptr;
 
 #define max_fields_in_AST 4u
 //should accomodate the largest possible AST
@@ -44,8 +44,8 @@ struct AST_info
 	//in the case of types, the size of the actual object.
 	const int size_of_return;
 
-	const Type* parameter_types[4];
-	const Type* return_object; //if this type is null, do not check it using the generic method - check it specially.
+	Type* parameter_types[4];
+	Type* return_object; //if this type is null, do not check it using the generic method - check it specially.
 
 	unsigned fields_to_compile; //we may not always compile all pointers, such as with "copy".
 	//number_to_compile < pointer_fields. by default, they are equal.
@@ -67,7 +67,7 @@ struct AST_info
 		return new_copy;
 	}
 	//unsigned non_pointer_fields; //how many fields are not pointers. but maybe not necessary.
-	constexpr int field_count(const Type* f1, const Type* f2, const Type* f3, const Type* f4)
+	constexpr int field_count(Type* f1, Type* f2, Type* f3, Type* f4)
 	{
 		int number_of_fields = 4; //by default, both pointer_fields and number_of_fields will be equal to this.
 		if (f4 == nullptr)
@@ -81,7 +81,7 @@ struct AST_info
 		return number_of_fields;
 	};
 
-	constexpr AST_info(const char a[], const Type* r, const Type* f1 = nullptr, const Type* f2 = nullptr, const Type* f3 = nullptr, const Type* f4 = nullptr)
+	constexpr AST_info(const char a[], Type* r, Type* f1 = nullptr, Type* f2 = nullptr, Type* f3 = nullptr, Type* f4 = nullptr)
 		: name(a), return_object(r), parameter_types{ f1, f2, f3, f4 }, pointer_fields(field_count(f1, f2, f3, f4)), fields_to_compile(field_count(f1, f2, f3, f4)), size_of_return(1)
 	{
 		//TODOOOOO. don't leave size_of_return as 1! it's wrong. we need a get_type_size() function
@@ -189,8 +189,8 @@ struct Type
 {
 	uint64_t tag;
 	std::array<int_or_ptr<Type>, 2> fields;
-	constexpr Type(const char name[], const int_or_ptr<const Type> a = nullptr, const int_or_ptr<const Type> b = nullptr) : tag(Typen(name)), fields{ a, b } {}
-	constexpr Type(const uint64_t t, const int_or_ptr<const Type> a = nullptr, const int_or_ptr<const Type> b = nullptr) : tag(t), fields{ a, b } {}
+	constexpr Type(const char name[], const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(Typen(name)), fields{ a, b } {}
+	constexpr Type(const uint64_t t, const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(t), fields{ a, b } {}
 };
 
 
@@ -210,4 +210,4 @@ struct AST
 
 enum type_status { RVO, reference }; //distinguishes between RVOing an object, or just creating a reference
 
-unsigned type_check(type_status version, const Type* existing_reference, const Type* new_reference);
+unsigned type_check(type_status version, Type* existing_reference, Type* new_reference);

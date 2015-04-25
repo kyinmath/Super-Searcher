@@ -39,8 +39,8 @@ unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937_64 mersenne(seed);
 uint64_t generate_random() { return mersenne(); }
 
-const Type T_int_internal("integer");
-const Type T_nonexistent_internal("integer");
+Type T_int_internal("integer");
+Type T_nonexistent_internal("integer");
 
 
 enum codegen_status {
@@ -62,7 +62,7 @@ struct Return_Info
 
 	llvm::Value* IR;
 		
-	const Type* type;
+	Type* type;
 	uint64_t size; //we memorize the size, so we don't have to recalculate it later.
 	bool on_stack; //if the return value refers to an alloca.
 	//in that case, the type is actually a pointer.
@@ -81,7 +81,7 @@ struct Return_Info
 	uint64_t target_lower_lifetime; //lower is stricter. the target must die faster than this.
 	//measures the pointer's target's lifetime, for when the pointed-to memory location wants something to be written into it.
 	
-	Return_Info(codegen_status err, llvm::Value* b, const Type* t, uint64_t si, bool o, uint64_t s, uint64_t u, uint64_t l)
+	Return_Info(codegen_status err, llvm::Value* b, Type* t, uint64_t si, bool o, uint64_t s, uint64_t u, uint64_t l)
 		: error_code(err), IR(b), type(t), size(si), on_stack(o), self_lifetime(s), target_upper_lifetime(u), target_lower_lifetime(l) {}
 
 	//default constructor for a null object
@@ -295,14 +295,14 @@ void output_AST_and_previous(AST* target)
 			output_AST_and_previous(target->fields[x].ptr);
 }
 
-void output_type(const Type* target)
+void output_type(Type* target)
 {
 	std::cerr << "type " << type_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << "\n";
 	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
 }
 
 
-void output_type_and_previous(const Type* target)
+void output_type_and_previous(Type* target)
 {
 	output_type(target);
 	unsigned further_outputs = type_descriptor[target->tag].pointer_fields;
@@ -412,7 +412,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 	//internal: do not call this directly. use the finish macro instead
 	//clears dead objects off the stack, and makes your result visible to other ASTs
-	auto finish_internal = [&](llvm::Value* return_value, const Type* type, uint64_t upper_life, uint64_t lower_life) -> Return_Info
+	auto finish_internal = [&](llvm::Value* return_value, Type* type, uint64_t upper_life, uint64_t lower_life) -> Return_Info
 	{
 		if (VERBOSE_DEBUG)
 		{
