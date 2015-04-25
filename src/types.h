@@ -19,7 +19,9 @@ union int_or_ptr
 struct Type;
 extern Type T_int_internal;
 extern Type T_nonexistent_internal;
-constexpr Type* T_nonexistent = &T_nonexistent_internal;
+extern Type T_special_internal;
+constexpr Type* T_nonexistent = &T_nonexistent_internal; //nothing at all. used for ctors for parameter fields, or for goto.
+constexpr Type* T_special = &T_special_internal; //indicates that a return type is to be handled differently
 constexpr Type* T_int = &T_int_internal; //describes an integer type
 constexpr Type* T_null = nullptr;
 
@@ -97,16 +99,16 @@ constexpr AST_info AST_descriptor[] =
 {
 	{ "integer", T_int}, //first argument is an integer, which is the returned value.
 	{ "Hello World!", T_null},
-	a("if", nullptr).set_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
+	a("if", T_special).set_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
 	a("scope", T_null).set_fields_to_compile(1), //fulfills the purpose of {} from C++
 	{ "add", T_int, T_int, T_int }, //adds two integers
 	{ "subtract", T_int, T_int, T_int },
 	{ "random", T_int}, //returns a random integer
-	a("pointer", nullptr).set_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
-	a("copy", nullptr).set_pointer_fields(1), //creates a copy of an element. takes one field, but does NOT compile it.
-	{ "never reached", nullptr }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
+	a("pointer", T_special).set_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
+	a("copy", T_special).set_pointer_fields(1), //creates a copy of an element. takes one field, but does NOT compile it.
+	{ "never reached", T_special }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	//{ "dereference pointer", 0, 1 },
-	a( "concatenate", nullptr).set_fields_to_compile(2) ,
+	a( "concatenate", T_special).set_fields_to_compile(2) ,
 	/*	{ "goto", 2 }, //label and failure branch
 	{ "label" },
 	{ "no op", 0, 0 },
@@ -139,10 +141,10 @@ struct type_info
 	const unsigned pointer_fields; //how many field elements must be pointers
 
 	//size of the actual object. -1 if special
-	const int size_of_return;
+	const int size;
 
 	constexpr type_info(const char a[], unsigned n, int s)
-		: name(a), pointer_fields(n), size_of_return(s) {}
+		: name(a), pointer_fields(n), size(s) {}
 };
 
 constexpr type_info type_descriptor[] =

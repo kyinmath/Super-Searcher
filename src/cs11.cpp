@@ -41,6 +41,7 @@ uint64_t generate_random() { return mersenne(); }
 
 Type T_int_internal("integer");
 Type T_nonexistent_internal("integer");
+Type T_special_internal("integer");
 
 
 enum codegen_status {
@@ -93,6 +94,37 @@ struct Return_Info
 to compile an AST, default construct a compiler_object, and then run compile_AST() on the last AST in the main basic block.
 this last AST is assumed to contain the return object.
 */
+
+
+
+constexpr uint64_t get_size(Type* target)
+{
+	if (target == nullptr)
+		return 0;
+	if (type_descriptor[target->tag].size != -1) return type_descriptor[target->tag].size;
+	else if (target->tag == Typen("concatenate"))
+	{
+		return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
+	}
+	std::cerr << "couldn't get size of type tag " << target->tag;
+	llvm_unreachable("panic in get_size");
+}
+
+
+constexpr uint64_t get_size(AST* target)
+{
+	if (target == nullptr)
+		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
+	if (AST_descriptor[target->tag].return_object != T_special) return get_size(AST_descriptor[target->tag].return_object);
+	else if (target->tag == ASTn("if")) return get_size(target->fields[1].ptr);
+	else if (target->tag == ASTn("pointer")) return 1;
+	else if (target->tag == ASTn("copy")) return get_size(target->fields[0].ptr);
+	else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
+	std::cerr << "couldn't get size of tag " << target->tag;
+	llvm_unreachable("panic in get_size");
+}
+
+
 class compiler_object
 {
 	llvm::Module *TheModule;
@@ -123,7 +155,6 @@ class compiler_object
 	void clear_stack(uint64_t desired_stack_size);
 
 	llvm::AllocaInst* create_alloca_in_entry_block(uint64_t size);
-	uint64_t get_size(AST* target);
 
 	Return_Info generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location = nullptr);
 
@@ -230,21 +261,6 @@ unsigned compiler_object::compile_AST(AST* target)
 		FP();
 	}
 	return 0;
-}
-
-
-uint64_t compiler_object::get_size(AST* target)
-{
-	if (target == nullptr)
-		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
-	if (AST_descriptor[target->tag].size_of_return != -1) return AST_descriptor[target->tag].size_of_return;
-	else if (target->tag == ASTn("if"))
-	{
-		//todo: do some type checking? we can defer that to compilation though.
-		return get_size(target->fields[1].ptr);
-	}
-	std::cerr << "couldn't get size of tag " << target->tag;
-	llvm_unreachable("panic in get_size");
 }
 
 
@@ -381,7 +397,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			{
 				result = generate_IR(target->fields[x].ptr, false);
 				if (result.error_code) return result;
-				if (AST_descriptor[target->tag].parameter_types[x] != nullptr)
+				if (AST_descriptor[target->tag].parameter_types[x] != T_nonexistent)
 					if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x])) return_code(type_mismatch);
 			}
 			field_results.push_back(result);
