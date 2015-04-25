@@ -23,19 +23,19 @@ so: 0 = different. 1 = new reference is too large. 2 = existing reference is too
 */
 
 
-unsigned type_check(type_status version, Type* existing_reference, Type* new_reference)
+unsigned type_check(type_status version, const Type* existing_reference, const Type* new_reference)
 {
-	std::array<Type*, 2> iter = { existing_reference, new_reference };
+	std::array<const Type*, 2> iter = { existing_reference, new_reference };
 	if (iter[0] == iter[1])// && (lock[0] == lock[1] || version == RVO))
 		return 3; //easy way out, if lucky. we can't do this later, because our stack might have extra things to look at.
 
 	//this stack enables two-part recursion using both type objects, which isn't possible otherwise.
 	//fully_immut must always be exactly the same for both types, so we technically don't need to store it twice. but we do anyway, for now.
 	struct stack_element{
-		Type* iter;
+		const Type* iter;
 		stack_element(Type* a) : iter(a) {}
 	};
-	auto consume_until_physical = [](Type*& iterator, std::stack<stack_element>& history)
+	auto consume_until_physical = [](const Type*& iterator, std::stack<stack_element>& history)
 	{
 	beginning:
 		if (iterator == nullptr)

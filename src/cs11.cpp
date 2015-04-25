@@ -24,6 +24,7 @@
 bool OPTIMIZE = false;
 bool VERBOSE_DEBUG = false;
 bool INTERACTIVE = true;
+bool CONSOLE = false;
 
 //todo: threading. create non-global contexts
 #ifndef _MSC_VER
@@ -37,8 +38,9 @@ llvm::LLVMContext& thread_context = llvm::getGlobalContext();
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937_64 mersenne(seed);
 uint64_t generate_random() { return mersenne(); }
-Type* T_uint64 = new Type("integer"); //describes an integer type
-Type* T_null = nullptr; //describes an object consisting of nothing
+
+const Type T_int_internal("integer");
+const Type T_nonexistent_internal("integer");
 
 
 enum codegen_status {
@@ -60,7 +62,7 @@ struct Return_Info
 
 	llvm::Value* IR;
 		
-	Type* type;
+	const Type* type;
 	uint64_t size; //we memorize the size, so we don't have to recalculate it later.
 	bool on_stack; //if the return value refers to an alloca.
 	//in that case, the type is actually a pointer.
@@ -79,7 +81,7 @@ struct Return_Info
 	uint64_t target_lower_lifetime; //lower is stricter. the target must die faster than this.
 	//measures the pointer's target's lifetime, for when the pointed-to memory location wants something to be written into it.
 	
-	Return_Info(codegen_status err, llvm::Value* b, Type* t, uint64_t si, bool o, uint64_t s, uint64_t u, uint64_t l)
+	Return_Info(codegen_status err, llvm::Value* b, const Type* t, uint64_t si, bool o, uint64_t s, uint64_t u, uint64_t l)
 		: error_code(err), IR(b), type(t), size(si), on_stack(o), self_lifetime(s), target_upper_lifetime(u), target_lower_lifetime(l) {}
 
 	//default constructor for a null object
@@ -106,18 +108,18 @@ class compiler_object
 	//maps ASTs to their generated IR and return type.
 	std::unordered_map<AST*, Return_Info> objects;
 
-	//these are the labels which we just passed by. you can jump to them without checking finiteness, but you still have to check the type stack
+	//these are the labels which are later in the basic block. you can jump to them without checking finiteness, but you must check the type stack
 	//std::stack<AST*> future_labels;
 
 	std::deque<Type> type_scratch_space;
 	//a memory pool for storing temporary types. will be cleared at the end of compilation.
-	//it MUST be a deque so that memory locations stay valid after push_back().
+	//it must be a deque so that its memory locations stay valid after push_back().
 	//even though the constant impact of deque (memory) is bad for small compilations.
 
-	//increases by 1 every time an object is created. imposes an ordering on object lifetimes.
+	//increases by 1 every time an object is created. imposes an ordering on stack object lifetimes.
 	uint64_t incrementor_for_lifetime = 0;
 
-	//exists when codegen_status has an error.
+	//some objects have expired - this clears them
 	void clear_stack(uint64_t desired_stack_size);
 
 	llvm::AllocaInst* create_alloca_in_entry_block(uint64_t size);
@@ -128,6 +130,8 @@ class compiler_object
 public:
 	compiler_object();
 	unsigned compile_AST(AST* target); //we can't combine this with the ctor, because it needs to return an int
+
+	//exists when codegen_status has an error.
 	AST* error_location;
 
 };
@@ -257,8 +261,7 @@ llvm::AllocaInst* compiler_object::create_alloca_in_entry_block(uint64_t size) {
 
 	//we explicitly create the array type instead of allocating multiples, because that's what clang does for C++ arrays.
 	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
-	if (size > 1)
-		return TmpB.CreateAlloca(llvm::ArrayType::get(int64_type, size));
+	if (size > 1) return TmpB.CreateAlloca(llvm::ArrayType::get(int64_type, size));
 	else return TmpB.CreateAlloca(int64_type);
 }
 
@@ -292,14 +295,14 @@ void output_AST_and_previous(AST* target)
 			output_AST_and_previous(target->fields[x].ptr);
 }
 
-void output_type(Type* target)
+void output_type(const Type* target)
 {
 	std::cerr << "type " << type_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << "\n";
 	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
 }
 
 
-void output_type_and_previous(Type* target)
+void output_type_and_previous(const Type* target)
 {
 	output_type(target);
 	unsigned further_outputs = type_descriptor[target->tag].pointer_fields;
@@ -371,13 +374,15 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	if (target->tag != ASTn("if") && target->tag != ASTn("pointer") && target->tag != ASTn("copy"))
 	{
 
-		for (unsigned x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
+		for (unsigned x = 0; x < AST_descriptor[target->tag].fields_to_compile; ++x)
 		{
 			Return_Info result; //default constructed for null object
 			if (target->fields[x].ptr)
 			{
 				result = generate_IR(target->fields[x].ptr, false);
 				if (result.error_code) return result;
+				if (AST_descriptor[target->tag].parameter_types[x] != nullptr)
+					if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x])) return_code(type_mismatch);
 			}
 			field_results.push_back(result);
 			//todo: normally we'd also want to verify the types here. 
@@ -407,7 +412,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 	//internal: do not call this directly. use the finish macro instead
 	//clears dead objects off the stack, and makes your result visible to other ASTs
-	auto finish_internal = [&](llvm::Value* return_value, Type* type, uint64_t upper_life, uint64_t lower_life) -> Return_Info
+	auto finish_internal = [&](llvm::Value* return_value, const Type* type, uint64_t upper_life, uint64_t lower_life) -> Return_Info
 	{
 		if (VERBOSE_DEBUG)
 		{
@@ -450,16 +455,12 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	{
 	case ASTn("integer"):
 	{
-		finish(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)), T_uint64);
+		finish(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)), T_int);
 	}
 	case ASTn("add"): //add two integers.
-		if (type_check(RVO, field_results[0].type, T_uint64)) return_code(type_mismatch);
-		if (type_check(RVO, field_results[1].type, T_uint64)) return_code(type_mismatch);
-		finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR), T_uint64);
+		finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR), T_int);
 	case ASTn("subtract"):
-		if (type_check(RVO, field_results[0].type, T_uint64)) return_code(type_mismatch);
-		if (type_check(RVO, field_results[1].type, T_uint64)) return_code(type_mismatch);
-		finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR), T_uint64);
+		finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR), T_int);
 	case ASTn("Hello World!"):
 	{
 		llvm::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!\n");
@@ -481,7 +482,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		llvm::PointerType *twister_ptr_type = llvm::PointerType::getUnqual(twister_type);
 		llvm::Constant *twister_address = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, (uint64_t)&generate_random));
 		llvm::Value *twister_function = Builder.CreateBitOrPointerCast(twister_address, twister_ptr_type);
-		finish(Builder.CreateCall(twister_function), T_uint64);
+		finish(Builder.CreateCall(twister_function), T_int);
 	}
 	case ASTn("if"): //todo: you can see the condition's return object in the branches.
 		//we could have another version where the condition's return object is invisible.
@@ -493,7 +494,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			auto condition = generate_IR(target->fields[0].ptr, 0);
 			if (condition.error_code) return condition;
 
-			if (type_check(RVO, condition.type, T_uint64))
+			if (type_check(RVO, condition.type, T_int))
 				return_code(type_mismatch);
 
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
@@ -583,7 +584,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		else finish(Builder.CreateLoad(found_AST->second.IR), found_AST->second.type);
 	}
 	/*case ASTn("get 0"):
-		finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_uint64);*/
+		finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_int);*/
 	}
 
 	return_code(fell_through_switches);
@@ -647,6 +648,88 @@ void fuzztester(unsigned iterations)
 	}
 }
 
+#include <iostream>
+#include <sstream>
+
+#include <istream>
+class source_reader
+{
+	//we need to implement this.
+	std::unordered_map<std::string, AST*> ASTmap; //from name to location
+	std::istream& input;
+	char ending_char;
+	//call this after you've found and consumed a [.
+	//doesn't get the type name. you'll have to find that out yourself.
+	AST* read_single_AST(AST* previous_AST)
+	{
+		std::string word;
+		do {
+			word += input.peek();
+			input.ignore(1);
+		} while (input.peek() != ',' && input);
+		uint64_t AST_type = ASTn(word.c_str());
+		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
+
+		int field_num = 0; //which field we're on
+		int_or_ptr<AST> fields[max_fields_in_AST] = { nullptr, nullptr, nullptr, nullptr };
+		while (input.peek() != ']')
+		{
+			if (field_num >= max_fields_in_AST)
+			{
+				std::cerr << "more fields than possible\n";
+				abort();
+			}
+			while (input.peek() == ' ') input.ignore(1);
+			if (input.peek() == '[')
+			{
+				input.ignore(1);
+				read_single_AST(nullptr);
+			}
+			else if (field_num < pointer_fields) //it's a pointer!
+			{
+				std::string ASTname;
+				while (input.peek() != ',')
+				{
+					ASTname.push_back(input.peek());
+					input.ignore();
+				}
+				fields[field_num] = ASTmap.find(ASTname)->second;
+			}
+			else if (!(input >> fields[field_num].num))
+			{
+				std::cerr << "reading integer failed\n";
+				abort();
+			}
+			++field_num;
+		}
+		input.ignore(1); //consume ']'
+		AST* new_type = new AST(AST_type, previous_AST, fields[0], fields[1], fields[2], fields[3]);
+
+		std::string thisASTname;
+		//get an AST name if any.
+		while (input.peek() != '[' && input.peek() != ' ' && input.peek() != ending_char)
+		{
+			thisASTname.push_back(input.peek());
+			input.ignore();
+		}
+		if (!thisASTname.empty())
+			ASTmap.insert(std::make_pair(thisASTname, new_type));
+
+		return new_type;
+
+	}
+
+
+public:
+	source_reader(std::istream& stream, char end) : input(stream), ending_char(end) {}
+	AST* create_single_basic_block()
+	{
+		AST* current_previous;
+		while (input.peek() != ending_char) current_previous = read_single_AST(current_previous);
+		return current_previous; //which is the very last.
+	}
+};
+
 int main(int argc, char* argv[])
 {
 	for (int x = 1; x < argc; ++x)
@@ -657,6 +740,8 @@ int main(int argc, char* argv[])
 			VERBOSE_DEBUG = true;
 		if (strcmp(argv[x], "optimize") == 0)
 			OPTIMIZE = true;
+		if (strcmp(argv[x], "console") == 0)
+			CONSOLE = true;
 	}
 	/*
 	AST get1("integer", nullptr, 1); //get the integer 1
@@ -670,6 +755,18 @@ int main(int argc, char* argv[])
 	compiler_object compiler;
 	compiler.compile_AST(&helloworld);
 	*/
+
+	if (CONSOLE)
+	{
+		source_reader k(std::cin, '\n');
+		while (1)
+		{
+			AST* end = k.create_single_basic_block();
+			std::cin.ignore(1); //consume '\n'
+			compiler_object j;
+			j.compile_AST(end);
+		}
+	}
 
 	fuzztester(-1);
 }
