@@ -164,24 +164,21 @@ constexpr bool static_strequal(const char str1[], const char str2[])
 
 template<constexpr type_info vector_name[]> constexpr uint64_t get_enum_from_name(const char name[])
 {
-	unsigned k = 0;
-	while (1)
+	for (unsigned k = 0; 1; ++k)
 	{
 		if (static_strequal(vector_name[k].name, name)) return k;
-		if (static_strequal("never reached", name))
+		if (static_strequal(vector_name[k].name, "never reached")) //this isn't recursive, because the previous if statement returns.
 			llvm_unreachable("tried to get a nonexistent name");
-		++k;
 	}
 }
+
 constexpr uint64_t ASTn(const char name[])
 {
-	unsigned k = 0;
-	while (1)
+	for (unsigned k = 0; 1; ++k)
 	{
 		if (static_strequal(AST_descriptor[k].name, name)) return k;
-		if (static_strequal("never reached", name))
+		if (static_strequal(AST_descriptor[k].name, "never reached")) //this isn't recursive, because the previous if statement returns.
 			llvm_unreachable("tried to get a nonexistent name");
-		++k;
 	}
 }
 constexpr uint64_t Typen(const char name[])

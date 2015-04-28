@@ -169,6 +169,8 @@ public:
 
 compiler_object::compiler_object() : error_location(nullptr), Builder(thread_context)
 {
+	if (VERBOSE_DEBUG)
+		std::cerr << "creating compiler object\n";
 	TheModule = new llvm::Module("temp module", thread_context);
 
 	llvm::InitializeNativeTarget();
@@ -190,6 +192,10 @@ compiler_object::compiler_object() : error_location(nullptr), Builder(thread_con
 
 unsigned compiler_object::compile_AST(AST* target)
 {
+
+	if (VERBOSE_DEBUG)
+		std::cerr << "starting compilation\n";
+
 	using namespace llvm;
 	FunctionType *FT;
 
@@ -207,6 +213,8 @@ unsigned compiler_object::compile_AST(AST* target)
 	if (return_object.error_code)
 		return return_object.error_code; //error
 
+	if (VERBOSE_DEBUG)
+		std::cerr << "comp here\n";
 	if (size_of_return)
 		Builder.CreateRet(return_object.IR);
 	else Builder.CreateRetVoid();
@@ -397,8 +405,16 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			{
 				result = generate_IR(target->fields[x].ptr, false);
 				if (result.error_code) return result;
+
+				if (VERBOSE_DEBUG)
+				{
+					std::cerr << "type checking. result type is \n";
+					output_type_and_previous(result.type);
+					std::cerr << "desired type is \n";
+					output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
+				}
 				if (AST_descriptor[target->tag].parameter_types[x] != T_nonexistent)
-					if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x])) return_code(type_mismatch);
+					if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != 3) return_code(type_mismatch);
 			}
 			field_results.push_back(result);
 			//todo: normally we'd also want to verify the types here. 
@@ -432,8 +448,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	{
 		if (VERBOSE_DEBUG)
 		{
-			std::cerr << "finishing IR generation, called value is";
+			std::cerr << "finishing IR generation, called value is ";
 			return_value->print(llvm::outs());
+			std::cerr << "\nAST addr is ";
+			std::cerr << target;
 			std::cerr << "\nand the llvm type is ";
 			return_value->getType()->print(llvm::outs());
 			std::cerr << "\nand the internal type is ";
@@ -510,7 +528,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			auto condition = generate_IR(target->fields[0].ptr, 0);
 			if (condition.error_code) return condition;
 
-			if (type_check(RVO, condition.type, T_int))
+			if (type_check(RVO, condition.type, T_int) != 3)
 				return_code(type_mismatch);
 
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
@@ -547,7 +565,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			if (else_IR.error_code) return else_IR;
 
 			//RVO, because that's what defines the slot.
-			if (type_check(RVO, then_IR.type, else_IR.type))
+			if (type_check(RVO, then_IR.type, else_IR.type) != 3)
 				return_code(type_mismatch);
 
 			//for the second branch
@@ -562,6 +580,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			uint64_t result_target_lower_lifetime = std::min(then_IR.target_lower_lifetime, else_IR.target_lower_lifetime);
 			if (stack_degree == 0)
 			{
+				std::cerr << "stack degree is 0\n";
 				if (size_result == 0)
 					return_code(no_error);
 
@@ -673,75 +692,119 @@ class source_reader
 	//we need to implement this.
 	std::unordered_map<std::string, AST*> ASTmap; //from name to location
 	std::istream& input;
-	char ending_char;
 	//call this after you've found and consumed a [.
 	//doesn't get the type name. you'll have to find that out yourself.
 	AST* read_single_AST(AST* previous_AST)
 	{
+		input.ignore(1); //consume '['
+
 		std::string word;
 		do {
 			word += input.peek();
 			input.ignore(1);
-		} while (input.peek() != ',' && input);
+		} while (input.peek() != ' ' && input.peek() != ']');
+
+		if (VERBOSE_DEBUG)
+			std::cerr << word.c_str() << '\n';
 		uint64_t AST_type = ASTn(word.c_str());
+		if (VERBOSE_DEBUG)
+		std::cerr << "AST tag was " << AST_type << "\n";
 		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
 
-		int field_num = 0; //which field we're on
 		int_or_ptr<AST> fields[max_fields_in_AST] = { nullptr, nullptr, nullptr, nullptr };
-		while (input.peek() != ']')
+
+		//field_num is which field we're on
+		for (int field_num = 0; input.peek() != ']'; ++field_num)
 		{
+			while (input.peek() == ' ') input.ignore(1);
 			if (field_num >= max_fields_in_AST)
 			{
 				std::cerr << "more fields than possible\n";
 				abort();
 			}
-			while (input.peek() == ' ') input.ignore(1);
 			if (input.peek() == '[')
 			{
-				input.ignore(1);
-				read_single_AST(nullptr);
+				fields[field_num] = read_single_AST(nullptr);
 			}
 			else if (field_num < pointer_fields) //it's a pointer!
 			{
 				std::string ASTname;
-				while (input.peek() != ',')
+				while (input.peek() != ' ')
 				{
 					ASTname.push_back(input.peek());
-					input.ignore();
+					std::cerr << (char)input.peek();
+					input.ignore(1);
 				}
 				fields[field_num] = ASTmap.find(ASTname)->second;
 			}
-			else if (!(input >> fields[field_num].num))
+			else
 			{
-				std::cerr << "reading integer failed\n";
-				abort();
+				std::string string_number;
+				while (isdigit(input.peek()))
+				{
+					string_number.push_back(input.peek());
+					input.ignore(1);
+				}
+
+				if (VERBOSE_DEBUG)
+					std::cerr << string_number << "stringnumber\n";
+				fields[field_num] = std::stoi(string_number); //TODO: this only produces ints, not int64
+				if (VERBOSE_DEBUG)
+				{
+					std::cerr << "field was " << fields[field_num].num << '\n';
+				}
 			}
-			++field_num;
 		}
 		input.ignore(1); //consume ']'
 		AST* new_type = new AST(AST_type, previous_AST, fields[0], fields[1], fields[2], fields[3]);
 
+		if (VERBOSE_DEBUG)
+			output_AST_and_previous(new_type);
+
 		std::string thisASTname;
 		//get an AST name if any.
-		while (input.peek() != '[' && input.peek() != ' ' && input.peek() != ending_char)
+		//the input.eof must come first, because peeking blocks the stream again.
+		//if (!input.eof()) I think cin is never eof.
 		{
-			thisASTname.push_back(input.peek());
-			input.ignore();
+			while (input.peek() != ' ' && input.peek() != '\n' && input.peek() != ']' && input.peek() != '[')
+			{
+				thisASTname.push_back(input.peek());
+				input.ignore(1);
+
+				if (VERBOSE_DEBUG)
+					std::cerr << "next char while name is " << (char)input.peek() << input.peek() << '\n';
+			}
 		}
+		//seems that once we consume the last '\n', the cin stream starts blocking again.
 		if (!thisASTname.empty())
 			ASTmap.insert(std::make_pair(thisASTname, new_type));
 
+		if (VERBOSE_DEBUG)
+		{
+			std::cerr << "next char is" << (char)input.peek() << input.peek();
+			std::cerr << '\n';
+		}
 		return new_type;
+
 
 	}
 
 
 public:
-	source_reader(std::istream& stream, char end) : input(stream), ending_char(end) {}
+	source_reader(std::istream& stream, char end) : input(stream) {}
 	AST* create_single_basic_block()
 	{
-		AST* current_previous;
-		while (input.peek() != ending_char) current_previous = read_single_AST(current_previous);
+		AST* current_previous = nullptr;
+		if (std::cin.peek() == '\n') std::cin.ignore(1);
+		while (input.peek() != '\n')
+		{
+			while (input.peek() == ' ')
+				std::cin.ignore(1);
+			current_previous = read_single_AST(current_previous);
+			if (VERBOSE_DEBUG)
+				std::cerr << "next charblock is" << (char)input.peek() << input.peek();
+			output_AST_and_previous(current_previous);
+		}
 		return current_previous; //which is the very last.
 	}
 };
@@ -777,10 +840,31 @@ int main(int argc, char* argv[])
 		source_reader k(std::cin, '\n');
 		while (1)
 		{
+			std::cerr << "Input AST:\n";
 			AST* end = k.create_single_basic_block();
-			std::cin.ignore(1); //consume '\n'
+			if (end == nullptr)
+			{
+				std::cerr << "it's nullptr\n";
+				std::cin.get();
+			}
 			compiler_object j;
-			j.compile_AST(end);
+			unsigned error_code = j.compile_AST(end);
+			if (error_code)
+			{
+				if (error_code > codegen_status::after_this_are_compiler_bugs)
+				{
+					std::cerr << "ERROR: code " << error_code << " at AST " << j.error_location << '\n';
+					llvm_unreachable("compiler error");
+				}
+				else
+				{
+					std::cerr << "Malformed AST: code " << error_code << " at AST " << j.error_location << '\n';
+				}
+			}
+			else
+			{
+				std::cerr << "Successful compile\n";
+			}
 		}
 	}
 
