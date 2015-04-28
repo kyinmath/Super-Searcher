@@ -57,6 +57,44 @@ enum codegen_status {
 	null_AST_compiler_bug, //we tried to generate_IR() a nullptr, which means generate_IR() is bugged
 };
 
+
+void output_AST(AST* target)
+{
+	std::cerr << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target <<
+		", prev " << target->preceding_BB_element << '\n';
+	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
+}
+
+
+void output_AST_and_previous(AST* target)
+{
+	output_AST(target);
+	if (target->preceding_BB_element != nullptr)
+		output_AST_and_previous(target->preceding_BB_element);
+	unsigned number_of_further_ASTs = AST_descriptor[target->tag].pointer_fields;
+	//boost::irange may be useful, but pulling in unnecessary (possibly-buggy) code is bad
+	for (int x = 0; x < number_of_further_ASTs; ++x)
+		if (target->fields[x].ptr != nullptr)
+			output_AST_and_previous(target->fields[x].ptr);
+}
+
+void output_type(Type* target)
+{
+	std::cerr << "type " << type_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << "\n";
+	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
+}
+
+
+void output_type_and_previous(Type* target)
+{
+	output_type(target);
+	unsigned further_outputs = type_descriptor[target->tag].pointer_fields;
+	//I kind of want to use boost's irange here, but pulling in a big library may not be the best idea
+	for (int x = 0; x < further_outputs; ++x)
+		if (target->fields[x].ptr != nullptr)
+			output_type_and_previous(target->fields[x].ptr);
+}
+
 struct Return_Info
 {
 	codegen_status error_code;
@@ -115,8 +153,25 @@ constexpr uint64_t get_size(AST* target)
 {
 	if (target == nullptr)
 		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
-	if (AST_descriptor[target->tag].return_object != T_special) return get_size(AST_descriptor[target->tag].return_object);
-	else if (target->tag == ASTn("if")) return get_size(target->fields[1].ptr);
+	std::cerr << "return object " << AST_descriptor[target->tag].return_object << '\n';
+	std::cerr << "target tag is " << target->tag << '\n';
+	std::cerr << "T_special " << T_special << '\n';
+	std::cerr << "T_int_internal " << &T_int_internal << '\n';
+	std::cerr << "T_non_internal " << &T_nonexistent_internal << '\n';
+	std::cerr << "T_special_internal " << &T_special_internal << '\n';
+	output_type_and_previous(AST_descriptor[target->tag].return_object);
+	output_type_and_previous(T_special);
+	if (AST_descriptor[target->tag].return_object != T_special)
+	{
+		std::cerr << "not t_special";
+		std::cin.get();
+		return get_size(AST_descriptor[target->tag].return_object);
+	}
+	else if (target->tag == ASTn("if"))
+	{
+		std::cerr << "getting size of if statement\n";
+		return get_size(target->fields[1].ptr);
+	}
 	else if (target->tag == ASTn("pointer")) return 1;
 	else if (target->tag == ASTn("copy")) return get_size(target->fields[0].ptr);
 	else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
@@ -299,42 +354,6 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 	}
 }
 
-void output_AST(AST* target)
-{
-	std::cerr << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target <<
-		", prev " << target->preceding_BB_element << '\n';
-	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
-}
-
-
-void output_AST_and_previous(AST* target)
-{
-	output_AST(target);
-	if (target->preceding_BB_element != nullptr)
-		output_AST_and_previous(target->preceding_BB_element);
-	unsigned number_of_further_ASTs = AST_descriptor[target->tag].pointer_fields;
-	//boost::irange may be useful, but pulling in unnecessary (possibly-buggy) code is bad
-	for (int x = 0; x < number_of_further_ASTs; ++x)
-		if (target->fields[x].ptr != nullptr)
-			output_AST_and_previous(target->fields[x].ptr);
-}
-
-void output_type(Type* target)
-{
-	std::cerr << "type " << type_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << "\n";
-	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
-}
-
-
-void output_type_and_previous(Type* target)
-{
-	output_type(target);
-	unsigned further_outputs = type_descriptor[target->tag].pointer_fields;
-	//I kind of want to use boost's irange here, but pulling in a big library may not be the best idea
-	for (int x = 0; x < further_outputs; ++x)
-		if (target->fields[x].ptr != nullptr)
-			output_type_and_previous(target->fields[x].ptr);
-}
 /** generate_IR() is the main code that transforms AST into LLVM IR. it is called with the AST to be transformed, which must not be nullptr.
 
 ASTs that are directly inside basic blocks should allocate their own stack_memory, so they are given stack_degree = 2.
@@ -383,12 +402,17 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//after compiling the previous elements in the basic block, we find the lifetime of this element
 	uint64_t lifetime_of_return_value = incrementor_for_lifetime++;
 
-	uint64_t size_result = 0;
+	uint64_t size_result = -1; //note: it's only active when stack_degree = 2. otherwise, you must have special cases.
+	//-1 is a debug choice, since having it at 0 led to invisible errors.
 	uint64_t final_stack_position = object_stack.size();
 	if (stack_degree == 2)
 	{
 		size_result = get_size(target);
 		if (size_result) storage_location = create_alloca_in_entry_block(size_result);
+	}
+	else if (target->tag == ASTn("if"))
+	{
+		size_result = get_size(target->fields[1].ptr);
 	}
 
 	//generated IR of the fields of the AST
@@ -580,9 +604,12 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			uint64_t result_target_lower_lifetime = std::min(then_IR.target_lower_lifetime, else_IR.target_lower_lifetime);
 			if (stack_degree == 0)
 			{
-				std::cerr << "stack degree is 0\n";
 				if (size_result == 0)
+				{
+					std::cerr << "DEBUG: size resultw as 0\n";
 					return_code(no_error);
+				}
+				//TODO: somewhere here, we aren't getting sizes properly.
 
 				llvm::PHINode *PN;
 				if (size_result == 1)
