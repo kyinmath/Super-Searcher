@@ -153,23 +153,12 @@ constexpr uint64_t get_size(AST* target)
 {
 	if (target == nullptr)
 		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
-	std::cerr << "return object " << AST_descriptor[target->tag].return_object << '\n';
-	std::cerr << "target tag is " << target->tag << '\n';
-	std::cerr << "T_special " << T_special << '\n';
-	std::cerr << "T_int_internal " << &T_int_internal << '\n';
-	std::cerr << "T_non_internal " << &T_nonexistent_internal << '\n';
-	std::cerr << "T_special_internal " << &T_special_internal << '\n';
-	output_type_and_previous(AST_descriptor[target->tag].return_object);
-	output_type_and_previous(T_special);
 	if (AST_descriptor[target->tag].return_object != T_special)
 	{
-		std::cerr << "not t_special";
-		std::cin.get();
 		return get_size(AST_descriptor[target->tag].return_object);
 	}
 	else if (target->tag == ASTn("if"))
 	{
-		std::cerr << "getting size of if statement\n";
 		return get_size(target->fields[1].ptr);
 	}
 	else if (target->tag == ASTn("pointer")) return 1;
