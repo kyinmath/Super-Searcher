@@ -403,10 +403,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//after compiling the previous elements in the basic block, we find the lifetime of this element
 	uint64_t lifetime_of_return_value = incrementor_for_lifetime++;
 
-	uint64_t size_result = -1; //note: it's only active when stack_degree = 2. otherwise, you must have special cases.
+	uint64_t size_result = -1; //note: it's only active when stack_degree = 1. otherwise, you must have special cases.
 	//-1 is a debug choice, since having it at 0 led to invisible errors.
 	uint64_t final_stack_position = object_stack.size();
-	if (stack_degree == 2)
+	if (stack_degree >= 1) //you need to create allocas and to know size to store into allocas.
 	{
 		size_result = get_size(target);
 		if (size_result) storage_location = create_alloca_in_entry_block(size_result);
@@ -453,7 +453,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//places a constructed object into storage_location.
 	auto move_to_stack = [&](llvm::Value* return_value) -> llvm::Value*
 	{
-		std::cerr << "move to stack argle garble\n";
 		if (size_result > 1)
 		{
 			for (int i = 0; i < size_result; ++i)
@@ -506,8 +505,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//use finish_previously_constructed if your AST is not the one constructing the return object.
 	//for example, concatenate() and if() use previously constructed return objects, and simply pass them through.
 
-#define finish(X, type) do { llvm::Value* end_value = stack_degree >= 1 ? move_to_stack(X) : X; return finish_internal(end_value, type, 0, -1ull); } while (0)
-#define finish_pointer(X, type, u, l) do { if (stack_degree >= 1) move_to_stack(X); return finish_internal(X, type, u, l); } while (0)
+	//we can't use X directly because we will be duplicating the argument.
+#define finish(X, type) do { llvm::Value* first_value = X; llvm::Value* end_value = stack_degree >= 1 ? move_to_stack(first_value) : first_value; return finish_internal(end_value, type, 0, -1ull); } while (0)
+#define finish_pointer(X, type, u, l) do {llvm::Value* first_value = X; if (stack_degree >= 1) move_to_stack(first_value); return finish_internal(first_value, type, u, l); } while (0)
 #define finish_previously_constructed(X, type) do { return finish_internal(X, type, 0, -1ull); } while (0)
 #define finish_previously_constructed_pointer(X, type, u, l) do { return finish_internal(X, type, u, l); } while (0)
 
@@ -545,19 +545,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		llvm::Value *twister_function = Builder.CreateBitOrPointerCast(twister_address, twister_ptr_type);
 		//note: if this debug createstore exists, the move_to_stack will survive; it'll just crash later
 		//but if the debug createstore is removed, the move_to_stack crashes on the createstore. what gives?
-#if true
-		std::cerr << "I'm segfaulting in the createstore\n";
-		llvm::Value* end_rsult = Builder.CreateCall(twister_function);
-		end_rsult->print(llvm::outs());
-		std::cerr << "\ntype ";
-		end_rsult->getType()->print(llvm::outs());
-		std::cerr << "\n";
-		std::cerr << "before createstore, now dumping:\n";
-		TheModule->dump();
-		Builder.CreateStore(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), storage_location);
-		std::cerr << "after createstore, now dumping:\n";
-		TheModule->dump();
-#endif
 		finish(Builder.CreateCall(twister_function), T_int);
 	}
 	case ASTn("if"): //todo: you can see the condition's return object in the branches.
@@ -589,12 +576,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			//if there are already labels inside the "Then" basic block, we could be in big trouble.
 			Builder.SetInsertPoint(ThenBB);
 
-			std::cerr << "hereaefawefaw\n";
 			//calls with stack_degree as 1 in the called function, if it is 2 outside.
 			Return_Info then_IR; //default constructor for null object
 			if (target->fields[1].ptr != nullptr)
 				then_IR = generate_IR(target->fields[1].ptr, stack_degree != 0, storage_location);
-			std::cerr << "fjfjfjfjw\n";
 			if (then_IR.error_code) return then_IR;
 
 			Builder.CreateBr(MergeBB);
@@ -626,7 +611,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			{
 				if (size_result == 0)
 				{
-					std::cerr << "DEBUG: size resultw as 0\n";
 					return_code(no_error);
 				}
 				//TODO: somewhere here, we aren't getting sizes properly.

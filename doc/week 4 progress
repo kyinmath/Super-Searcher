@@ -5,9 +5,3 @@ Compile system automatically checks the type information, so there's less code n
 Implemented console input. Run "./toy console", then write the code when prompted. Example: [integer 5]int_load [if [integer 1] [copy int_load] [integer 6]]
 
 Each [] represents an AST. The structure is [tag field1 field2 field3 field4]name. So the first AST loads the number 5, with the variable name "int_load". The second AST is an if statement whose condition value is 1, so it evaluates to true and runs the "copy int_load" function. Then, the result of this copy is returned.
-
-Right now, it segfaults easily. For example, this will segfault:
-[if [random] [random] [random]] [add [random] [random]]
-
-Anything using [random] will segfault, but that's just because I put some segfaulting debug code in the [random] path - it doesn't mean anything special. [random] works fine.
-The troublemaker is my CreateStore() call. I am figuring out what is going on - it appears to be llvm's debug helper function (Module.dump()) which is segfaulting, which seems odd to me.
