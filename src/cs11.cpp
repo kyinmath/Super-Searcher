@@ -357,16 +357,28 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
 #define return_code(X) do { error_location = target; return Return_Info(codegen_status::X, nullptr, T_null, 0, false, 0, 0, 0); } while (0)
+
 	if (VERBOSE_DEBUG)
 	{
-		std::cout << "starting generate_IR\n";
+		std::cerr << "starting generate_IR with stack degree " << stack_degree << "\n";
+		if (storage_location)
+		{
+			std::cerr << "storage location is ";
+			storage_location->print(llvm::outs());
+			std::cerr << '\n';
+		}
 		output_AST(target);
 		TheModule->dump();
 	}
 
-	//target should never be nullptr.
-	if (target == nullptr) return_code(null_AST_compiler_bug);
 
+	//target should never be nullptr.
+	if (target == nullptr)
+	{
+		llvm_unreachable("null AST compiler bug");
+		return_code(null_AST_compiler_bug);
+
+	}
 
 	//if we've seen this AST before, we're stuck in an infinite loop
 	if (this->loop_catcher.find(target) != this->loop_catcher.end())
@@ -401,7 +413,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	}
 	else if (target->tag == ASTn("if"))
 	{
-		size_result = get_size(target->fields[1].ptr);
+		size_result = get_size(target->fields[1].ptr); //needed for the phi value
 	}
 
 	//generated IR of the fields of the AST
@@ -441,6 +453,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//places a constructed object into storage_location.
 	auto move_to_stack = [&](llvm::Value* return_value) -> llvm::Value*
 	{
+		std::cerr << "move to stack argle garble\n";
 		if (size_result > 1)
 		{
 			for (int i = 0; i < size_result; ++i)
@@ -469,6 +482,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			return_value->getType()->print(llvm::outs());
 			std::cerr << "\nand the internal type is ";
 			output_type_and_previous(type);
+			std::cerr << '\n';
 		}
 		if (stack_degree == 2)
 			clear_stack(final_stack_position);
@@ -529,6 +543,21 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		llvm::PointerType *twister_ptr_type = llvm::PointerType::getUnqual(twister_type);
 		llvm::Constant *twister_address = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, (uint64_t)&generate_random));
 		llvm::Value *twister_function = Builder.CreateBitOrPointerCast(twister_address, twister_ptr_type);
+		//note: if this debug createstore exists, the move_to_stack will survive; it'll just crash later
+		//but if the debug createstore is removed, the move_to_stack crashes on the createstore. what gives?
+#if true
+		std::cerr << "I'm segfaulting in the createstore\n";
+		llvm::Value* end_rsult = Builder.CreateCall(twister_function);
+		end_rsult->print(llvm::outs());
+		std::cerr << "\ntype ";
+		end_rsult->getType()->print(llvm::outs());
+		std::cerr << "\n";
+		std::cerr << "before createstore, now dumping:\n";
+		TheModule->dump();
+		Builder.CreateStore(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), storage_location);
+		std::cerr << "after createstore, now dumping:\n";
+		TheModule->dump();
+#endif
 		finish(Builder.CreateCall(twister_function), T_int);
 	}
 	case ASTn("if"): //todo: you can see the condition's return object in the branches.
@@ -560,10 +589,12 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			//if there are already labels inside the "Then" basic block, we could be in big trouble.
 			Builder.SetInsertPoint(ThenBB);
 
+			std::cerr << "hereaefawefaw\n";
 			//calls with stack_degree as 1 in the called function, if it is 2 outside.
 			Return_Info then_IR; //default constructor for null object
 			if (target->fields[1].ptr != nullptr)
 				then_IR = generate_IR(target->fields[1].ptr, stack_degree != 0, storage_location);
+			std::cerr << "fjfjfjfjw\n";
 			if (then_IR.error_code) return then_IR;
 
 			Builder.CreateBr(MergeBB);
@@ -745,7 +776,7 @@ class source_reader
 			else if (field_num < pointer_fields) //it's a pointer!
 			{
 				std::string ASTname;
-				while (input.peek() != ' ')
+				while (input.peek() != ' ' && input.peek() != ']')
 				{
 					ASTname.push_back(input.peek());
 					std::cerr << (char)input.peek();
@@ -819,7 +850,10 @@ public:
 			current_previous = read_single_AST(current_previous);
 			if (VERBOSE_DEBUG)
 				std::cerr << "next charblock is" << (char)input.peek() << input.peek();
+			std::cerr << "------ outputting AST of single AST:\n";
 			output_AST_and_previous(current_previous);
+			std::cerr << "---done outputting AST of single AST:\n";
+
 		}
 		return current_previous; //which is the very last.
 	}
@@ -862,6 +896,7 @@ int main(int argc, char* argv[])
 			{
 				std::cerr << "it's nullptr\n";
 				std::cin.get();
+				continue;
 			}
 			compiler_object j;
 			unsigned error_code = j.compile_AST(end);
