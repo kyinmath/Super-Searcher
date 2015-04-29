@@ -92,6 +92,7 @@ struct AST_info
 
 //TODO: our types.h is in the middle of changing. we want to automatically process parameter fields of ASTs. however, scope() can take any parameter type, so we want it to be treated specially. how?
 //the problem is that its return value is regular, but its parameters are not.
+//todo: what parameter types should we use to signify that no checking should be done for a parameter field? nullptr is not good.
 
 using a = AST_info;
 //this is an enum which has extra information for each element. it is constexpr so that it can be used in a switch-case statement.
@@ -108,6 +109,7 @@ constexpr AST_info AST_descriptor[] =
 	a("copy", T_special).set_pointer_fields(1), //creates a copy of an element. takes one field, but does NOT compile it.
 	{ "never reached", T_special }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	//{ "dereference pointer", 0, 1 },
+	a("store", T_special), //????
 	a( "concatenate", T_special).set_fields_to_compile(2) ,
 	/*	{ "goto", 2 }, //label and failure branch
 	{ "label" },

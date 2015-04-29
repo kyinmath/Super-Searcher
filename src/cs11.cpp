@@ -68,6 +68,11 @@ void output_AST(AST* target)
 
 void output_AST_and_previous(AST* target)
 {
+	if (target == nullptr)
+	{
+		std::cerr << "AST is null\n";
+		return;
+	}
 	output_AST(target);
 	if (target->preceding_BB_element != nullptr)
 		output_AST_and_previous(target->preceding_BB_element);
@@ -78,6 +83,7 @@ void output_AST_and_previous(AST* target)
 			output_AST_and_previous(target->fields[x].ptr);
 }
 
+//only call on a non-nullptr target.
 void output_type(Type* target)
 {
 	std::cerr << "type " << type_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << "\n";
@@ -87,6 +93,11 @@ void output_type(Type* target)
 
 void output_type_and_previous(Type* target)
 {
+	if (target == nullptr)
+	{
+		std::cerr << "type is null\n";
+		return;
+	}
 	output_type(target);
 	unsigned further_outputs = type_descriptor[target->tag].pointer_fields;
 	//I kind of want to use boost's irange here, but pulling in a big library may not be the best idea
@@ -368,6 +379,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			std::cerr << '\n';
 		}
 		output_AST(target);
+		std::cerr << "dumping module before generation:\n";
 		TheModule->dump();
 	}
 
@@ -406,7 +418,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	uint64_t size_result = -1; //note: it's only active when stack_degree = 1. otherwise, you must have special cases.
 	//-1 is a debug choice, since having it at 0 led to invisible errors.
 	uint64_t final_stack_position = object_stack.size();
-	if (stack_degree >= 1) //you need to create allocas and to know size to store into allocas.
+	if (stack_degree >= 1) //you need to create allocas and to know size to store into allocas, maybe? but maybe not.
 	{
 		size_result = get_size(target);
 		if (size_result) storage_location = create_alloca_in_entry_block(size_result);
@@ -430,17 +442,18 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			{
 				result = generate_IR(target->fields[x].ptr, false);
 				if (result.error_code) return result;
-
-				if (VERBOSE_DEBUG)
-				{
-					std::cerr << "type checking. result type is \n";
-					output_type_and_previous(result.type);
-					std::cerr << "desired type is \n";
-					output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
-				}
-				if (AST_descriptor[target->tag].parameter_types[x] != T_nonexistent)
-					if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != 3) return_code(type_mismatch);
 			}
+
+			if (VERBOSE_DEBUG)
+			{
+				std::cerr << "type checking. result type is \n";
+				output_type_and_previous(result.type);
+				std::cerr << "desired type is \n";
+				output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
+			}
+			if (AST_descriptor[target->tag].parameter_types[x] != T_nonexistent)
+				if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != 3) return_code(type_mismatch);
+
 			field_results.push_back(result);
 			//todo: normally we'd also want to verify the types here. 
 		}
@@ -455,8 +468,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	{
 		if (size_result > 1)
 		{
-			for (int i = 0; i < size_result; ++i)
-				Builder.CreateStore(Builder.CreateConstGEP2_64(return_value, 0, i), Builder.CreateConstGEP2_64(storage_location, 0, i));
+			//for (int i = 0; i < size_result; ++i)
+			//	Builder.CreateStore(Builder.CreateConstGEP2_64(return_value, 0, i), Builder.CreateConstGEP2_64(storage_location, 0, i));
+
+			Builder.CreateStore(return_value, storage_location);
 			return storage_location;
 		}
 		else if (size_result == 1)
