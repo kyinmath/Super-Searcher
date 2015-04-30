@@ -1,8 +1,5 @@
 Type information is mostly in "types.h".
 
-our base object is an uint64. all objects have sizes as integer multiples of this base object.
-to get the size of an object, take the number of bits and divide by 64.
-thus, we designate a uint64 as having size "1". two uint64s stuck to each other have size "2". etc.
 
 llvm needs types too. however, we won't preserve any type information. thus:
 	for an object of size 1, its llvm-type is an integer

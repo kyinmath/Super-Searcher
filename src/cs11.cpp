@@ -86,7 +86,7 @@ void output_AST_and_previous(AST* target)
 //only call on a non-nullptr target.
 void output_type(Type* target)
 {
-	std::cerr << "type " << type_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << "\n";
+	std::cerr << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << "\n";
 	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
 }
 
@@ -99,7 +99,7 @@ void output_type_and_previous(Type* target)
 		return;
 	}
 	output_type(target);
-	unsigned further_outputs = type_descriptor[target->tag].pointer_fields;
+	unsigned further_outputs = Type_descriptor[target->tag].pointer_fields;
 	//I kind of want to use boost's irange here, but pulling in a big library may not be the best idea
 	for (int x = 0; x < further_outputs; ++x)
 		if (target->fields[x].ptr != nullptr)
@@ -144,40 +144,6 @@ to compile an AST, default construct a compiler_object, and then run compile_AST
 this last AST is assumed to contain the return object.
 */
 
-
-
-constexpr uint64_t get_size(Type* target)
-{
-	if (target == nullptr)
-		return 0;
-	if (type_descriptor[target->tag].size != -1) return type_descriptor[target->tag].size;
-	else if (target->tag == Typen("concatenate"))
-	{
-		return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
-	}
-	std::cerr << "couldn't get size of type tag " << target->tag;
-	llvm_unreachable("panic in get_size");
-}
-
-
-constexpr uint64_t get_size(AST* target)
-{
-	if (target == nullptr)
-		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
-	if (AST_descriptor[target->tag].return_object != T_special)
-	{
-		return get_size(AST_descriptor[target->tag].return_object);
-	}
-	else if (target->tag == ASTn("if"))
-	{
-		return get_size(target->fields[1].ptr);
-	}
-	else if (target->tag == ASTn("pointer")) return 1;
-	else if (target->tag == ASTn("copy")) return get_size(target->fields[0].ptr);
-	else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
-	std::cerr << "couldn't get size of tag " << target->tag;
-	llvm_unreachable("panic in get_size");
-}
 
 
 class compiler_object
@@ -673,8 +639,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 /**
 The fuzztester generates random ASTs and attempts to compile them.
-"Malformed AST" is fine. not all randomly-generated ASTs will be well-formed.
-However, "ERROR" is not fine, and means there is a bug.
+the output "Malformed AST" is fine. not all randomly-generated ASTs will be well-formed.
+However, the output "ERROR" is not fine, and means there is a bug.
 
 fuzztester starts with a vector of pointers to working, compilable ASTs (originally just a nullptr).
 it chooses a random AST tag. this tag requires AST_descriptor[tag].pointer_fields pointers
@@ -781,7 +747,13 @@ class source_reader
 					std::cerr << (char)input.peek();
 					input.ignore(1);
 				}
-				fields[field_num] = ASTmap.find(ASTname)->second;
+				auto AST_search = ASTmap.find(ASTname);
+				if (AST_search == ASTmap.end())
+				{
+					std::cerr << "variable name not found:" << ASTname << '\n';
+					abort();
+				}
+				fields[field_num] = AST_search->second;
 			}
 			else
 			{
