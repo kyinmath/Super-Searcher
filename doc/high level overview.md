@@ -20,5 +20,3 @@ beginning:
 This shows functions, pointers, and control flow. print(rand() * k) would become [print [multiply [random] [pointer k]]]. Each individual construct cleanly converts into an AST. Other planned features include safe concurrency, modification and re-compilation of functions in real time, 
 
 The design of the ASTs will emphasize readability and potential for self-modification. The backend will enforce type and memory safety. LLVM's JIT will be doing all the heavy lifting to assemble its IR into executable code. The purpose of this backend is to make it easy for code to be self-modifying. By avoiding a textual representation, we ensure that self-modifying code won't have to lex or parse anything. In addition, memory safety means that the program won't cause too much damage even if it goes haywire, so the backend is robust against adversarial requests.
-
-100 char line width

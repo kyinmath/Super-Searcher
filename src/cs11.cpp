@@ -1,3 +1,10 @@
+/*
+main() handles the commandline arguments. if console input is requested, it will handle that too.
+fuzztester() generates random, possibly malformed ASTs.
+compiler_object holds state for a compilation. you make a new compiler_state for each compilation, and call compile_AST() on the last AST in your function. compile_AST automatically wraps the AST in a function and runs it; the last AST is assumed to hold the return object.
+compile_AST() mainly just contains some llvm wrappings to initialize the llvm system. it calls generate_IR() to do the main work.
+generate_IR() is the main AST conversion tool. it turns ASTs into llvm::Values, and LLVM uses Values to produce IR.
+*/
 #include <cstdint>
 #include <iostream>
 //#include <mutex>
@@ -39,9 +46,6 @@ unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937_64 mersenne(seed);
 uint64_t generate_random() { return mersenne(); }
 
-Type T_int_internal("integer");
-Type T_nonexistent_internal("integer");
-Type T_special_internal("integer");
 
 
 enum codegen_status {
@@ -52,12 +56,9 @@ enum codegen_status {
 	null_AST, //tried to generate_IR() a nullptr but was caught, which is normal.
 	pointer_without_target, //tried to get a pointer to an AST, but it was not found at all
 	pointer_to_temporary, //tried to get a pointer to an AST, but it was not placed on the stack.
-	after_this_are_compiler_bugs, //the bugs before this are benign malformed AST errors.
-	fell_through_switches, //our switch case is missing a value. generate_IR() is bugged
-	null_AST_compiler_bug, //we tried to generate_IR() a nullptr, which means generate_IR() is bugged
 };
 
-
+//only call on a non-nullptr target. outputs a single AST.
 void output_AST(AST* target)
 {
 	std::cerr << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target <<
@@ -65,7 +66,7 @@ void output_AST(AST* target)
 	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
 }
 
-
+//for debugging. outputs an AST and everything it can see, recursively.
 void output_AST_and_previous(AST* target)
 {
 	if (target == nullptr)
@@ -83,14 +84,14 @@ void output_AST_and_previous(AST* target)
 			output_AST_and_previous(target->fields[x].ptr);
 }
 
-//only call on a non-nullptr target.
+//only call on a non-nullptr target. outputs a single Type.
 void output_type(Type* target)
 {
 	std::cerr << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << "\n";
 	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
 }
 
-
+//for debugging. outputs a Type and everything it points to, recursively.
 void output_type_and_previous(Type* target)
 {
 	if (target == nullptr)
@@ -100,12 +101,12 @@ void output_type_and_previous(Type* target)
 	}
 	output_type(target);
 	unsigned further_outputs = Type_descriptor[target->tag].pointer_fields;
-	//I kind of want to use boost's irange here, but pulling in a big library may not be the best idea
 	for (int x = 0; x < further_outputs; ++x)
 		if (target->fields[x].ptr != nullptr)
 			output_type_and_previous(target->fields[x].ptr);
 }
 
+//every time IR is generated, this holds the relevant return info.
 struct Return_Info
 {
 	codegen_status error_code;
@@ -138,12 +139,6 @@ struct Return_Info
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
 	Return_Info() : error_code(codegen_status::no_error), IR(nullptr), type(T_null), size(0), on_stack(false), self_lifetime(0), target_upper_lifetime(0), target_lower_lifetime(-1ull) {}
 };
-
-/** main compiler. holds state.
-to compile an AST, default construct a compiler_object, and then run compile_AST() on the last AST in the main basic block.
-this last AST is assumed to contain the return object.
-*/
-
 
 
 class compiler_object
@@ -234,8 +229,6 @@ unsigned compiler_object::compile_AST(AST* target)
 	if (return_object.error_code)
 		return return_object.error_code; //error
 
-	if (VERBOSE_DEBUG)
-		std::cerr << "comp here\n";
 	if (size_of_return)
 		Builder.CreateRet(return_object.IR);
 	else Builder.CreateRetVoid();
@@ -244,8 +237,7 @@ unsigned compiler_object::compile_AST(AST* target)
 	// Validate the generated code, checking for consistency.
 	if (llvm::verifyFunction(*F, &llvm::outs()))
 	{
-		std::cerr << "\nverification failed\n";
-		abort();
+		llvm_unreachable("verification failed");
 	}
 
 	if (OPTIMIZE)
@@ -351,16 +343,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 
 	//target should never be nullptr.
-	if (target == nullptr)
-	{
-		llvm_unreachable("null AST compiler bug");
-		return_code(null_AST_compiler_bug);
+	if (target == nullptr) llvm_unreachable("null AST compiler bug");
 
-	}
-
-	//if we've seen this AST before, we're stuck in an infinite loop
-	if (this->loop_catcher.find(target) != this->loop_catcher.end())
-		return_code(infinite_loop);
+	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
+	if (this->loop_catcher.find(target) != this->loop_catcher.end()) return_code(infinite_loop);
 	loop_catcher.insert(target); //we've seen this AST now.
 
 	//after we're done with this AST, we remove it from loop_catcher.
@@ -634,13 +620,12 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_int);*/
 	}
 
-	return_code(fell_through_switches);
+	llvm_unreachable("fell through switches");
 }
 
 /**
 The fuzztester generates random ASTs and attempts to compile them.
 the output "Malformed AST" is fine. not all randomly-generated ASTs will be well-formed.
-However, the output "ERROR" is not fine, and means there is a bug.
 
 fuzztester starts with a vector of pointers to working, compilable ASTs (originally just a nullptr).
 it chooses a random AST tag. this tag requires AST_descriptor[tag].pointer_fields pointers
@@ -671,16 +656,8 @@ void fuzztester(unsigned iterations)
 		unsigned error_code = compiler.compile_AST(test_AST);
 		if (error_code)
 		{
-			if (error_code > codegen_status::after_this_are_compiler_bugs)
-			{
-				std::cerr << "ERROR: code " << error_code << " at AST " << compiler.error_location << '\n';
-				llvm_unreachable("fuzztester detected compiler error");
-			}
-			else
-			{
 				std::cerr << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << '\n';
 				delete test_AST;
-			}
 		}
 		else
 		{
@@ -701,11 +678,9 @@ void fuzztester(unsigned iterations)
 #include <istream>
 class source_reader
 {
-	//we need to implement this.
 	std::unordered_map<std::string, AST*> ASTmap; //from name to location
 	std::istream& input;
-	//call this after you've found and consumed a [.
-	//doesn't get the type name. you'll have to find that out yourself.
+	
 	AST* read_single_AST(AST* previous_AST)
 	{
 		input.ignore(1); //consume '['
@@ -730,10 +705,7 @@ class source_reader
 		{
 			while (input.peek() == ' ') input.ignore(1);
 			if (field_num >= max_fields_in_AST)
-			{
-				std::cerr << "more fields than possible\n";
-				abort();
-			}
+				llvm_unreachable("more fields than possible");
 			if (input.peek() == '[')
 			{
 				fields[field_num] = read_single_AST(nullptr);
@@ -744,15 +716,11 @@ class source_reader
 				while (input.peek() != ' ' && input.peek() != ']')
 				{
 					ASTname.push_back(input.peek());
-					std::cerr << (char)input.peek();
 					input.ignore(1);
 				}
 				auto AST_search = ASTmap.find(ASTname);
 				if (AST_search == ASTmap.end())
-				{
-					std::cerr << "variable name not found:" << ASTname << '\n';
-					abort();
-				}
+					llvm_unreachable(strcat("variable name not found: ", ASTname));
 				fields[field_num] = AST_search->second;
 			}
 			else
@@ -820,10 +788,12 @@ public:
 				std::cin.ignore(1);
 			current_previous = read_single_AST(current_previous);
 			if (VERBOSE_DEBUG)
-				std::cerr << "next charblock is" << (char)input.peek() << input.peek();
-			std::cerr << "------ outputting AST of single AST:\n";
-			output_AST_and_previous(current_previous);
-			std::cerr << "---done outputting AST of single AST:\n";
+			{
+				std::cerr << "next char at block level is " << (char)input.peek() << input.peek();
+				std::cerr << "------ outputting AST of single AST:\n";
+				output_AST_and_previous(current_previous);
+				std::cerr << "---done outputting AST of single AST:\n";
+			}
 
 		}
 		return current_previous; //which is the very last.
@@ -869,25 +839,13 @@ int main(int argc, char* argv[])
 				std::cin.get();
 				continue;
 			}
+			output_AST_and_previous(end);
 			compiler_object j;
 			unsigned error_code = j.compile_AST(end);
 			if (error_code)
-			{
-				if (error_code > codegen_status::after_this_are_compiler_bugs)
-				{
-					std::cerr << "ERROR: code " << error_code << " at AST " << j.error_location << '\n';
-					llvm_unreachable("compiler error");
-				}
-				else
-				{
-					std::cerr << "Malformed AST: code " << error_code << " at AST " << j.error_location << '\n';
-				}
+				std::cerr << "Malformed AST: code " << error_code << " at AST " << j.error_location << '\n';
+			else std::cerr << "Successful compile\n";
 			}
-			else
-			{
-				std::cerr << "Successful compile\n";
-			}
-		}
 	}
 
 	fuzztester(-1);

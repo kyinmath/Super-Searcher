@@ -2,15 +2,15 @@
 A "user" will be defined as a program that is interpreted by the CS11 backend. That is, the "user" is the program itself, and not a human.
 Apart from minor types like pointers and integers, there are two heavy-duty types that a user can see - Types, and ASTs.
 
-A Type object consists of a tag and two fields, and describes another object. The two fields depend on the tag. If the tag is "pointer", then the first field will be a pointer to the Type of the object that is being pointed to, and the second field is nullptr. If the tag is "integer", then both fields are nullptr. If the tag is "AST", then the first field will be a pointer to the Type of the return object, and the second field will be a pointer to the Type of the parameter object.
+A Type object consists of a tag and two fields, and describes another object. The two fields depend on the tag. For example, if the tag is "pointer", then the first field will be a pointer to the Type of the object that is being pointed to, and the second field is nullptr. If the tag is "integer", then both fields are nullptr. If the tag is "AST", then the first field will be a pointer to the Type of the return object, and the second field will be a pointer to the Type of the parameter object.
 For large structures, the "concatenate" Type is used. A structure consisting of two elements will be described by a "concatenate" Type, which points its two fields at the two elements.
 If we need a structure consisting of three elements, we use a "concatenate" Type for the first two elements. Then, we have another "concatenate" Type with its first field pointing to the first concatenate, and its second field pointing to the third element. In this way, we get a binary tree. The overall Type of the structure is represented the root node, which contains pointers to the remaining parts of the Type.
 
-An AST object represents an expression, consists of:
+An AST object represents an expression, and consists of:
 1. "tag", signifying what type of AST it is.
 2. "preceding_BB_element", which is a pointer that points to the previous element in its basic block.
 3. "fields", which contains the information necessary for the AST to operate. Depending on the tag, this may be pointers to other ASTs, or integers, or nothing at all. For example, the "add" AST has two non-zero fields, which should be pointers to ASTs that return integers. The "if" AST takes three pointers to ASTs, which are a condition AST, a then-statement AST, and an if-statement AST. The maximum number of fields is four; unneeded fields can be left blank.
-Each AST can be compiled by itself, as long as it is wrapped in a function. This function-wrapping currently happens automatically, so ASTs are compiled directly. Since ASTs have pointers to previous ASTs using the "preceding_BB_element" pointer, the compiler is simply directed to the last AST, and then the compiler finds the previous ASTs automatically. The last AST becomes the return statement. Thus, the basic block structure is embedded in the ASTs, by means of the "preceding_BB_element" pointer, although all the pointers are reversed.
+Each AST can be compiled by itself, as long as it is wrapped in a function. This function-wrapping currently happens automatically, so ASTs are compiled directly. Since ASTs have pointers to previous ASTs using the "preceding_BB_element" pointer, the compiler is simply directed to the last AST, and then the compiler finds the previous ASTs automatically. The last AST becomes the return statement. Thus, the basic block structure is embedded in the ASTs as a linked list, by means of the "preceding_BB_element" pointer.
 
 Descriptions of the ASTs and Types are in AST_descriptor[] and Type_descriptor[], respectively. First, we should note that that AST_descriptor is of type "AST_info". "AST_info" is a special enum-like class. Its constructor takes in a string as its first argument, which is the enum name. The second constructor argument is the return type. The remaining four arguments are the parameter types for the AST's four fields; unused fields can be left blank.
 What AST_descriptor[] does is utilize this constructor to build a rich description of each AST. For example, one of the elements in AST_descriptor[] is { "add", T_int, T_int, T_int }. This tells us that there's an AST whose name is "add" (the first argument). Moreover, it returns an integer (the second argument), and it takes two fields whose return Types should be integers (the third and fourth arguments).
@@ -39,19 +39,77 @@ union int_or_ptr
 #define constexpr
 #endif
 
-struct AST;
-struct Type;
-extern Type T_int_internal;
-extern Type T_nonexistent_internal;
-extern Type T_special_internal;
-constexpr Type* T_nonexistent = &T_nonexistent_internal; //nothing at all. used for ctors for parameter fields, or for goto.
-constexpr Type* T_special = &T_special_internal; //indicates that a return type is to be handled differently
-constexpr Type* T_int = &T_int_internal; //describes an integer type
-constexpr Type* T_null = nullptr;
+//for whatever reason, strcmp is not constexpr. so we do this
+constexpr bool static_strequal(const char str1[], const char str2[])
+{ return *str1 == *str2 ? (*str1 == '\0' ? true : static_strequal(str1 + 1, str2 + 1)) : false; }
 
+struct Type_info
+{
+	const char* name;
+	const unsigned pointer_fields; //how many field elements must be pointers
+
+	//size of the actual object. -1 if special
+	const int size;
+
+	constexpr Type_info(const char a[], unsigned n, int s)
+		: name(a), pointer_fields(n), size(s) {}
+};
+
+
+constexpr Type_info Type_descriptor[] =
+{
+	{ "concatenate", 2, -1 }, //concatenate two types
+	{ "integer", 0, 1 }, //64-bit integer
+	{ "fixed integer", 1, 1 }, //64-bit integer whose value is fixed by the type.
+	{ "cheap pointer", 1, 1 }, //pointer to anything
+	//TODO: ASTs, locks, types
+	{ "never reached", 0, 0 }
+};
+
+/*
+template<constexpr Type_info vector_name[]> constexpr uint64_t get_enum_from_name(const char name[])
+{
+	for (unsigned k = 0; 1; ++k)
+	{
+		if (static_strequal(vector_name[k].name, name)) return k;
+		if (static_strequal(vector_name[k].name, "never reached")) //this isn't recursive, because the previous if statement returns.
+			llvm_unreachable("tried to get a nonexistent name");
+	}
+}
+constexpr uint64_t Typen(const char name[])
+{ return get_enum_from_name<Type_descriptor>(name); } //todo: templatize this so that ASTn also works.
+*/
+constexpr uint64_t Typen(const char name[])
+{
+	for (unsigned k = 0; 1; ++k)
+	{
+		if (static_strequal(Type_descriptor[k].name, name)) return k;
+		if (static_strequal(Type_descriptor[k].name, "never reached")) //this isn't recursive, because the previous if statement returns.
+			llvm_unreachable("tried to get a nonexistent name");
+	}
+}
+struct AST;
+struct Type
+{
+	uint64_t tag;
+	std::array<int_or_ptr<Type>, 2> fields;
+	constexpr Type(const char name[], const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(Typen(name)), fields{ a, b } {}
+	constexpr Type(const uint64_t t, const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(t), fields{ a, b } {}
+};
 #define max_fields_in_AST 4u
 //should accomodate the largest possible AST
 struct AST;
+
+
+static constexpr Type T_int_internal("integer");
+static constexpr Type T_nonexistent_internal("integer");
+static constexpr Type T_special_internal("integer");
+constexpr Type* T_nonexistent = const_cast<Type* const>(&T_nonexistent_internal); //nothing at all. used for ctors for parameter fields, or for goto.
+constexpr Type* T_special = const_cast<Type* const>(&T_special_internal); //indicates that a return type is to be handled differently
+constexpr Type* T_int = const_cast<Type* const>(&T_int_internal); //describes an integer type
+constexpr Type* T_null = nullptr;
+
+
 
 /*
 all object sizes are integer multiples of 64 bits.
@@ -67,30 +125,8 @@ constexpr uint64_t get_size(Type* target)
 	{
 		return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
 	}
-	std::cerr << "couldn't get size of type tag " << target->tag;
-	llvm_unreachable("panic in get_size");
+	llvm_unreachable("couldn't get size of type tag, check backtrace for target->tag");
 }
-
-
-constexpr uint64_t get_size(AST* target)
-{
-	if (target == nullptr)
-		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
-	if (AST_descriptor[target->tag].return_object != T_special)
-	{
-		return get_size(AST_descriptor[target->tag].return_object);
-	}
-	else if (target->tag == ASTn("if"))
-	{
-		return get_size(target->fields[1].ptr);
-	}
-	else if (target->tag == ASTn("pointer")) return 1;
-	else if (target->tag == ASTn("copy")) return get_size(target->fields[0].ptr);
-	else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
-	std::cerr << "couldn't get size of tag " << target->tag;
-	llvm_unreachable("panic in get_size");
-}
-
 
 /**
 this is a cool C++ hack to attach information to enums.
@@ -152,10 +188,9 @@ struct AST_info
 	}
 };
 
-//TODO: our types.h is in the middle of changing. we want to automatically process parameter fields of ASTs. however, scope() can take any parameter type, so we want it to be treated specially. how?
+//TODO: we want to automatically process parameter fields of ASTs. however, scope() can take any parameter type, so we want it to be treated specially. how?
 //the problem is that its return value is regular, but its parameters are not.
 //todo: what parameter types should we use to signify that no checking should be done for a parameter field? nullptr is not good.
-
 using a = AST_info;
 //this is an enum which has extra information for each element. it is constexpr so that it can be used in a switch-case statement.
 constexpr AST_info AST_descriptor[] =
@@ -172,7 +207,7 @@ constexpr AST_info AST_descriptor[] =
 	{ "never reached", T_special }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	//{ "dereference pointer", 0, 1 },
 	a("store", T_special), //????
-	a( "concatenate", T_special).set_fields_to_compile(2) ,
+	a( "concatenate", T_special).set_fields_to_compile(2)
 	/*	{ "goto", 2 }, //label and failure branch
 	{ "label" },
 	{ "no op", 0, 0 },
@@ -199,43 +234,6 @@ constexpr AST_info AST_descriptor[] =
 	{ "bitwise xor", 2 },*/
 };
 
-struct Type_info
-{
-	const char* name;
-	const unsigned pointer_fields; //how many field elements must be pointers
-
-	//size of the actual object. -1 if special
-	const int size;
-
-	constexpr Type_info(const char a[], unsigned n, int s)
-		: name(a), pointer_fields(n), size(s) {}
-};
-
-constexpr Type_info Type_descriptor[] =
-{
-	{ "concatenate", 2, -1 }, //concatenate two types
-	{ "integer", 0, 1 }, //64-bit integer
-	{ "fixed integer", 1, 1 }, //64-bit integer whose value is fixed by the type.
-	{ "cheap pointer", 1, 1 }, //pointer to anything
-	//TODO: ASTs, locks, types
-	{ "never reached", 0, 0 }
-};
-
-//for whatever reason, strcmp is not constexpr. so we do this
-constexpr bool static_strequal(const char str1[], const char str2[])
-{ return *str1 == *str2 ? (*str1 == '\0' ? true : static_strequal(str1 + 1, str2 + 1)) : false; }
-
-
-template<constexpr Type_info vector_name[]> constexpr uint64_t get_enum_from_name(const char name[])
-{
-	for (unsigned k = 0; 1; ++k)
-	{
-		if (static_strequal(vector_name[k].name, name)) return k;
-		if (static_strequal(vector_name[k].name, "never reached")) //this isn't recursive, because the previous if statement returns.
-			llvm_unreachable("tried to get a nonexistent name");
-	}
-}
-
 constexpr uint64_t ASTn(const char name[])
 {
 	for (unsigned k = 0; 1; ++k)
@@ -245,18 +243,6 @@ constexpr uint64_t ASTn(const char name[])
 			llvm_unreachable("tried to get a nonexistent name");
 	}
 }
-constexpr uint64_t Typen(const char name[])
-{ return get_enum_from_name<Type_descriptor>(name); } //todo: templatize this so that ASTn also works.
-
-struct Type
-{
-	uint64_t tag;
-	std::array<int_or_ptr<Type>, 2> fields;
-	constexpr Type(const char name[], const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(Typen(name)), fields{ a, b } {}
-	constexpr Type(const uint64_t t, const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(t), fields{ a, b } {}
-};
-
-
 struct AST
 {
 	//std::mutex lock;
@@ -269,6 +255,25 @@ struct AST
 		: tag(direct_tag), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {}
 	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };
+
+
+constexpr uint64_t get_size(AST* target)
+{
+	if (target == nullptr)
+		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
+	if (AST_descriptor[target->tag].return_object != T_special)
+	{
+		return get_size(AST_descriptor[target->tag].return_object);
+	}
+	else if (target->tag == ASTn("if"))
+	{
+		return get_size(target->fields[1].ptr);
+	}
+	else if (target->tag == ASTn("pointer")) return 1;
+	else if (target->tag == ASTn("copy")) return get_size(target->fields[0].ptr);
+	else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
+	llvm_unreachable(strcat("couldn't get size of tag in get_size(), target->tag was", AST_descriptor[target->tag].name));
+}
 
 
 enum type_status { RVO, reference }; //distinguishes between RVOing an object, or just creating a reference
