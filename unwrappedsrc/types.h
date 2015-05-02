@@ -104,7 +104,7 @@ struct AST;
 static constexpr Type T_int_internal("integer");
 static constexpr Type T_nonexistent_internal("integer");
 static constexpr Type T_special_internal("integer");
-constexpr Type* T_nonexistent = const_cast<Type* const>(&T_nonexistent_internal); //nothing at all. used for ctors for parameter fields, or for goto.
+constexpr Type* T_nonexistent = const_cast<Type* const>(&T_nonexistent_internal); //nothing at all. used to say that a parameter field is missing, or for goto. effectively disables type checking for that field.
 constexpr Type* T_special = const_cast<Type* const>(&T_special_internal); //indicates that a return type is to be handled differently
 constexpr Type* T_int = const_cast<Type* const>(&T_int_internal); //describes an integer type
 constexpr Type* T_null = nullptr;
@@ -148,7 +148,7 @@ struct AST_info
 	Type* return_object; //if this type is null, do not check it using the generic method - check it specially.
 
 	unsigned fields_to_compile; //we may not always compile all pointers, such as with "copy".
-	//number_to_compile < pointer_fields. by default, they are equal.
+	//number_to_compile < pointer_fields, so this also forces pointer_fields upward if it is too low. by default, they are equal.
 	constexpr AST_info set_fields_to_compile(int x)
 	{
 		AST_info new_copy(*this);
@@ -170,24 +170,23 @@ struct AST_info
 	constexpr int field_count(Type* f1, Type* f2, Type* f3, Type* f4)
 	{
 		int number_of_fields = 4; //by default, both pointer_fields and number_of_fields will be equal to this.
-		if (f4 == nullptr)
+		if (f4 == T_nonexistent)
 			number_of_fields = 3;
-		if (f3 == nullptr)
+		if (f3 == T_nonexistent)
 			number_of_fields = 2;
-		if (f2 == nullptr)
+		if (f2 == T_nonexistent)
 			number_of_fields = 1;
-		if (f1 == nullptr)
+		if (f1 == T_nonexistent)
 			number_of_fields = 0;
 		return number_of_fields;
 	};
 
-	constexpr AST_info(const char a[], Type* r, Type* f1 = nullptr, Type* f2 = nullptr, Type* f3 = nullptr, Type* f4 = nullptr)
+	//in AST_descriptor[], fields_to_compile and pointer_fields are normally set to the number of parameter types specified.
+	//	however, they can be overridden by set_fields_to_compile() and set_pointer_fields()
+	constexpr AST_info(const char a[], Type* r, Type* f1 = T_nonexistent, Type* f2 = T_nonexistent, Type* f3 = T_nonexistent, Type* f4 = T_nonexistent)
 		: name(a), return_object(r), parameter_types{ f1, f2, f3, f4 }, pointer_fields(field_count(f1, f2, f3, f4)), fields_to_compile(field_count(f1, f2, f3, f4)), size_of_return(get_size(r)) { }
 };
 
-//TODO: we want to automatically process parameter fields of ASTs. however, scope() can take any parameter type, so we want it to be treated specially. how?
-//the problem is that its return value is regular, but its parameters are not.
-//todo: what parameter types should we use to signify that no checking should be done for a parameter field? nullptr is not good.
 using a = AST_info;
 //this is an enum which has extra information for each element. it is constexpr so that it can be used in a switch-case statement.
 constexpr AST_info AST_descriptor[] =
