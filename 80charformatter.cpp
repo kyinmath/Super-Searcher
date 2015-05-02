@@ -135,19 +135,19 @@ vector<string> get_all_files_names_within_folder(string folder)
 //stolen from http://stackoverflow.com/questions/2602013/read-whole-ascii-file-into-c-stdstring
 int main()
 {
-	vector<string> k = get_all_files_names_within_folder("C:\\Users\\CompAcc\\Stuff\\CS11backend\\src\\");
+	vector<string> k = get_all_files_names_within_folder("C:\\Users\\CompAcc\\Stuff\\CS11backend\\unwrappedsrc\\");
 	for (auto &x : k)
 	{
-		std::ifstream t("C:\\Users\\CompAcc\\Stuff\\CS11backend\\src\\" + x);
+		std::ifstream t("C:\\Users\\CompAcc\\Stuff\\CS11backend\\unwrappedsrc\\" + x);
 		if (!t.is_open()) cerr << "Error: " << strerror(errno);
-		cout << "C:\\Users\\CompAcc\\Stuff\\CS11backend\\src\\" + x << '\n';
+		cout << "C:\\Users\\CompAcc\\Stuff\\CS11backend\\unwrappedsrc\\" + x << '\n';
 		vector<string> wrapped;
 		WordWrap(t, wrapped, 100);
 
-		std::ofstream outfile("C:\\Users\\CompAcc\\Stuff\\CS11backend\\wrapped\\"  + x);
+		std::ofstream outfile("C:\\Users\\CompAcc\\Stuff\\CS11backend\\src\\"  + x);
 		if (!outfile.is_open())
 			cout << "panic!\n";
-		cout << "C:\\Users\\CompAcc\\Stuff\\CS11backend\\wrapped\\" + x << '\n';
+		cout << "C:\\Users\\CompAcc\\Stuff\\CS11backend\\src\\" + x << '\n';
 
 		for (auto &y : wrapped)
 		{

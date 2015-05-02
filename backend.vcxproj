@@ -11,11 +11,11 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\types.cpp" />
-    <ClInclude Include="src\types.h" />
+    <ClCompile Include="unwrappedsrc\cs11.cpp" />
+    <ClCompile Include="unwrappedsrc\types.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\cs11.cpp" />
+    <ClInclude Include="unwrappedsrc\types.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A3908F65-10ED-4CB5-AC9B-B1D10CDAB936}</ProjectGuid>
