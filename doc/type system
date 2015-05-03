@@ -1,13 +1,4 @@
-Type information is mostly in "types.h".
-
-
-llvm needs types too. however, we won't preserve any type information. thus:
-	for an object of size 1, its llvm-type is an integer
-	for an object of size >=2, the llvm-type is an array of integers, corresponding to its size.
-
-When running generate_IR(), each return value has both a llvm type and our internal type (Type).
-For objects that are on the stack, their llvm type gets an extra *. That is, they become pointers to a memory location that contains the object. Dereferencing is required to acquire the actual object.
-But for internal types, we have the option to either represent the type of a stack object as a pointer to the type, or as the actual type. So a uint64_t on the stack may be either ["cheap pointer", ["integer"]] or just ["integer"].
+for internal types, we have the option to either represent the type of a stack object as a pointer to the type, or as the actual type. So a uint64_t on the stack may be either ["cheap pointer", ["integer"]] or just ["integer"].
 Either way, we'll have to do a transparent conversion from the llvm type when using the "pointer" AST and the "copy" AST, so that the user doesn't need to worry about whether the target AST is on the stack or not. The user does not care about llvm's internal semantics.
 Cons of storing the type with a pointer:
 	you create an extra pointer. if the type is not used, you've wasted time creating an extra type object.

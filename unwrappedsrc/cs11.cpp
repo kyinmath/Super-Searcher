@@ -7,7 +7,7 @@ for console input, read_single_AST() parses a single AST and its field's ASTs, t
 
 things which compile and run ASTs:
 compiler_object holds state for a compilation. you make a new compiler_state for each compilation, and call compile_AST() on the last AST in your function. compile_AST automatically wraps the AST in a function and runs it; the last AST is assumed to hold the return object.
-compile_AST() contains the llvm bindings to initialize the llvm system and wrap up . it calls generate_IR() to do the main work.
+compile_AST() is mainly a wrapper. it generates the llvm::Functions and llvm::Modules that contain the main code. it calls generate_IR() to do the main work.
 generate_IR() is the main AST conversion tool. it turns ASTs into llvm::Values, recursively. these llvm::Values are automatically inserted into a llvm::Module.
 	to do this, generate_IR first runs itself on a target's dependencies. then, it looks at the target's tag, and then uses a switch-case to determine how it should use those dependencies.
 	whenever you see three slashes, "///", then that means some very unusual behavior is being described.
@@ -321,25 +321,27 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 
 /** generate_IR() is the main code that transforms AST into LLVM IR. it is called with the AST to be transformed, which must not be nullptr.
 
+storage_location is for RVO. if stack_degree says that the return object should be stored somewhere, the location will be storage_location. storage is done by the returning function.
 ASTs that are directly inside basic blocks should allocate their own stack_memory, so they are given stack_degree = 2.
 	this tells them to create a memory location and to place the return value inside it.
 ASTs that should place their return object inside an already-created memory location are given stack_degree = 1, and storage_location.
 	then, they store the return value into storage_location
 ASTs that return SSA objects are given stack_degree = 0.
+	minor note: we use create_alloca_in_entry_block() so that the llvm optimization pass mem2reg can recognize it.
 
-create_alloca_in_entry_block() is used to create the memory locations.
-
-steps of generate_IR:
+Steps of generate_IR:
 check if generate_IR will be in an infinite loop, by using loop_catcher to store the previously seen ASTs.
 run generate_IR on the previous AST in the basic block, if such an AST exists.
 	after this previous AST is generated, we can figure out where the current AST lives on the stack. this uses incrementor_for_lifetime.
 find out what the size of the return object is, using get_size()
-	the tag "concatenate" treats size finding in a special way. since get_size() works recursively on child nodes in a tree, we don't want to run get_size() over and over for all the child nodes in a tree. therefore, get_size() stores the sizes of "concatenate" objects in a stack, to be retrieved later.
-	furthermore, this creates an alloca if stack_degree = 2.
 generate_IR is run on fields of the AST. it knows how many fields are needed by using fields_to_compile from AST_descriptor[] 
 then, the main IR generation is done using a switch-case on a tag.
 the return value is created using the finish() macros. these automatically pull in any miscellaneous necessary information, such as stack lifetimes, and bundles them into a Return_Info. furthermore, if the return value needs to be stored in a stack location, finish() does this automatically using the move_to_stack lambda.
 
+note that while we have a rich type system, the only types that llvm sees are int64s and arrays of int64s. pointers, locks, etc. have their information stripped, so llvm only sees the size of each object. we forcefully cast things to integers.
+	for an object of size 1, its llvm-type is an integer
+	for an object of size N>=2, the llvm-type is an array of N integers.
+however, note that pointers are still pointers, even though they are casted to integers. so the llvm::Value* of an object that had stack_degree = 2 is a pointer to the memory location, casted to an integer.
 */
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location)
 {
@@ -402,30 +404,29 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//generated IR of the fields of the AST
 	std::vector<Return_Info> field_results; //we don't actually need the return code, but we leave it anyway.
 
-		for (unsigned x = 0; x < AST_descriptor[target->tag].fields_to_compile; ++x)
+	for (unsigned x = 0; x < AST_descriptor[target->tag].fields_to_compile; ++x)
+	{
+		Return_Info result; //default constructed for null object
+		if (target->fields[x].ptr)
 		{
-			Return_Info result; //default constructed for null object
-			if (target->fields[x].ptr)
-			{
-				result = generate_IR(target->fields[x].ptr, false);
-				if (result.error_code) return result;
-			}
-
-			if (VERBOSE_DEBUG)
-			{
-				std::cerr << "type checking. result type is \n";
-				output_type_and_previous(result.type);
-				std::cerr << "desired type is \n";
-				output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
-			}
-			//check that the type matches.
-			if (AST_descriptor[target->tag].parameter_types[x] != T_nonexistent)
-				if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != 3) return_code(type_mismatch);
-
-			field_results.push_back(result);
+			result = generate_IR(target->fields[x].ptr, false);
+			if (result.error_code) return result;
 		}
 
-	//when we add a type system, we better start checking if types work out.
+		if (VERBOSE_DEBUG)
+		{
+			std::cerr << "type checking. result type is \n";
+			output_type_and_previous(result.type);
+			std::cerr << "desired type is \n";
+			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
+		}
+		//check that the type matches.
+		if (AST_descriptor[target->tag].parameter_types[x] != T_nonexistent)
+			if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != 3) return_code(type_mismatch);
+
+		field_results.push_back(result);
+	}
+
 	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 
 	//internal: do not call this directly. use the finish macro instead
@@ -482,13 +483,13 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		return Return_Info(codegen_status::no_error, return_value, type, size_result, false, lifetime_of_return_value, upper_life, lower_life);
 	};
 
-	//call these when you've constructed something. the _pointer suffix is when you are returning a pointer, and need lifetime information.
+	//call the finish macros when you've constructed something. the _pointer suffix is when you are returning a pointer, and need lifetime information.
 	//use finish_previously_constructed if your AST is not the one constructing the return object.
 	//for example, concatenate() and if() use previously constructed return objects, and simply pass them through.
 
 	//we can't use X directly because we will be duplicating the argument.
-#define finish(X, type) do { llvm::Value* first_value = X; llvm::Value* end_value = stack_degree >= 1 ? move_to_stack(first_value) : first_value; return finish_internal(end_value, type, 0, -1ull); } while (0)
-#define finish_pointer(X, type, u, l) do {llvm::Value* first_value = X; if (stack_degree >= 1) move_to_stack(first_value); return finish_internal(first_value, type, u, l); } while (0)
+#define finish_pointer(X, type, u, l) do {llvm::Value* first_value = X; llvm::Value* end_value = stack_degree >= 1 ? move_to_stack(first_value) : first_value; return finish_internal(end_value, type, u, l); } while (0)
+#define finish(X, type) do { finish_pointer(X, type, 0, -1ull); } while (0)
 #define finish_previously_constructed(X, type) do { return finish_internal(X, type, 0, -1ull); } while (0)
 #define finish_previously_constructed_pointer(X, type, u, l) do { return finish_internal(X, type, u, l); } while (0)
 
@@ -621,7 +622,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 		finish_pointer(final_result, &type_scratch_space.back(), found_AST->second.self_lifetime, found_AST->second.self_lifetime);
 	}
-	case ASTn("copy"):
+	case ASTn("load"):
 	{
 		auto found_AST = objects.find(target->fields[0].ptr);
 		if (found_AST == objects.end())
@@ -632,6 +633,20 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	}
 	/*case ASTn("get 0"):
 		finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_int);*/
+	case ASTn("concatenate"):
+	{
+		int64_t first_size = get_size(target->fields[0].ptr);
+		if (stack_degree == 2); //do nothing, we've already made the alloca
+		else if (stack_degree == 1); //do nothing, we've already made the alloca
+		else if (stack_degree == 0)
+		{
+			if (size_result)
+			{
+				llvm::AllocaInst* temp_storage = create_alloca_in_entry_block(size_result);
+				Return_Info first_half = generate_IR(target->fields[0].ptr, 1, temp_storage);
+			}
+		}
+	}
 	}
 
 	llvm_unreachable("fell through switches");
@@ -747,7 +762,7 @@ class source_reader
 				}
 
 				//if (VERBOSE_DEBUG) 	std::cerr << string_number << "stringnumber\n";
-				fields[field_num] = std::stoi(string_number); //TODO: this only produces ints, not int64
+				fields[field_num] = std::stoull(string_number);
 				//if (VERBOSE_DEBUG) std::cerr << "field was " << fields[field_num].num << '\n';
 			}
 		}

@@ -62,12 +62,14 @@ constexpr Type_info Type_descriptor[] =
 	{ "integer", 0, 1 }, //64-bit integer
 	{ "fixed integer", 1, 1 }, //64-bit integer whose value is fixed by the type.
 	{ "cheap pointer", 1, 1 }, //pointer to anything
-	//TODO: ASTs, locks, types
-	{ "never reached", 0, 0 }
+	{ "never reached", 0, 0 },
+	{ "AST in clouds", 2, 1 }, //points to an AST. we don't embed the AST along with the function signature, in order to keep them separate.
+	{ "lock", 0, 1 },
+	{ "type", 0, 3 },
 };
 
-/*
-template<constexpr Type_info vector_name[]> constexpr uint64_t get_enum_from_name(const char name[])
+
+template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const char name[])
 {
 	for (unsigned k = 0; 1; ++k)
 	{
@@ -77,18 +79,8 @@ template<constexpr Type_info vector_name[]> constexpr uint64_t get_enum_from_nam
 	}
 }
 constexpr uint64_t Typen(const char name[])
-{ return get_enum_from_name<Type_descriptor>(name); } //todo: templatize this so that ASTn also works.
-*/
-constexpr uint64_t Typen(const char name[])
-{
-	for (unsigned k = 0; 1; ++k)
-	{
-		if (static_strequal(Type_descriptor[k].name, name)) return k;
-		if (static_strequal(Type_descriptor[k].name, "never reached")) //this isn't recursive, because the previous if statement returns.
-			llvm_unreachable("tried to get a nonexistent name");
-	}
-}
-struct AST;
+{ return get_enum_from_name<const Type_info, Type_descriptor>(name); }
+
 struct Type
 {
 	uint64_t tag;
@@ -199,11 +191,11 @@ constexpr AST_info AST_descriptor[] =
 	{ "subtract", T_int, T_int, T_int },
 	{ "random", T_int}, //returns a random integer
 	a("pointer", T_special).set_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
-	a("copy", T_special).set_pointer_fields(1), //creates a copy of an element. takes one field, but does NOT compile it.
+	a("load", T_special).set_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
 	{ "never reached", T_special }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	//{ "dereference pointer", 0, 1 },
 	a("store", T_special), //????
-	a( "concatenate", T_special).set_fields_to_compile(2)
+	a( "concatenate", T_special).set_pointer_fields(2)
 	/*	{ "goto", 2 }, //label and failure branch
 	{ "label" },
 	{ "no op", 0, 0 },
@@ -231,14 +223,8 @@ constexpr AST_info AST_descriptor[] =
 };
 
 constexpr uint64_t ASTn(const char name[])
-{
-	for (unsigned k = 0; 1; ++k)
-	{
-		if (static_strequal(AST_descriptor[k].name, name)) return k;
-		if (static_strequal(AST_descriptor[k].name, "never reached")) //this isn't recursive, because the previous if statement returns.
-			llvm_unreachable("tried to get a nonexistent name");
-	}
-}
+{ return get_enum_from_name<const AST_info, AST_descriptor>(name); }
+
 struct AST
 {
 	//std::mutex lock;
@@ -257,17 +243,11 @@ constexpr uint64_t get_size(AST* target)
 {
 	if (target == nullptr)
 		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
-	if (AST_descriptor[target->tag].return_object != T_special)
-	{
-		return get_size(AST_descriptor[target->tag].return_object);
-	}
-	else if (target->tag == ASTn("if"))
-	{
-		return get_size(target->fields[1].ptr);
-	}
+	if (AST_descriptor[target->tag].return_object != T_special) return get_size(AST_descriptor[target->tag].return_object);
+	else if (target->tag == ASTn("if")) return get_size(target->fields[1].ptr);
 	else if (target->tag == ASTn("pointer")) return 1;
 	else if (target->tag == ASTn("copy")) return get_size(target->fields[0].ptr);
-	else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
+	else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr); //todo: this is slow
 	llvm_unreachable(strcat("couldn't get size of tag in get_size(), target->tag was", AST_descriptor[target->tag].name));
 }
 

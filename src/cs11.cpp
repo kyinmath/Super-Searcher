@@ -18,8 +18,8 @@ generate_IR() is the main AST conversion tool. it turns ASTs into llvm::Values, 
 llvm::Values are automatically inserted into a llvm::Module.
   to do this, generate_IR first runs itself on a target's dependencies. then, it looks at the 
   target's tag, and then uses a switch-case to determine how it should use those dependencies.
-  a description of quirks can be found in the comments in generate_IR(). whenever you see three 
-  slashes, "///", then that means some very unusual behavior is being described.
+  whenever you see three slashes, "///", then that means some very unusual behavior is being 
+  //described.
 */
 #include <cstdint>
 #include <iostream>
@@ -361,7 +361,22 @@ stack_degree = 1, and storage_location.
   then, they store the return value into storage_location
 ASTs that return SSA objects are given stack_degree = 0.
 
-create_alloca_in_entry_block() is used to create the memory locations.
+Steps of generate_IR:
+check if generate_IR will be in an infinite loop, by using loop_catcher to store the previously 
+seen ASTs.
+run generate_IR on the previous AST in the basic block, if such an AST exists.
+  after this previous AST is generated, we can figure out where the current AST lives on the stack. 
+  this uses incrementor_for_lifetime.
+find out what the size of the return object is, using get_size()
+generate_IR is run on fields of the AST. it knows how many fields are needed by using 
+fields_to_compile from AST_descriptor[] 
+then, the main IR generation is done using a switch-case 
+on a tag.
+the return value is created using the finish() macros. these automatically pull in any 
+miscellaneous necessary information, such as stack lifetimes, and bundles them into a Return_Info. 
+furthermore, if the return value needs to be stored in a stack location, finish() does this 
+automatically using the move_to_stack lambda.
+
 */
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* 
 storage_location)
@@ -430,36 +445,30 @@ nullptr, T_null, 0, false, 0, 0, 0); } while (0)
   std::vector<Return_Info> field_results; //we don't actually need the return code, but we leave it 
   //anyway.
 
-  //these statements require special handling. todo: concatenate also.
-  if (target->tag != ASTn("if") && target->tag != ASTn("pointer") && target->tag != ASTn("copy"))
+  for (unsigned x = 0; x < AST_descriptor[target->tag].fields_to_compile; ++x)
   {
-
-    for (unsigned x = 0; x < AST_descriptor[target->tag].fields_to_compile; ++x)
+    Return_Info result; //default constructed for null object
+    if (target->fields[x].ptr)
     {
-      Return_Info result; //default constructed for null object
-      if (target->fields[x].ptr)
-      {
-        result = generate_IR(target->fields[x].ptr, false);
-        if (result.error_code) return result;
-      }
+      result = generate_IR(target->fields[x].ptr, false);
+      if (result.error_code) return result;
+    }
 
-      if (VERBOSE_DEBUG)
-      {
-        std::cerr << "type checking. result type is \n";
-        output_type_and_previous(result.type);
-        std::cerr << "desired type is \n";
-        output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
-      }
-      if (AST_descriptor[target->tag].parameter_types[x] != T_nonexistent)
-        if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != 3) 
-        return_code(type_mismatch);
+    if (VERBOSE_DEBUG)
+    {
+      std::cerr << "type checking. result type is \n";
+      output_type_and_previous(result.type);
+      std::cerr << "desired type is \n";
+      output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
+    }
+    //check that the type matches.
+    if (AST_descriptor[target->tag].parameter_types[x] != T_nonexistent)
+      if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != 3) 
+      return_code(type_mismatch);
 
-      field_results.push_back(result);
-      //todo: normally we'd also want to verify the types here. 
-		}
+    field_results.push_back(result);
   }
 
-  //when we add a type system, we better start checking if types work out.
   llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 
   //internal: do not call this directly. use the finish macro instead
@@ -522,18 +531,17 @@ nullptr, T_null, 0, false, 0, 0, 0); } while (0)
     lifetime_of_return_value, upper_life, lower_life);
   };
 
-  //call these when you've constructed something. the _pointer suffix is when you are returning a 
-  //pointer, and need lifetime information.
+  //call the finish macros when you've constructed something. the _pointer suffix is when you are 
+  //returning a pointer, and need lifetime information.
   //use finish_previously_constructed if your AST is not the one constructing the return object.
   //for example, concatenate() and if() use previously constructed return objects, and simply pass 
   //them through.
 
   //we can't use X directly because we will be duplicating the argument.
-#define finish(X, type) do { llvm::Value* first_value = X; llvm::Value* end_value = stack_degree \
->= 1 ? move_to_stack(first_value) : first_value; return finish_internal(end_value, type, 0, \
--1ull); } while (0)
-#define finish_pointer(X, type, u, l) do {llvm::Value* first_value = X; if (stack_degree >= 1) \
-move_to_stack(first_value); return finish_internal(first_value, type, u, l); } while (0)
+#define finish_pointer(X, type, u, l) do {llvm::Value* first_value = X; llvm::Value* end_value = \
+stack_degree >= 1 ? move_to_stack(first_value) : first_value; return finish_internal(end_value, \
+type, u, l); } while (0)
+#define finish(X, type) do { finish_pointer(X, type, 0, -1ull); } while (0)
 #define finish_previously_constructed(X, type) do { return finish_internal(X, type, 0, -1ull); } \
 while (0)
 #define finish_previously_constructed_pointer(X, type, u, l) do { return finish_internal(X, type, \
@@ -677,8 +685,8 @@ u, l); } while (0)
     //inside llvm, since they're described by a single number - their size.
     llvm::Value* final_result = Builder.CreatePtrToInt(found_AST->second.IR, int64_type);
 
-    finish_pointer(found_AST->second.IR, &type_scratch_space.back(), 
-    found_AST->second.self_lifetime, found_AST->second.self_lifetime);
+    finish_pointer(final_result, &type_scratch_space.back(), found_AST->second.self_lifetime, 
+    found_AST->second.self_lifetime);
   }
   case ASTn("copy"):
   {
@@ -753,8 +761,8 @@ void fuzztester(unsigned iterations)
 
 #include <iostream>
 #include <sstream>
-
 #include <istream>
+//parses console input and generates ASTs.
 class source_reader
 {
   std::unordered_map<std::string, AST*> ASTmap; //from name to location
@@ -811,13 +819,9 @@ class source_reader
           input.ignore(1);
         }
 
-        if (VERBOSE_DEBUG)
-          std::cerr << string_number << "stringnumber\n";
-        fields[field_num] = std::stoi(string_number); //TODO: this only produces ints, not int64
-        if (VERBOSE_DEBUG)
-        {
-          std::cerr << "field was " << fields[field_num].num << '\n';
-        }
+        //if (VERBOSE_DEBUG) 	std::cerr << string_number << "stringnumber\n";
+        fields[field_num] = std::stoull(string_number);
+        //if (VERBOSE_DEBUG) std::cerr << "field was " << fields[field_num].num << '\n';
       }
     }
     input.ignore(1); //consume ']'
@@ -843,7 +847,11 @@ class source_reader
     }
     //seems that once we consume the last '\n', the cin stream starts blocking again.
     if (!thisASTname.empty())
+    {
+      if (ASTmap.find(thisASTname) != ASTmap.end())
+        llvm_unreachable(strcat("duplicated variable name: ", ASTname));
       ASTmap.insert(std::make_pair(thisASTname, new_type));
+    }
 
     if (VERBOSE_DEBUG)
     {
@@ -867,14 +875,13 @@ public:
       while (input.peek() == ' ')
         std::cin.ignore(1);
       current_previous = read_single_AST(current_previous);
-      if (VERBOSE_DEBUG)
-      {
-        std::cerr << "next char at block level is " << (char)input.peek() << input.peek();
-        std::cerr << "------ outputting AST of single AST:\n";
-        output_AST_and_previous(current_previous);
-        std::cerr << "---done outputting AST of single AST:\n";
-      }
 
+    }
+    if (VERBOSE_DEBUG)
+    {
+      std::cerr << "next char at block level is " << (char)input.peek() << input.peek();
+      std::cerr << "outputting all ASTs:\n";
+      output_AST_and_previous(current_previous);
     }
     return current_previous; //which is the very last.
   }
