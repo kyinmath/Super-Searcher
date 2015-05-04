@@ -1,0 +1,34 @@
+we want:
+variable changing (CreateStore)
+locks
+concatenate
+	which means we have to figure out pointer offsets.
+compilation, which requires variable changing, and probably also dynamic types.
+	and requires concatenate(), if we want to generate ASTs in a non-random way.
+threading, which requires locks
+
+Normally, we'd need locks before we implemented CreateStore.
+	but right now, things are ok since all CreateStores are roughly atomic.
+
+createstore probably takes a pointer as its first argument, and the object itself as its second argument.
+
+if we have a pointer, how do we extract information from it?
+
+
+
+
+
+
+
+
+we want to have goto.
+how do labels work?
+if there are variables, temps and phis will fail. thus, we first need storage before labels.
+
+RVO must happen using the finish() command. because of do_after. when you call do_after, the existing things must already be put in place. you can't put them in place after returning.
+
+we need storage when:
+1. we concatenate (?)
+	no, in this case we can have a big jumble of values. shove them together only when used.
+2. we do do_after, because it might be changed
+3. we put something on the stack, because it might be changed, and temps can't change

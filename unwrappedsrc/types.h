@@ -19,6 +19,8 @@ Type_descriptor[] works similarly, using the enum-like class Type_info. Looking 
 For example, { "cheap pointer", 1, 1 } tells us that there is a Type that has name "cheap pointer" (the first argument), and its first field is a pointer to a Type that describes the object that is being pointed to (the second argument), and the size of the pointer is 1 (the third argument).
 
 The class AST_info has some other functions, which are mainly for special cases. For example, the "if" AST should not have its fields automatically converted to IR, because it needs to build basic blocks before it can emit the IR in the correct basic block. Moreover, its return value is not known beforehand - it depends on its "then" and "else" fields. Therefore, its return value is "T_special", indicating that it cannot be treated in the usual way. Since its fields cannot be automatically compiled, its parameter types are left blank, and the function "set_pointer_fields" is applied instead. This says that the fields are there, but that IR should not be automatically generated for them.
+
+Later, we'll have some ASTs that let the user actually query this information.
 */
 
 #pragma once
@@ -63,7 +65,7 @@ constexpr Type_info Type_descriptor[] =
 	{ "fixed integer", 1, 1 }, //64-bit integer whose value is fixed by the type.
 	{ "cheap pointer", 1, 1 }, //pointer to anything
 	{ "never reached", 0, 0 },
-	{ "AST in clouds", 2, 1 }, //points to an AST. we don't embed the AST along with the function signature, in order to keep them separate.
+	{ "AST in clouds", 2, 2 }, //points to an AST, and to the compiled area. we don't embed the AST along with the function signature, in order to keep them separate.
 	{ "lock", 0, 1 },
 	{ "type", 0, 3 },
 };
@@ -246,7 +248,7 @@ constexpr uint64_t get_size(AST* target)
 	if (AST_descriptor[target->tag].return_object != T_special) return get_size(AST_descriptor[target->tag].return_object);
 	else if (target->tag == ASTn("if")) return get_size(target->fields[1].ptr);
 	else if (target->tag == ASTn("pointer")) return 1;
-	else if (target->tag == ASTn("copy")) return get_size(target->fields[0].ptr);
+	else if (target->tag == ASTn("load")) return get_size(target->fields[0].ptr);
 	else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr); //todo: this is slow
 	llvm_unreachable(strcat("couldn't get size of tag in get_size(), target->tag was", AST_descriptor[target->tag].name));
 }

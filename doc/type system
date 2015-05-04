@@ -2,6 +2,8 @@ for internal types, we have the option to either represent the type of a stack o
 Either way, we'll have to do a transparent conversion from the llvm type when using the "pointer" AST and the "copy" AST, so that the user doesn't need to worry about whether the target AST is on the stack or not. The user does not care about llvm's internal semantics.
 Cons of storing the type with a pointer:
 	you create an extra pointer. if the type is not used, you've wasted time creating an extra type object.
+	when trying to Store values, you'll have to get get rid of this extra pointer to type_check.
+	when trying to Load values, you'll have to get rid of the extra pointer as well.
 Cons of storing the actual type:
 	every time you use a "pointer" AST, you have to create another pointer type.
 Decision: our internal type system doesn't create an extra pointer for stack objects. 

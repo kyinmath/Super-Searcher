@@ -1,16 +1,21 @@
 /* see README.md for how to run this program.
-functions which create ASTs:
+Functions which create ASTs:
 main() handles the commandline arguments. if console input is requested, it will handle input too. however, it won't parse the input.
 fuzztester() generates random, possibly malformed ASTs.
 for console input, read_single_AST() parses a single AST and its field's ASTs, then creates a tree of ASTs out of it.
 	then, create_single_basic_block() parses a list of ASTs, then chains them in a linked list using AST.preceding_BB_element
 
-things which compile and run ASTs:
+Things which compile and run ASTs:
 compiler_object holds state for a compilation. you make a new compiler_state for each compilation, and call compile_AST() on the last AST in your function. compile_AST automatically wraps the AST in a function and runs it; the last AST is assumed to hold the return object.
 compile_AST() is mainly a wrapper. it generates the llvm::Functions and llvm::Modules that contain the main code. it calls generate_IR() to do the main work.
 generate_IR() is the main AST conversion tool. it turns ASTs into llvm::Values, recursively. these llvm::Values are automatically inserted into a llvm::Module.
 	to do this, generate_IR first runs itself on a target's dependencies. then, it looks at the target's tag, and then uses a switch-case to determine how it should use those dependencies.
 	whenever you see three slashes, "///", then that means some very unusual behavior is being described.
+
+Debug:
+output_AST_and_previous() shows an AST and everything it depends on.
+output_Type_and_previous() is similar.
+Module->dump() prints the generated llvm code.
 */
 #include <cstdint>
 #include <iostream>
@@ -53,9 +58,15 @@ unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 std::mt19937_64 mersenne(seed);
 uint64_t generate_random() { return mersenne(); }
 
+//generates an approximately exponential distribution
+uint64_t generate_exponential_dist()
+{
+	uint64_t cutoff = generate_random();
+	cutoff ^= cutoff - 1; //1s starting from the lowest digit of cutoff
+	return generate_random() & cutoff;
+}
 
-
-enum codegen_status {
+enum IRgen_status {
 	no_error,
 	infinite_loop, //ASTs have pointers in a loop
 	active_object_duplication, //an AST has two return values active simultaneously, making the AST-to-object map ambiguous
@@ -116,7 +127,7 @@ void output_type_and_previous(Type* target)
 //every time IR is generated, this holds the relevant return info.
 struct Return_Info
 {
-	codegen_status error_code;
+	IRgen_status error_code;
 
 	llvm::Value* IR;
 		
@@ -139,12 +150,12 @@ struct Return_Info
 	uint64_t target_lower_lifetime; //lower is stricter. the target must die faster than this.
 	//measures the pointer's target's lifetime, for when the pointed-to memory location wants something to be written into it.
 	
-	Return_Info(codegen_status err, llvm::Value* b, Type* t, uint64_t si, bool o, uint64_t s, uint64_t u, uint64_t l)
+	Return_Info(IRgen_status err, llvm::Value* b, Type* t, uint64_t si, bool o, uint64_t s, uint64_t u, uint64_t l)
 		: error_code(err), IR(b), type(t), size(si), on_stack(o), self_lifetime(s), target_upper_lifetime(u), target_lower_lifetime(l) {}
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
-	Return_Info() : error_code(codegen_status::no_error), IR(nullptr), type(T_null), size(0), on_stack(false), self_lifetime(0), target_upper_lifetime(0), target_lower_lifetime(-1ull) {}
+	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T_null), size(0), on_stack(false), self_lifetime(0), target_upper_lifetime(0), target_lower_lifetime(-1ull) {}
 };
 
 
@@ -185,7 +196,7 @@ public:
 	compiler_object();
 	unsigned compile_AST(AST* target); //we can't combine this with the ctor, because it needs to return an int
 
-	//exists when codegen_status has an error.
+	//exists when IRgen_status has an error.
 	AST* error_location;
 
 };
@@ -346,7 +357,7 @@ however, note that pointers are still pointers, even though they are casted to i
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
-#define return_code(X) do { error_location = target; return Return_Info(codegen_status::X, nullptr, T_null, 0, false, 0, 0, 0); } while (0)
+#define return_code(X) do { error_location = target; return Return_Info(IRgen_status::X, nullptr, T_null, 0, false, 0, 0, 0); } while (0)
 
 	if (VERBOSE_DEBUG)
 	{
@@ -465,22 +476,23 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			output_type_and_previous(type);
 			std::cerr << '\n';
 		}
-		if (stack_degree == 2)
-			clear_stack(final_stack_position);
+
+		//we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for justification.
+		if (stack_degree == 2) clear_stack(final_stack_position);
 
 		if (stack_degree >= 1)
 		{
 			if (size_result >= 1)
 			{
 				object_stack.push(target);
-				auto insert_result = objects.insert({ target, Return_Info(codegen_status::no_error, return_value, type, size_result, true, lifetime_of_return_value, upper_life, lower_life) });
+				auto insert_result = objects.insert({ target, Return_Info(IRgen_status::no_error, return_value, type, size_result, true, lifetime_of_return_value, upper_life, lower_life) });
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication);
 			}
-			type_scratch_space.push_back(Type("cheap pointer", type)); //stack objects are always pointers, just like in llvm.
-			type = &type_scratch_space.back();
+			//type_scratch_space.push_back(Type("cheap pointer", type)); //stack objects are always pointers, just like in llvm.
+			//type = &type_scratch_space.back();
 		}
-		return Return_Info(codegen_status::no_error, return_value, type, size_result, false, lifetime_of_return_value, upper_life, lower_life);
+		return Return_Info(IRgen_status::no_error, return_value, type, size_result, false, lifetime_of_return_value, upper_life, lower_life);
 	};
 
 	//call the finish macros when you've constructed something. the _pointer suffix is when you are returning a pointer, and need lifetime information.
@@ -633,7 +645,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	}
 	/*case ASTn("get 0"):
 		finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_int);*/
-	case ASTn("concatenate"):
+	/*case ASTn("concatenate"):
 	{
 		int64_t first_size = get_size(target->fields[0].ptr);
 		if (stack_degree == 2); //do nothing, we've already made the alloca
@@ -646,7 +658,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				Return_Info first_half = generate_IR(target->fields[0].ptr, 1, temp_storage);
 			}
 		}
-	}
+	}*/
 	}
 
 	llvm_unreachable("fell through switches");
@@ -677,7 +689,7 @@ void fuzztester(unsigned iterations)
 		for (; incrementor < pointer_fields; ++incrementor)
 			fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous ASTs
 		for (; incrementor < max_fields_in_AST; ++incrementor)
-			fields[incrementor] = (mersenne() % 2) ? mersenne() : 0; //get random integers and fill in the remaining fields
+			fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields
 		AST* test_AST= new AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
 		output_AST_and_previous(test_AST);
 
@@ -871,8 +883,8 @@ int main(int argc, char* argv[])
 			compiler_object j;
 			unsigned error_code = j.compile_AST(end);
 			if (error_code)
-				std::cerr << "Malformed AST: code " << error_code << " at AST " << j.error_location << '\n';
-			else std::cerr << "Successful compile\n";
+				std::cerr << "Malformed AST: code " << error_code << " at AST " << j.error_location << "\n\n";
+			else std::cerr << "Successful compile\n\n";
 			}
 	}
 

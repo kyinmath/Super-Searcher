@@ -1,0 +1,12 @@
+having the fields survive until the base AST finishes is good, because it enhances lifetime. suppose you want an integer to be accessible while constructing two fields; then surviving basic blocks means a single calculation makes it available for both.
+	but if the fields don't survive, then making this integer accessible would require it to be in the basic block of the base AST, which makes it spill out everywhere. everything would be able to see it, even though it's just a locally useful piece of information
+
+on the other hand, if you pass in a pointer as an argument, the only guarantee is that the pointed-to object will be valid for as long as your function is executing. but the pointed-to object may disappear just after your function finishes executing.
+
+I think one convenient thing is that an object doesn't appear on the stack until it's fully constructed. so a base AST's return information will appear on the stack only after it's constructed, so it can't be referenced prematurely.
+
+%%one thing is that an object can point to previous elements in a basic block. for example, a pointer.
+so we might have something like:
+usepointer(y) where y is a pointer, and y is created as int x; return &x;
+thus, if we have an AST, and we want to clear the junk in its fields, we can't do so until it is all used up.
+	that's not true. if you are creating a superdep, and you store a pointer to one of its first_pointers, we're still ok because that will error out. the pointer's lifetime is too short for anything outside of the superdep.
