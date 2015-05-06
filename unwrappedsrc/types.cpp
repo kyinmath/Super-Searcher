@@ -2,6 +2,10 @@
 #include "types.h"
 
 /*
+the docs in this file are incomplete.
+this checks if types are equivalent, but with many special cases depensing on the nature of the two types.
+
+
 we can only convert things that are FULLY IMMUT. just immut is not enough, because it might change anyway (perhaps it's inside a lock, or TU).
 that is, the fields[0] pointer must never be able to change those things.
 the first pointer's validity must assuredly last longer than the fields[0] pointer.
