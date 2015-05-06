@@ -1,8 +1,7 @@
 we want:
 variable changing (CreateStore)
 locks
-concatenate
-	which means we have to figure out pointer offsets.
+pointer offsets.
 compilation, which requires variable changing, and probably also dynamic types.
 	and requires concatenate(), if we want to generate ASTs in a non-random way.
 threading, which requires locks

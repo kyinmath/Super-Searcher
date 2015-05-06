@@ -1,5 +1,6 @@
 having the fields survive until the base AST finishes is good, because it enhances lifetime. suppose you want an integer to be accessible while constructing two fields; then surviving basic blocks means a single calculation makes it available for both.
 	but if the fields don't survive, then making this integer accessible would require it to be in the basic block of the base AST, which makes it spill out everywhere. everything would be able to see it, even though it's just a locally useful piece of information
+however, objects which may or may not be available absolutely must die. for example, an if statement.
 
 on the other hand, if you pass in a pointer as an argument, the only guarantee is that the pointed-to object will be valid for as long as your function is executing. but the pointed-to object may disappear just after your function finishes executing.
 

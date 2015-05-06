@@ -61,6 +61,8 @@ known beforehand - it depends on its "then" and "else" fields. Therefore, its re
 automatically compiled, its parameter types are left blank, and the function "set_pointer_fields" 
 is applied instead. This says that the fields are there, but that IR should not be automatically 
 generated for them.
+
+Later, we'll have some ASTs that let the user actually query this information.
 */
 
 #pragma once
@@ -105,8 +107,8 @@ constexpr Type_info Type_descriptor[] =
   { "fixed integer", 1, 1 }, //64-bit integer whose value is fixed by the type.
   { "cheap pointer", 1, 1 }, //pointer to anything
   { "never reached", 0, 0 },
-  { "AST in clouds", 2, 1 }, //points to an AST. we don't embed the AST along with the function 
-  //signature, in order to keep them separate.
+  { "AST in clouds", 2, 2 }, //points to an AST, and to the compiled area. we don't embed the AST 
+  //along with the function signature, in order to keep them separate.
   { "lock", 0, 1 },
   { "type", 0, 3 },
 };
@@ -250,13 +252,13 @@ constexpr AST_info AST_descriptor[] =
   a("pointer", T_special).set_pointer_fields(1), //creates a pointer to an alloca'd element. takes 
   //a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in 
   //<>objects.
-  a("copy", T_special).set_pointer_fields(1), //creates a copy of an element. takes one field, but 
-  //does NOT compile it.
+  a("load", T_special).set_pointer_fields(1), //creates a temporary copy of an element. takes one 
+  //field, but does NOT compile it.
+  a("concatenate", T_special).set_pointer_fields(2),
   { "never reached", T_special }, //marks the end of the currently-implemented ASTs. beyond this is 
   //rubbish.
-  //{ "dereference pointer", 0, 1 },
+  { "dereference pointer", T_special}, //????
   a("store", T_special), //????
-  a( "concatenate", T_special).set_fields_to_compile(2)
   /*	{ "goto", 2 }, //label and failure branch
   { "label" },
   { "no op", 0, 0 },
@@ -309,18 +311,13 @@ constexpr uint64_t get_size(AST* target)
   if (target == nullptr)
     return 0; //for example, if you try to get the size of an if statement with nullptr fields as 
     //the return object.
-  if (AST_descriptor[target->tag].return_object != T_special)
-  {
-    return get_size(AST_descriptor[target->tag].return_object);
-  }
-  else if (target->tag == ASTn("if"))
-  {
-    return get_size(target->fields[1].ptr);
-  }
+  if (AST_descriptor[target->tag].return_object != T_special) return 
+  get_size(AST_descriptor[target->tag].return_object);
+  else if (target->tag == ASTn("if")) return get_size(target->fields[1].ptr);
   else if (target->tag == ASTn("pointer")) return 1;
-  else if (target->tag == ASTn("copy")) return get_size(target->fields[0].ptr);
+  else if (target->tag == ASTn("load")) return get_size(target->fields[0].ptr);
   else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + 
-  get_size(target->fields[1].ptr);
+  get_size(target->fields[1].ptr); //todo: this is slow. takes n^2 time.
   llvm_unreachable(strcat("couldn't get size of tag in get_size(), target->tag was", 
   AST_descriptor[target->tag].name));
 }

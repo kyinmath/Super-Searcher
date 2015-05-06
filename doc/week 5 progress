@@ -2,4 +2,8 @@ Wrote a lot of docs - you can find them in types.h and cs11.cpp
 Decision made to flatten the llvm types into just integers. So llvm won't see any pointers.
 	The reasoning is that it was easy. There are bigger issues in the way I'm smashing integers together using "concatenate". I should go for the easy fruit first.
 	The alternative, of keeping a complete llvm type system, is very hard. With later things like recursive types, it's going to be a pain.
-No more segfaulting.
+"Concatenate" AST implemented, which means...
+	that the random number generator was changed to an exponential distribution. It uses a bit twiddling hack for speed.
+
+Segfaults: ./toy console, then the AST is [scope] [integer 1]
+The reason is that my debug function is trying to dereference a nullptr. I can fix it easily by adding a check, but I'm currently thinking about whether this should be allowed or not.
