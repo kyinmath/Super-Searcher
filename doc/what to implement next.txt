@@ -14,8 +14,8 @@ createstore probably takes a pointer as its first argument, and the object itsel
 if we have a pointer, how do we extract information from it?
 
 
-
-
+I want a console-friendly AST output function, which will require some state tracking so that we don't duplicate ASTs.
+But this means that I'll also need to fix up my console input function to support multiple basic blocks.
 
 
 
