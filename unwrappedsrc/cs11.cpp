@@ -101,24 +101,63 @@ void output_AST_and_previous(AST* target)
 			output_AST_and_previous(target->fields[x].ptr);
 }
 
+
 //outputs the AST in a form that can be input into the console
-void output_AST_console_version(AST* target)
+//any time it may start a new basic block, it outputs braces if necessary
+//might_be_end_in_BB is to check if you may be starting a new basic block, which really means that your AST is a field in another AST.
+//be careful: an AST and its previous basic block elements may need braces when referenced one way, but may not need them when referenced another way (for example, if it's referenced as dependencies of two different ASTs, but is not the primary element in the first). this isn't an issue when reading, but is handled appropriately when outputting.
+struct output_AST_console_version
 {
-	if (target == nullptr)
-	{
-		std::cerr << "AST is null\n";
-		return;
+	std::unordered_set<AST*> AST_list = { nullptr }; //nullptr = 0 is a special value.
+
+	output_AST_console_version(AST* target)
+	{ output_console(target, false); }
+	//we call it with "false", because the overall function is implicitly wrapped in braces.
+
+	//the purpose of "might be end in BB" is to decide whether to output {} or not.
+	void output_console(AST* target, bool might_be_end_in_BB){
+		auto AST_search = AST_list.find(target);
+		if (AST_search != AST_list.end())
+		{
+			std::cerr << target;
+			return;
+		}
+		else AST_list.insert(target);
+
+		bool output_braces = false;
+		if (target->preceding_BB_element != nullptr)
+		{
+			if (might_be_end_in_BB)
+			{
+				output_braces = true;
+				std::cerr << "{";
+			}
+			output_console(target->preceding_BB_element, false);
+			std::cerr << ' ';
+		}
+		std::cerr << "[" << AST_descriptor[target->tag].name;
+		int x = 0;
+		for (; x < AST_descriptor[target->tag].pointer_fields; ++x)
+		{
+			std::cerr << ' ';
+			output_console(target->fields[x].ptr, true);
+		}
+		unsigned final_nonzero_field = x;
+		for (unsigned check_further_nonzero_fields = x + 1; check_further_nonzero_fields < max_fields_in_AST; ++check_further_nonzero_fields)
+			if (target->fields[check_further_nonzero_fields].num) final_nonzero_field = check_further_nonzero_fields;
+		for (; x <= final_nonzero_field; ++x)
+		{
+			std::cerr << ' ';
+			std::cerr << target->fields[x].num;
+		}
+		std::cerr << ']';
+
+		if (1) std::cerr << target; //we should do some culling later.
+
+		if (output_braces)
+			std::cerr << "}";
 	}
-	if (target->preceding_BB_element != nullptr)
-	{
-		output_AST_console_version(target->preceding_BB_element);
-		std::cerr << ' ';
-	}
-	unsigned number_of_further_ASTs = AST_descriptor[target->tag].pointer_fields;
-	for (int x = 0; x < number_of_further_ASTs; ++x)
-		if (target->fields[x].ptr != nullptr)
-			output_AST_and_previous(target->fields[x].ptr);
-}
+};
 
 //only call on a non-nullptr target. outputs a single Type.
 void output_type(Type* target)
@@ -755,6 +794,7 @@ void fuzztester(unsigned iterations)
 			fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields
 		AST* test_AST= new AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
 		output_AST_and_previous(test_AST);
+		output_AST_console_version a(test_AST);
 
 		compiler_object compiler;
 		unsigned error_code = compiler.compile_AST(test_AST);
@@ -782,7 +822,7 @@ void fuzztester(unsigned iterations)
 //parses console input and generates ASTs.
 class source_reader
 {
-	std::unordered_map<std::string, AST*> ASTmap; //from name to location
+	std::unordered_map<std::string, AST*> ASTmap = { { "0", nullptr } }; //from name to location. starts with 0 = nullptr.
 	std::istream& input;
 	
 	AST* read_single_AST(AST* previous_AST)
