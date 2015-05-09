@@ -20,4 +20,4 @@ wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key|sudo apt-key add -
 ```
 but I don't know what that actually means.
 
-To compile, run "make". Or if your path is clang++ instead of clang++-3.6, run "make van".
+To compile, run "make". Or if your path is clang++ instead of clang++-3.6, you should change the makefile from clang++-3.6 to clang++, and maybe llvm-config-3.6 to llvm_config.
