@@ -26,5 +26,8 @@
     <ClInclude Include="unwrappedsrc\types.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="unwrappedsrc\debugoutput.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

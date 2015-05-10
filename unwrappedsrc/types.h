@@ -28,6 +28,11 @@ Later, we'll have some ASTs that let the user actually query this information.
 #include <array>
 #include <llvm/Support/ErrorHandling.h>
 
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+//why is this necessary? what is setting NDEBUG
+
 template<typename target_type>
 union int_or_ptr
 {
@@ -70,14 +75,16 @@ constexpr Type_info Type_descriptor[] =
 	{ "type", 0, 3 },
 };
 
-
+#include <iostream>
 template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const char name[])
 {
 	for (unsigned k = 0; 1; ++k)
 	{
 		if (static_strequal(vector_name[k].name, name)) return k;
 		if (static_strequal(vector_name[k].name, "never reached")) //this isn't recursive, because the previous if statement returns.
-			llvm_unreachable("tried to get a nonexistent name");
+			llvm_unreachable( "tried to get a nonexistent name");
+		//llvm_unreachable doesn't give proper errors for run time mistakes, only when it's compile time.
+
 	}
 }
 constexpr uint64_t Typen(const char name[])
@@ -186,7 +193,7 @@ using a = AST_info;
 constexpr AST_info AST_descriptor[] =
 {
 	{ "integer", T_int}, //first argument is an integer, which is the returned value.
-	{ "Hello World!", T_null},
+	{ "hello", T_null},
 	a("if", T_special).set_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
 	a("scope", T_null).set_fields_to_compile(1), //fulfills the purpose of {} from C++
 	{ "add", T_int, T_int, T_int }, //adds two integers

@@ -38,6 +38,7 @@ Module->dump() prints the generated llvm code.
 #include <llvm/Analysis/Passes.h>
 #include <llvm/Support/raw_ostream.h> 
 #include "types.h"
+#include "debugoutput.h"
 
 bool OPTIMIZE = false;
 bool VERBOSE_DEBUG = false;
@@ -74,112 +75,6 @@ enum IRgen_status {
 	pointer_without_target, //tried to get a pointer to an AST, but it was not found at all
 	pointer_to_temporary, //tried to get a pointer to an AST, but it was not placed on the stack.
 };
-
-//only call on a non-nullptr target. outputs a single AST.
-void output_AST(AST* target)
-{
-	std::cerr << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target <<
-		", prev " << target->preceding_BB_element << '\n';
-	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
-}
-
-//for debugging. outputs an AST and everything it can see, recursively.
-void output_AST_and_previous(AST* target)
-{
-	if (target == nullptr)
-	{
-		std::cerr << "AST is null\n";
-		return;
-	}
-	output_AST(target);
-	if (target->preceding_BB_element != nullptr)
-		output_AST_and_previous(target->preceding_BB_element);
-	unsigned number_of_further_ASTs = AST_descriptor[target->tag].pointer_fields;
-	//boost::irange may be useful, but pulling in unnecessary (possibly-buggy) code is bad
-	for (int x = 0; x < number_of_further_ASTs; ++x)
-		if (target->fields[x].ptr != nullptr)
-			output_AST_and_previous(target->fields[x].ptr);
-}
-
-
-//outputs the AST in a form that can be input into the console
-//any time it may start a new basic block, it outputs braces if necessary
-//might_be_end_in_BB is to check if you may be starting a new basic block, which really means that your AST is a field in another AST.
-//be careful: an AST and its previous basic block elements may need braces when referenced one way, but may not need them when referenced another way (for example, if it's referenced as dependencies of two different ASTs, but is not the primary element in the first). this isn't an issue when reading, but is handled appropriately when outputting.
-struct output_AST_console_version
-{
-	std::unordered_set<AST*> AST_list = { nullptr }; //nullptr = 0 is a special value.
-
-	output_AST_console_version(AST* target)
-	{ output_console(target, false); }
-	//we call it with "false", because the overall function is implicitly wrapped in braces.
-
-	//the purpose of "might be end in BB" is to decide whether to output {} or not.
-	void output_console(AST* target, bool might_be_end_in_BB){
-		auto AST_search = AST_list.find(target);
-		if (AST_search != AST_list.end())
-		{
-			std::cerr << target;
-			return;
-		}
-		else AST_list.insert(target);
-
-		bool output_braces = false;
-		if (target->preceding_BB_element != nullptr)
-		{
-			if (might_be_end_in_BB)
-			{
-				output_braces = true;
-				std::cerr << "{";
-			}
-			output_console(target->preceding_BB_element, false);
-			std::cerr << ' ';
-		}
-		std::cerr << "[" << AST_descriptor[target->tag].name;
-		int x = 0;
-		for (; x < AST_descriptor[target->tag].pointer_fields; ++x)
-		{
-			std::cerr << ' ';
-			output_console(target->fields[x].ptr, true);
-		}
-		unsigned final_nonzero_field = x;
-		for (unsigned check_further_nonzero_fields = x + 1; check_further_nonzero_fields < max_fields_in_AST; ++check_further_nonzero_fields)
-			if (target->fields[check_further_nonzero_fields].num) final_nonzero_field = check_further_nonzero_fields;
-		for (; x <= final_nonzero_field; ++x)
-		{
-			std::cerr << ' ';
-			std::cerr << target->fields[x].num;
-		}
-		std::cerr << ']';
-
-		if (1) std::cerr << target; //we should do some culling later.
-
-		if (output_braces)
-			std::cerr << "}";
-	}
-};
-
-//only call on a non-nullptr target. outputs a single Type.
-void output_type(Type* target)
-{
-	std::cerr << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << "\n";
-	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
-}
-
-//for debugging. outputs a Type and everything it points to, recursively.
-void output_type_and_previous(Type* target)
-{
-	if (target == nullptr)
-	{
-		std::cerr << "type is null\n";
-		return;
-	}
-	output_type(target);
-	unsigned further_outputs = Type_descriptor[target->tag].pointer_fields;
-	for (int x = 0; x < further_outputs; ++x)
-		if (target->fields[x].ptr != nullptr)
-			output_type_and_previous(target->fields[x].ptr);
-}
 
 //every time IR is generated, this holds the relevant return info.
 struct Return_Info
@@ -276,7 +171,8 @@ compiler_object::compiler_object() : error_location(nullptr), Builder(thread_con
 		.setErrorStr(&ErrStr)
 		.setMCJITMemoryManager(std::unique_ptr<llvm::SectionMemoryManager>(new llvm::SectionMemoryManager))
 		.create();
-	if (!engine) {
+	if (!engine)
+	{
 		std::cerr << "Could not create ExecutionEngine: " << ErrStr.c_str() << '\n';
 		exit(1);
 	}
@@ -419,14 +315,14 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 	if (VERBOSE_DEBUG)
 	{
-		std::cerr << "starting generate_IR with stack degree " << stack_degree << "\n";
-		if (storage_location)
-		{
-			std::cerr << "storage location is ";
-			storage_location->print(llvm::outs());
-			std::cerr << '\n';
-		}
+		std::cerr << "generate_IR single AST start ^^^^^^^^^\n";
 		output_AST(target);
+		std::cerr << "stack degree " << stack_degree;
+		std::cerr << ", storage location is ";
+		if (storage_location)
+			storage_location->print(llvm::outs());
+		else std::cerr << "null";
+		std::cerr << '\n';
 		std::cerr << "dumping module before generation:\n";
 		TheModule->dump();
 	}
@@ -514,8 +410,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		{
 			std::cerr << "finish() in generate_IR, called value is ";
 			return_value->print(llvm::outs());
-			std::cerr << "\nAST addr is ";
-			std::cerr << target;
 			std::cerr << "\nand the llvm type is ";
 			return_value->getType()->print(llvm::outs());
 			std::cerr << "\nand the internal type is ";
@@ -523,6 +417,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			std::cerr << '\n';
 		}
 		else if (VERBOSE_DEBUG) std::cerr << "finish() in generate_IR, null value\n";
+		if (VERBOSE_DEBUG)
+			std::cerr << "generate_IR single AST " << target << " vvvvvvvvv\n";
 
 		//we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for justification.
 		//TODO: what about if statements? they should eliminate temporaries no matter what, since it's not guaranteed that the temporary will exist.
@@ -564,7 +460,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR), T_int);
 	case ASTn("subtract"):
 		finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR), T_int);
-	case ASTn("Hello World!"):
+	case ASTn("hello"):
 		{
 			llvm::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!\n");
 
@@ -599,6 +495,12 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 			if (type_check(RVO, condition.type, T_int) != 3)
 				return_code(type_mismatch, 0);
+
+			if (stack_degree == 2)
+			{
+				size_result = get_size(target);
+				if (size_result >= 1) storage_location = create_alloca_in_entry_block(size_result);
+			}
 
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
 			llvm::Value* comparison = Builder.CreateICmpNE(condition.IR, llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
@@ -696,7 +598,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_int);*/
 	case ASTn("concatenate"):
 		{
-			//TODO:  size_result still not known.
+			//TODO: if stack_degree == 1, then you've already gotten the size. look it up in a special location.
+
 			int64_t first_size = get_size(target->fields[0].ptr);
 			uint64_t second_size = get_size(target->fields[1].ptr);
 			size_result = first_size + second_size;
@@ -741,17 +644,15 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			else //it's convenient having a special case, because no need to worry about integer llvm values for size-1 objects.
 			{
 
-				//we want the return objects to RVO. thus, we create a memory slot.
-				if (stack_degree == 2 && size_result > 0) storage_location = create_alloca_in_entry_block(size_result);
-
-				if (target->fields[0].ptr == nullptr)
-					return_code(null_AST, 0);
-				Return_Info first_half = generate_IR(target->fields[0].ptr, (stack_degree != 0) && (first_size > 0), storage_location);
+				if (target->fields[0].ptr == nullptr) return_code(null_AST, 0);
+				//we only have to RVO if stack_degree is 1, because otherwise we can return the result directly.
+				//that means we don't have to create a storage_location here.
+				Return_Info first_half = generate_IR(target->fields[0].ptr, (stack_degree == 1) && (first_size > 0), storage_location);
 				if (first_half.error_code) return first_half;
 
 				if (target->fields[1].ptr == nullptr)
 					return_code(null_AST, 1);
-				Return_Info second_half = generate_IR(target->fields[1].ptr, (stack_degree != 0) && (second_size > 0), nullptr);
+				Return_Info second_half = generate_IR(target->fields[1].ptr, (stack_degree == 1) && (second_size > 0), storage_location);
 				if (second_half.error_code) return second_half;
 
 				if (first_size > 0)
@@ -816,97 +717,109 @@ void fuzztester(unsigned iterations)
 	}
 }
 
+#ifdef NDEBUG
+panic time!
+#endif
 #include <iostream>
 #include <sstream>
 #include <istream>
 //parses console input and generates ASTs.
+using std::string; //why can't this go inside source_reader?
 class source_reader
 {
-	std::unordered_map<std::string, AST*> ASTmap = { { "0", nullptr } }; //from name to location. starts with 0 = nullptr.
+
+	std::unordered_map<string, AST*> ASTmap = { { "0", nullptr } }; //from name to location. starts with 0 = nullptr.
 	std::istream& input;
-	
-	AST* read_single_AST(AST* previous_AST)
+
+	//grabs a token. characters like [, ], {, } count as tokens by themselves.
+	//otherwise, get characters until you hit whitespace or a special character.
+	//if the last char is \n, then it doesn't consume it.
+	string get_token()
 	{
-		input.ignore(1); //consume '['
-
-		std::string word;
-		do {
-			word += input.peek();
+		while (input.peek() == ' ')
 			input.ignore(1);
-		} while (input.peek() != ' ' && input.peek() != ']');
 
-		if (VERBOSE_DEBUG)
-			std::cerr << word.c_str() << '\n';
-		uint64_t AST_type = ASTn(word.c_str());
-		if (VERBOSE_DEBUG)
-			std::cerr << "AST tag was " << AST_type << "\n";
+		char next_char = input.peek();
+		switch (next_char)
+		{
+		case '[':
+		case ']':
+		case '{':
+		case '}':
+			input.ignore(1);
+			return string(1, next_char);
+		case '\n':
+			return string();
+		default:
+			string word;
+			while (next_char != '[' && next_char != ']' && next_char != '{' && next_char != '}' && next_char != '\n' && next_char != ' ')
+			{
+				word.push_back(next_char);
+				input.ignore(1);
+				next_char = input.peek();
+			}
+			//std::cerr << "word is " << word << "|||\n";
+			return word;
+		}
+	}
+
+	//continued_string is in case we already read the first token. then, that's the first thing to start with.
+	AST* read_single_AST(AST* previous_AST, string continued_string = "")
+	{
+		string first = continued_string == "" ? get_token() : continued_string;
+
+		if (first != string(1, '[')) //it's a name reference.
+		{
+			//std::cerr << "first was " << first << '\n';
+			auto AST_search = ASTmap.find(first);
+			check(AST_search != ASTmap.end(), string("variable name not found: ") + first);
+			return AST_search->second;
+		}
+
+		string tag = get_token();
+
+		uint64_t AST_type = ASTn(tag.c_str());
+		if (VERBOSE_DEBUG) std::cerr << "AST tag was " << AST_type << "\n";
 		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
 
 		int_or_ptr<AST> fields[max_fields_in_AST] = { nullptr, nullptr, nullptr, nullptr };
 
 		//field_num is which field we're on
-		for (int field_num = 0; input.peek() != ']'; ++field_num)
+		int field_num = 0;
+		for (string next_token = get_token(); next_token != "]"; next_token = get_token(), ++field_num)
 		{
-			while (input.peek() == ' ') input.ignore(1);
-			if (field_num >= max_fields_in_AST)
-				llvm_unreachable("more fields than possible");
-			if (input.peek() == '[')
+			check(field_num < max_fields_in_AST, "more fields than possible");
+			if (field_num < pointer_fields) //it's a pointer!
 			{
-				fields[field_num] = read_single_AST(nullptr);
+				if (next_token == "{") fields[field_num] = create_single_basic_block(true);
+				else fields[field_num] = read_single_AST(nullptr, next_token);
 			}
-			else if (field_num < pointer_fields) //it's a pointer!
+			else //it's an integer
 			{
-				std::string ASTname;
-				while (input.peek() != ' ' && input.peek() != ']')
-				{
-					ASTname.push_back(input.peek());
-					input.ignore(1);
-				}
-				auto AST_search = ASTmap.find(ASTname);
-				if (AST_search == ASTmap.end())
-					llvm_unreachable(strcat("variable name not found: ", ASTname));
-				fields[field_num] = AST_search->second;
-			}
-			else
-			{
-				std::string string_number;
-				while (isdigit(input.peek()))
-				{
-					string_number.push_back(input.peek());
-					input.ignore(1);
-				}
-
-				//if (VERBOSE_DEBUG) 	std::cerr << string_number << "stringnumber\n";
-				fields[field_num] = std::stoull(string_number);
-				//if (VERBOSE_DEBUG) std::cerr << "field was " << fields[field_num].num << '\n';
+				bool isNumber = true;
+				for (auto& k : next_token)
+					isNumber = isNumber && isdigit(k);
+				check(isNumber, "tried to input non - number");
+				//string_number = "9";
+							fields[field_num] = std::stoull(next_token);
 			}
 		}
-		input.ignore(1); //consume ']'
+		//check(next_token == "]", "failed to have ]");
 		AST* new_type = new AST(AST_type, previous_AST, fields[0], fields[1], fields[2], fields[3]);
 
 		if (VERBOSE_DEBUG)
-			output_AST_and_previous(new_type);
+			output_AST_console_version a(new_type);
 
-		std::string thisASTname;
 		//get an AST name if any.
-		//the input.eof must come first, because peeking blocks the stream again.
-		//if (!input.eof()) I think cin is never eof.
+		if (input.peek() != ' ' && input.peek() != '\n' && input.peek() != ']' && input.peek() != '[' && input.peek() != '{' && input.peek() != '}')
 		{
-			while (input.peek() != ' ' && input.peek() != '\n' && input.peek() != ']' && input.peek() != '[')
+			string thisASTname = get_token();
+			//seems that once we consume the last '\n', the cin stream starts blocking again.
+			if (!thisASTname.empty())
 			{
-				thisASTname.push_back(input.peek());
-				input.ignore(1);
-
-				if (VERBOSE_DEBUG)
-					std::cerr << "next char while name is " << (char)input.peek() << input.peek() << '\n';
+				check(ASTmap.find(thisASTname) == ASTmap.end(), string("duplicated variable name: ") + thisASTname);
+				ASTmap.insert(std::make_pair(thisASTname, new_type));
 			}
-		}
-		//seems that once we consume the last '\n', the cin stream starts blocking again.
-		if (!thisASTname.empty())
-		{
-			if (ASTmap.find(thisASTname) != ASTmap.end())
-				llvm_unreachable(strcat("duplicated variable name: ", ASTname));
-			ASTmap.insert(std::make_pair(thisASTname, new_type));
 		}
 
 		if (VERBOSE_DEBUG)
@@ -922,29 +835,37 @@ class source_reader
 
 public:
 	source_reader(std::istream& stream, char end) : input(stream) {}
-	AST* create_single_basic_block()
+	AST* create_single_basic_block(bool create_brace_at_end = false)
 	{
 		AST* current_previous = nullptr;
-		if (std::cin.peek() == '\n') std::cin.ignore(1);
-		while (input.peek() != '\n')
+		if (create_brace_at_end == false)
 		{
-			while (input.peek() == ' ')
-				std::cin.ignore(1);
-			current_previous = read_single_AST(current_previous);
-
+			if (std::cin.peek() == '\n') std::cin.ignore(1);
+			for (string next_word = get_token(); next_word != ""; next_word = get_token())
+				current_previous = read_single_AST(current_previous, next_word);
+			return current_previous; //which is the very last.
 		}
-		if (VERBOSE_DEBUG)
+		else
 		{
-			std::cerr << "next char at block level is " << (char)input.peek() << input.peek();
-			std::cerr << "outputting all ASTs:\n";
-			output_AST_and_previous(current_previous);
+			for (string next_word = get_token(); next_word != "}"; next_word = get_token())
+				current_previous = read_single_AST(current_previous, next_word);
+			return current_previous; //which is the very last
 		}
-		return current_previous; //which is the very last.
 	}
 };
 
 int main(int argc, char* argv[])
 {
+	//these do nothing
+	//assert(0);
+	//assert(1);
+
+	//used for testing ASTn's error reporting
+	/*switch (2)
+	{
+	case ASTn("fiajewoar"):
+		break;
+	}*/
 	for (int x = 1; x < argc; ++x)
 	{
 		if (strcmp(argv[x], "noninteractive") == 0)
@@ -964,7 +885,7 @@ int main(int argc, char* argv[])
 
 
 	AST getif("if", &addthem, &get1, &get2, &get3); //first, execute addthem. then, if get1 is non-zero, return get2. otherwise, return get3.
-	AST helloworld("Hello World!", &getif); //first, execute getif. then output "Hello World!"
+	AST helloworld("hello", &getif); //first, execute getif. then output "Hello World!"
 	compiler_object compiler;
 	compiler.compile_AST(&helloworld);
 	*/
@@ -976,6 +897,7 @@ int main(int argc, char* argv[])
 			source_reader k(std::cin, '\n'); //have to reinitialize to clear the ASTmap
 			std::cerr << "Input AST:\n";
 			AST* end = k.create_single_basic_block();
+			std::cerr << "Done reading.\n";
 			if (end == nullptr)
 			{
 				std::cerr << "it's nullptr\n";

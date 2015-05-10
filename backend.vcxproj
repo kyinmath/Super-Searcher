@@ -15,6 +15,7 @@
     <ClCompile Include="unwrappedsrc\types.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="unwrappedsrc\debugoutput.h" />
     <ClInclude Include="unwrappedsrc\types.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
