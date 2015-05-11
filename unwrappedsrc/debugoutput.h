@@ -1,20 +1,43 @@
 #pragma once
 #include <iostream>
 #include "types.h"
+extern std::ostream& outstream;
+
+template <class cT, class traits = std::char_traits<cT> >
+class basic_nullbuf : public std::basic_streambuf<cT, traits> {
+	typename traits::int_type overflow(typename traits::int_type c)
+	{ return traits::not_eof(c); // indicate success
+	}
+};
+
+template <class cT, class traits = std::char_traits<cT> >
+class basic_onullstream : public std::basic_ostream<cT, traits> {
+public:
+	basic_onullstream() :
+		std::basic_ios<cT, traits>(&m_sbuf),
+		std::basic_ostream<cT, traits>(&m_sbuf)
+	{ // note: the original code is missing the required this->
+		this->init(&m_sbuf);
+	}
+
+private:
+	basic_nullbuf<cT, traits> m_sbuf;
+};
+
 
 using std::string;
-void error(string Str) { std::cerr << "Error: " << Str << '\n'; abort(); }
+void error(string Str) { outstream << "Error: " << Str << '\n'; abort(); }
 
 //the condition is true when the program behaves normally.
-void check(bool condition, string Str) { if (!condition) { std::cerr << "Error: " << Str << '\n'; abort(); } }
+void check(bool condition, string Str) { if (!condition) { outstream << "Error: " << Str << '\n'; abort(); } }
 
 
 //only call on a non-nullptr target. outputs a single Type.
 void output_type(Type* target)
 {
 	if (target == T_special)
-	std::cerr << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target << ", ";
-	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
+	outstream << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), addr " << target << ", ";
+	outstream << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
 }
 
 //for debugging. outputs a Type and everything it points to, recursively.
@@ -22,7 +45,7 @@ void output_type_and_previous(Type* target)
 {
 	if (target == nullptr)
 	{
-		std::cerr << "type is null\n";
+		outstream << "type is null\n";
 		return;
 	}
 	output_type(target);
@@ -36,9 +59,9 @@ void output_type_and_previous(Type* target)
 //only call on a non-nullptr target. outputs a single AST.
 void output_AST(AST* target)
 {
-	std::cerr << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), Addr " << target <<
+	outstream << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), addr " << target <<
 		", prev " << target->preceding_BB_element << ", ";
-	std::cerr << "fields: " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
+	outstream << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
 }
 
 //for debugging. outputs an AST and everything it can see, recursively.
@@ -46,7 +69,7 @@ void output_AST_and_previous(AST* target)
 {
 	if (target == nullptr)
 	{
-		std::cerr << "AST is null\n";
+		outstream << "AST is null\n";
 		return;
 	}
 	output_AST(target);
@@ -73,8 +96,9 @@ struct output_AST_console_version
 	{
 		determine_references(target);
 		AST_list = { nullptr }; //determine_references changes this, so we must reset it
-		output_console(target, false);
-		//we call it with "false", because the overall function is implicitly wrapped in braces.
+		output_console(target, false); //we call it with "false", because the overall function has no braces.
+
+		outstream << '\n';
 
 	}
 
@@ -96,7 +120,7 @@ struct output_AST_console_version
 	void output_console(AST* target, bool might_be_end_in_BB){
 		if (AST_list.find(target) != AST_list.end())
 		{
-			std::cerr << target;
+			outstream << target;
 			return;
 		}
 		else AST_list.insert(target);
@@ -107,16 +131,16 @@ struct output_AST_console_version
 			if (might_be_end_in_BB)
 			{
 				output_braces = true;
-				std::cerr << "{";
+				outstream << "{";
 			}
 			output_console(target->preceding_BB_element, false);
-			std::cerr << ' ';
+			outstream << ' ';
 		}
-		std::cerr << "[" << AST_descriptor[target->tag].name;
+		outstream << "[" << AST_descriptor[target->tag].name;
 		int x = 0;
 		for (; x < AST_descriptor[target->tag].pointer_fields; ++x)
 		{
-			std::cerr << ' ';
+			outstream << ' ';
 			output_console(target->fields[x].ptr, true);
 		}
 		unsigned final_nonzero_field = x;
@@ -124,14 +148,14 @@ struct output_AST_console_version
 			if (target->fields[check_further_nonzero_fields].num) final_nonzero_field = check_further_nonzero_fields;
 		for (; x <= final_nonzero_field; ++x)
 		{
-			std::cerr << ' ';
-			std::cerr << target->fields[x].num;
+			outstream << ' ';
+			outstream << target->fields[x].num;
 		}
-		std::cerr << ']';
+		outstream << ']';
 
-		if (reference_necessary.find(target) != reference_necessary.end()) std::cerr << target;
+		if (reference_necessary.find(target) != reference_necessary.end()) outstream << target;
 
 		if (output_braces)
-			std::cerr << "}";
+			outstream << "}";
 	}
 };

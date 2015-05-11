@@ -14,7 +14,7 @@ generate_IR() is the main AST conversion tool. it turns ASTs into llvm::Values, 
 Debug:
 output_AST_and_previous() shows an AST and everything it depends on.
 output_Type_and_previous() is similar.
-Module->dump() prints the generated llvm code.
+Module->print(*llvm_outstream, nullptr) prints the generated llvm code.
 */
 #include <cstdint>
 #include <iostream>
@@ -42,8 +42,13 @@ Module->dump() prints the generated llvm code.
 
 bool OPTIMIZE = false;
 bool VERBOSE_DEBUG = false;
-bool INTERACTIVE = true;
+bool INTERACTIVE = false;
 bool CONSOLE = false;
+
+basic_onullstream<char> null_stream;
+std::ostream& outstream = std::cerr;
+llvm::raw_null_ostream llvm_null_stream;
+llvm::raw_ostream* llvm_outstream = &llvm::outs();
 
 //todo: threading. create non-global contexts
 #ifndef _MSC_VER
@@ -84,9 +89,8 @@ struct Return_Info
 	llvm::Value* IR;
 		
 	Type* type;
-	uint64_t size; //we memorize the size, so we don't have to recalculate it later.
 	bool on_stack; //if the return value refers to an alloca.
-	//in that case, the type is actually a pointer.
+	//in that case, the llvm type is actually a pointer. but the internal type doesn't change.
 
 	//this lifetime information is only used when a cheap pointer is in the type. see pointers.txt
 	//to write a pointer into a pointed-to memory location, we must have upper of pointer < lower of memory location
@@ -102,12 +106,12 @@ struct Return_Info
 	uint64_t target_lower_lifetime; //lower is stricter. the target must die faster than this.
 	//measures the pointer's target's lifetime, for when the pointed-to memory location wants something to be written into it.
 	
-	Return_Info(IRgen_status err, llvm::Value* b, Type* t, uint64_t si, bool o, uint64_t s, uint64_t u, uint64_t l)
-		: error_code(err), IR(b), type(t), size(si), on_stack(o), self_lifetime(s), target_upper_lifetime(u), target_lower_lifetime(l) {}
+	Return_Info(IRgen_status err, llvm::Value* b, Type* t, bool o, uint64_t s, uint64_t u, uint64_t l)
+		: error_code(err), IR(b), type(t), on_stack(o), self_lifetime(s), target_upper_lifetime(u), target_lower_lifetime(l) {}
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
-	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T_null), size(0), on_stack(false), self_lifetime(0), target_upper_lifetime(0), target_lower_lifetime(-1ull) {}
+	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T_null), on_stack(false), self_lifetime(0), target_upper_lifetime(0), target_lower_lifetime(-1ull) {}
 };
 
 
@@ -157,12 +161,8 @@ public:
 compiler_object::compiler_object() : error_location(nullptr), Builder(thread_context)
 {
 	if (VERBOSE_DEBUG)
-		std::cerr << "creating compiler object\n";
+		outstream << "creating compiler object\n";
 	TheModule = new llvm::Module("temp module", thread_context);
-
-	llvm::InitializeNativeTarget();
-	llvm::InitializeNativeTargetAsmPrinter();
-	llvm::InitializeNativeTargetAsmParser();
 
 	std::string ErrStr;
 	
@@ -173,7 +173,7 @@ compiler_object::compiler_object() : error_location(nullptr), Builder(thread_con
 		.create();
 	if (!engine)
 	{
-		std::cerr << "Could not create ExecutionEngine: " << ErrStr.c_str() << '\n';
+		outstream << "Could not create ExecutionEngine: " << ErrStr.c_str() << '\n';
 		exit(1);
 	}
 }
@@ -182,7 +182,7 @@ unsigned compiler_object::compile_AST(AST* target)
 {
 
 	if (VERBOSE_DEBUG)
-		std::cerr << "starting compilation\n";
+		outstream << "starting compilation\n";
 
 	using namespace llvm;
 	FunctionType *FT;
@@ -205,16 +205,16 @@ unsigned compiler_object::compile_AST(AST* target)
 		Builder.CreateRet(return_object.IR);
 	else Builder.CreateRetVoid();
 
-	TheModule->dump();
+	TheModule->print(*llvm_outstream, nullptr);
 	// Validate the generated code, checking for consistency.
-	if (llvm::verifyFunction(*F, &llvm::outs()))
+	if (llvm::verifyFunction(*F, llvm_outstream))
 	{
 		llvm_unreachable("verification failed");
 	}
 
 	if (OPTIMIZE)
 	{
-		std::cerr << "optimized code: \n";
+		outstream << "optimized code: \n";
 		llvm::legacy::FunctionPassManager FPM(TheModule);
 		TheModule->setDataLayout(engine->getDataLayout());
 		// Provide basic AliasAnalysis support for GVN.
@@ -238,7 +238,7 @@ unsigned compiler_object::compile_AST(AST* target)
 		FPM.doInitialization();
 		FPM.run(*TheModule->begin());
 
-		TheModule->dump();
+		TheModule->print(*llvm_outstream, nullptr);
 	}
 
 	engine->finalizeObject();
@@ -246,7 +246,7 @@ unsigned compiler_object::compile_AST(AST* target)
 	if (size_of_return)
 	{
 		uint64_t(*FP)() = (uint64_t(*)())(intptr_t)fptr;
-		fprintf(stderr, "Evaluated to %lu\n", FP());
+		outstream <<  "Evaluated to " << FP() << '\n';
 	}
 	else
 	{
@@ -311,20 +311,20 @@ however, note that pointers are still pointers, even though they are casted to i
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
-#define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, T_null, 0, false, 0, 0, 0); } while (0)
+#define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, T_null, false, 0, 0, 0); } while (0)
 
 	if (VERBOSE_DEBUG)
 	{
-		std::cerr << "generate_IR single AST start ^^^^^^^^^\n";
+		outstream << "generate_IR single AST start ^^^^^^^^^\n";
 		output_AST(target);
-		std::cerr << "stack degree " << stack_degree;
-		std::cerr << ", storage location is ";
+		outstream << "stack degree " << stack_degree;
+		outstream << ", storage location is ";
 		if (storage_location)
-			storage_location->print(llvm::outs());
-		else std::cerr << "null";
-		std::cerr << '\n';
-		std::cerr << "dumping module before generation:\n";
-		TheModule->dump();
+			storage_location->print(*llvm_outstream);
+		else outstream << "null";
+		outstream << '\n';
+		outstream << "dumping module before generation:\n";
+		TheModule->print(*llvm_outstream, nullptr);
 	}
 
 
@@ -374,9 +374,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 		if (VERBOSE_DEBUG)
 		{
-			std::cerr << "type checking. result type is \n";
+			outstream << "type checking. result type is \n";
 			output_type_and_previous(result.type);
-			std::cerr << "desired type is \n";
+			outstream << "desired type is \n";
 			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
 		}
 		//check that the type matches.
@@ -408,17 +408,17 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	{
 		if (VERBOSE_DEBUG && return_value != nullptr)
 		{
-			std::cerr << "finish() in generate_IR, called value is ";
-			return_value->print(llvm::outs());
-			std::cerr << "\nand the llvm type is ";
-			return_value->getType()->print(llvm::outs());
-			std::cerr << "\nand the internal type is ";
+			outstream << "finish() in generate_IR, called value is ";
+			return_value->print(*llvm_outstream);
+			outstream << "\nand the llvm type is ";
+			return_value->getType()->print(*llvm_outstream);
+			outstream << "\nand the internal type is ";
 			output_type_and_previous(type);
-			std::cerr << '\n';
+			outstream << '\n';
 		}
-		else if (VERBOSE_DEBUG) std::cerr << "finish() in generate_IR, null value\n";
+		else if (VERBOSE_DEBUG) outstream << "finish() in generate_IR, null value\n";
 		if (VERBOSE_DEBUG)
-			std::cerr << "generate_IR single AST " << target << " vvvvvvvvv\n";
+			outstream << "generate_IR single AST " << target << " vvvvvvvvv\n";
 
 		//we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for justification.
 		//TODO: what about if statements? they should eliminate temporaries no matter what, since it's not guaranteed that the temporary will exist.
@@ -429,25 +429,26 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			if (size_result >= 1)
 			{
 				object_stack.push(target);
-				auto insert_result = objects.insert({ target, Return_Info(IRgen_status::no_error, return_value, type, size_result, true, lifetime_of_return_value, upper_life, lower_life) });
+				auto insert_result = objects.insert({ target, Return_Info(IRgen_status::no_error, return_value, type, true, lifetime_of_return_value, upper_life, lower_life) });
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication, 10);
 			}
 			//type_scratch_space.push_back(Type("cheap pointer", type)); //stack objects are always pointers, just like in llvm.
 			//type = &type_scratch_space.back();
 		}
-		return Return_Info(IRgen_status::no_error, return_value, type, size_result, false, lifetime_of_return_value, upper_life, lower_life);
+		return Return_Info(IRgen_status::no_error, return_value, type, false, lifetime_of_return_value, upper_life, lower_life);
 	};
 
-	//call the finish macros when you've constructed something. the _pointer suffix is when you are returning a pointer, and need lifetime information.
-	//use finish_previously_constructed if your AST is not the one constructing the return object.
+	//call the finish macros when you've constructed something.
+	//_pointer suffix is when target lifetime information is relevant (for pointers).
+	//_passthrough if your AST is not the one constructing the return object; it is passing the already-constructed object.
 	//for example, concatenate() and if() use previously constructed return objects, and simply pass them through.
 
-	//we can't use X directly because we will be duplicating the argument.
+	//we can't use X directly because that will duplicate any expressions in the argument.
 #define finish_pointer(X, type, u, l) do {llvm::Value* first_value = X; llvm::Value* end_value = stack_degree >= 1 ? move_to_stack(first_value) : first_value; return finish_internal(end_value, type, u, l); } while (0)
 #define finish(X, type) do { finish_pointer(X, type, 0, -1ull); } while (0)
-#define finish_previously_constructed(X, type) do { return finish_internal(X, type, 0, -1ull); } while (0)
-#define finish_previously_constructed_pointer(X, type, u, l) do { return finish_internal(X, type, u, l); } while (0)
+#define finish_passthrough(X, type) do { return finish_internal(X, type, 0, -1ull); } while (0)
+#define finish_passthrough_pointer(X, type, u, l) do { return finish_internal(X, type, u, l); } while (0)
 
 	//we generate code for the AST, depending on its tag.
 	switch (target->tag)
@@ -465,7 +466,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			llvm::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!\n");
 
 			//create the function type
-			std::vector<llvm::Type *> putsArgs;
+			std::vector<llvm::Type*> putsArgs;
 			putsArgs.push_back(Builder.getInt8Ty()->getPointerTo());
 			llvm::ArrayRef<llvm::Type*> argsRef(putsArgs);
 			llvm::FunctionType *putsType = llvm::FunctionType::get(Builder.getInt32Ty(), argsRef, false);
@@ -477,8 +478,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		}
 	case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
 		{
-			llvm::FunctionType *twister_type = llvm::FunctionType::get(int64_type, false);
-			llvm::PointerType *twister_ptr_type = llvm::PointerType::getUnqual(twister_type);
+			//llvm::FunctionType *twister_type = llvm::FunctionType::get(int64_type, false);
+			llvm::PointerType *twister_ptr_type = llvm::FunctionType::get(int64_type, false)->getPointerTo();
 			llvm::Constant *twister_address = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, (uint64_t)&generate_random));
 			llvm::Value *twister_function = Builder.CreateIntToPtr(twister_address, twister_ptr_type);
 			finish(Builder.CreateCall(twister_function), T_int);
@@ -487,20 +488,25 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		//we could have another version where the condition's return object is invisible.
 		//this lets us goto the inside of the if statement.
 		{
+
+
 			//the condition statement
 			if (target->fields[0].ptr == nullptr)
 				return_code(null_AST, 0);
 			auto condition = generate_IR(target->fields[0].ptr, 0);
 			if (condition.error_code) return condition;
 
-			if (type_check(RVO, condition.type, T_int) != 3)
-				return_code(type_mismatch, 0);
+			if (type_check(RVO, condition.type, T_int) != 3) return_code(type_mismatch, 0);
 
 			if (stack_degree == 2)
 			{
 				size_result = get_size(target);
 				if (size_result >= 1) storage_location = create_alloca_in_entry_block(size_result);
 			}
+
+			//since the fields are conditionally executed, the temporaries generated in each branch are not necessarily referenceable.
+			//therefore, we must clear the stack between each branch.
+			uint64_t if_stack_position = object_stack.size();
 
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
 			llvm::Value* comparison = Builder.CreateICmpNE(condition.IR, llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
@@ -520,9 +526,11 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 			//calls with stack_degree as 1 in the called function, if it is 2 outside.
 			Return_Info then_IR; //default constructor for null object
-			if (target->fields[1].ptr != nullptr)
-				then_IR = generate_IR(target->fields[1].ptr, stack_degree != 0, storage_location);
+			if (target->fields[1].ptr != nullptr) then_IR = generate_IR(target->fields[1].ptr, stack_degree != 0, storage_location);
 			if (then_IR.error_code) return then_IR;
+
+			//get rid of any temporaries
+			clear_stack(if_stack_position);
 
 			Builder.CreateBr(MergeBB);
 			ThenBB = Builder.GetInsertBlock();
@@ -567,7 +575,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				PN->addIncoming(else_IR.IR, ElseBB);
 				finish_pointer(PN, then_IR.type, result_target_upper_lifetime, result_target_lower_lifetime);
 			}
-			else finish_previously_constructed_pointer(storage_location, then_IR.type, result_target_upper_lifetime, result_target_lower_lifetime);
+			else finish_passthrough_pointer(storage_location, then_IR.type, result_target_upper_lifetime, result_target_lower_lifetime);
 			//even though finish_pointer returns, the else makes it clear from first glance that it's not a continued statement.
 		}
 	case ASTn("scope"):
@@ -594,8 +602,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				finish_pointer(found_AST->second.IR, found_AST->second.type, found_AST->second.target_upper_lifetime, found_AST->second.target_lower_lifetime);
 			else finish(Builder.CreateLoad(found_AST->second.IR), found_AST->second.type);
 		}
-		/*case ASTn("get 0"):
-			finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_int);*/
 	case ASTn("concatenate"):
 		{
 			//TODO: if stack_degree == 1, then you've already gotten the size. look it up in a special location.
@@ -622,8 +628,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				if (second_size == 1) second_location = (llvm::AllocaInst*)Builder.CreateConstGEP2_64(storage_location, 0, first_size);
 				else
 				{
-					llvm::Type* array_type = llvm::ArrayType::get(int64_type, second_size);
-					llvm::Type* pointer_to_array = llvm::PointerType::getUnqual(array_type);
+					llvm::Type* pointer_to_array = llvm::ArrayType::get(int64_type, second_size)->getPointerTo();
 					llvm::Value* second_pointer = Builder.CreateConstGEP2_64(storage_location, 0, first_size); //pointer to int.
 					second_location = (llvm::AllocaInst*)Builder.CreatePointerCast(second_pointer, pointer_to_array); //ptr to array.
 				}
@@ -639,7 +644,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				uint64_t result_target_upper_lifetime = std::max(first_half.target_upper_lifetime, second_half.target_upper_lifetime);
 				uint64_t result_target_lower_lifetime = std::min(first_half.target_lower_lifetime, second_half.target_lower_lifetime);
 
-				finish_previously_constructed_pointer(final_value, &type_scratch_space.back(), result_target_upper_lifetime, result_target_lower_lifetime);
+				finish_passthrough_pointer(final_value, &type_scratch_space.back(), result_target_upper_lifetime, result_target_lower_lifetime);
 			}
 			else //it's convenient having a special case, because no need to worry about integer llvm values for size-1 objects.
 			{
@@ -650,20 +655,18 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				Return_Info first_half = generate_IR(target->fields[0].ptr, (stack_degree == 1) && (first_size > 0), storage_location);
 				if (first_half.error_code) return first_half;
 
-				if (target->fields[1].ptr == nullptr)
-					return_code(null_AST, 1);
+				if (target->fields[1].ptr == nullptr) return_code(null_AST, 1);
 				Return_Info second_half = generate_IR(target->fields[1].ptr, (stack_degree == 1) && (second_size > 0), storage_location);
 				if (second_half.error_code) return second_half;
 
 				if (first_size > 0)
-					finish_previously_constructed_pointer(first_half.IR, first_half.type, first_half.target_upper_lifetime, first_half.target_lower_lifetime);
+					finish_passthrough_pointer(first_half.IR, first_half.type, first_half.target_upper_lifetime, first_half.target_lower_lifetime);
 				else
-					finish_previously_constructed_pointer(second_half.IR, second_half.type, second_half.target_upper_lifetime, second_half.target_lower_lifetime);
+					finish_passthrough_pointer(second_half.IR, second_half.type, second_half.target_upper_lifetime, second_half.target_lower_lifetime);
 				//even if second_half is 0, we return it anyway.
 			}
 		}
 	}
-
 	llvm_unreachable("fell through switches");
 }
 
@@ -686,7 +689,10 @@ void fuzztester(unsigned iterations)
 		//create a random AST
 		unsigned tag = mersenne() % ASTn("never reached");
 		unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
-		unsigned prev_AST = mersenne() % AST_list.size();
+		unsigned prev_AST = generate_exponential_dist() % AST_list.size(); //todo: prove that exponential_dist is desired.
+		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
+		//but does exponential falloff solve this problem in the way we want?
+
 		int_or_ptr<AST> fields[4]{nullptr, nullptr, nullptr, nullptr};
 		int incrementor = 0;
 		for (; incrementor < pointer_fields; ++incrementor)
@@ -701,17 +707,17 @@ void fuzztester(unsigned iterations)
 		unsigned error_code = compiler.compile_AST(test_AST);
 		if (error_code)
 		{
-				std::cerr << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << "\n\n";
+				outstream << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << "\n\n";
 				delete test_AST;
 		}
 		else
 		{
 			AST_list.push_back(test_AST);
-			std::cerr << "Successful compile " << AST_list.size() - 1 << "\n";
+			outstream << "Successful compile " << AST_list.size() - 1 << "\n";
 		}
 		if (INTERACTIVE)
 		{
-			std::cerr << "Press enter to continue\n";
+			outstream << "Press enter to continue\n";
 			std::cin.get();
 		}
 	}
@@ -758,7 +764,7 @@ class source_reader
 				input.ignore(1);
 				next_char = input.peek();
 			}
-			//std::cerr << "word is " << word << "|||\n";
+			//outstream << "word is " << word << "|||\n";
 			return word;
 		}
 	}
@@ -770,7 +776,7 @@ class source_reader
 
 		if (first != string(1, '[')) //it's a name reference.
 		{
-			//std::cerr << "first was " << first << '\n';
+			//outstream << "first was " << first << '\n';
 			auto AST_search = ASTmap.find(first);
 			check(AST_search != ASTmap.end(), string("variable name not found: ") + first);
 			return AST_search->second;
@@ -779,7 +785,7 @@ class source_reader
 		string tag = get_token();
 
 		uint64_t AST_type = ASTn(tag.c_str());
-		if (VERBOSE_DEBUG) std::cerr << "AST tag was " << AST_type << "\n";
+		if (VERBOSE_DEBUG) outstream << "AST tag was " << AST_type << "\n";
 		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
 
 		int_or_ptr<AST> fields[max_fields_in_AST] = { nullptr, nullptr, nullptr, nullptr };
@@ -800,8 +806,7 @@ class source_reader
 				for (auto& k : next_token)
 					isNumber = isNumber && isdigit(k);
 				check(isNumber, "tried to input non - number");
-				//string_number = "9";
-							fields[field_num] = std::stoull(next_token);
+				fields[field_num] = std::stoull(next_token);
 			}
 		}
 		//check(next_token == "]", "failed to have ]");
@@ -824,8 +829,8 @@ class source_reader
 
 		if (VERBOSE_DEBUG)
 		{
-			std::cerr << "next char is" << (char)input.peek() << input.peek();
-			std::cerr << '\n';
+			outstream << "next char is" << (char)input.peek() << input.peek();
+			outstream << '\n';
 		}
 		return new_type;
 
@@ -856,6 +861,11 @@ public:
 
 int main(int argc, char* argv[])
 {
+	//tells LLVM the generated code should be for the native platform
+	llvm::InitializeNativeTarget();
+	llvm::InitializeNativeTargetAsmPrinter();
+	llvm::InitializeNativeTargetAsmParser();
+
 	//these do nothing
 	//assert(0);
 	//assert(1);
@@ -868,14 +878,15 @@ int main(int argc, char* argv[])
 	}*/
 	for (int x = 1; x < argc; ++x)
 	{
-		if (strcmp(argv[x], "noninteractive") == 0)
-			INTERACTIVE = false;
-		if (strcmp(argv[x], "verbose") == 0)
-			VERBOSE_DEBUG = true;
-		if (strcmp(argv[x], "optimize") == 0)
-			OPTIMIZE = true;
-		if (strcmp(argv[x], "console") == 0)
-			CONSOLE = true;
+		if (strcmp(argv[x], "interactive") == 0) INTERACTIVE = true;
+		if (strcmp(argv[x], "verbose") == 0) VERBOSE_DEBUG = true;
+		if (strcmp(argv[x], "optimize") == 0) OPTIMIZE = true;
+		if (strcmp(argv[x], "console") == 0) CONSOLE = true;
+		if (strcmp(argv[x], "quiet") == 0)
+		{
+			outstream.setstate(std::ios_base::failbit);
+			llvm_outstream = &llvm_null_stream;
+		}
 	}
 	/*
 	AST get1("integer", nullptr, 1); //get the integer 1
@@ -895,12 +906,12 @@ int main(int argc, char* argv[])
 		while (1)
 		{
 			source_reader k(std::cin, '\n'); //have to reinitialize to clear the ASTmap
-			std::cerr << "Input AST:\n";
+			outstream << "Input AST:\n";
 			AST* end = k.create_single_basic_block();
-			std::cerr << "Done reading.\n";
+			outstream << "Done reading.\n";
 			if (end == nullptr)
 			{
-				std::cerr << "it's nullptr\n";
+				outstream << "it's nullptr\n";
 				std::cin.get();
 				continue;
 			}
@@ -908,8 +919,8 @@ int main(int argc, char* argv[])
 			compiler_object j;
 			unsigned error_code = j.compile_AST(end);
 			if (error_code)
-				std::cerr << "Malformed AST: code " << error_code << " at AST " << j.error_location << "\n\n";
-			else std::cerr << "Successful compile\n\n";
+				outstream << "Malformed AST: code " << error_code << " at AST " << j.error_location << "\n\n";
+			else outstream << "Successful compile\n\n";
 			}
 	}
 
