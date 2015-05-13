@@ -692,7 +692,7 @@ void fuzztester(unsigned iterations)
 	while (iterations--)
 	{
 		//create a random AST
-		unsigned tag = mersenne() % ASTn("never reached");
+		unsigned tag = mersenne() % ASTn("dynamic");
 		unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
 		unsigned prev_AST = generate_exponential_dist() % AST_list.size(); //todo: prove that exponential_dist is desired.
 		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.

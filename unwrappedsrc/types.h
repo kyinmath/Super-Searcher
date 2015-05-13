@@ -42,6 +42,8 @@ union int_or_ptr
 	constexpr int_or_ptr(target_type* x) : ptr(x) {}
 };
 
+
+//Visual Studio doesn't support constexpr. we use this to make the Intellisense errors go away.
 #ifdef _MSC_VER
 #define constexpr
 #endif
@@ -58,8 +60,7 @@ struct Type_info
 	//size of the actual object. -1 if special
 	const int size;
 
-	constexpr Type_info(const char a[], unsigned n, int s)
-		: name(a), pointer_fields(n), size(s) {}
+	constexpr Type_info(const char a[], unsigned n, int s) : name(a), pointer_fields(n), size(s) {}
 };
 
 
@@ -175,14 +176,10 @@ struct AST_info
 	constexpr int field_count(Type* f1, Type* f2, Type* f3, Type* f4)
 	{
 		int number_of_fields = 4; //by default, both pointer_fields and number_of_fields will be equal to this.
-		if (f4 == T::nonexistent)
-			number_of_fields = 3;
-		if (f3 == T::nonexistent)
-			number_of_fields = 2;
-		if (f2 == T::nonexistent)
-			number_of_fields = 1;
-		if (f1 == T::nonexistent)
-			number_of_fields = 0;
+		if (f4 == T::nonexistent) number_of_fields = 3;
+		if (f3 == T::nonexistent) number_of_fields = 2;
+		if (f2 == T::nonexistent) number_of_fields = 1;
+		if (f1 == T::nonexistent) number_of_fields = 0;
 		return number_of_fields;
 	};
 
