@@ -130,7 +130,7 @@ struct Return_Info
   //default constructor for a null object
   //make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references 
   //allowed.
-  Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T_null), on_stack(false), 
+  Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T::null), on_stack(false), 
   self_lifetime(0), target_upper_lifetime(0), target_lower_lifetime(-1ull) {}
 };
 
@@ -154,10 +154,10 @@ class compiler_object
   //finiteness, but you must check the type stack
   //std::stack<AST*> future_labels;
 
-  std::deque<Type> type_scratch_space;
   //a memory pool for storing temporary types. will be cleared at the end of compilation.
   //it must be a deque so that its memory locations stay valid after push_back().
   //even though the constant impact of deque (memory) is bad for small compilations.
+  std::deque<Type> type_scratch_space;
 
   //increases by 1 every time an object is created. imposes an ordering on stack object lifetimes.
   uint64_t incrementor_for_lifetime = 0;
@@ -195,11 +195,7 @@ compiler_object::compiler_object() : error_location(nullptr), Builder(thread_con
     .setMCJITMemoryManager(std::unique_ptr<llvm::SectionMemoryManager>(new 
     llvm::SectionMemoryManager))
     .create();
-  if (!engine)
-  {
-    outstream << "Could not create ExecutionEngine: " << ErrStr.c_str() << '\n';
-    exit(1);
-  }
+  check(engine, "Could not create ExecutionEngine: " + ErrStr + "\n"); //check engine! :D
 }
 
 unsigned compiler_object::compile_AST(AST* target)
@@ -358,7 +354,7 @@ storage_location)
   //an error has occurred. mark the target, return the error code, and don't construct a return 
   //object.
 #define return_code(X, Y) do { error_location = target; error_field = Y; return \
-Return_Info(IRgen_status::X, nullptr, T_null, false, 0, 0, 0); } while (0)
+Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
 
   if (VERBOSE_DEBUG)
   {
@@ -429,7 +425,7 @@ Return_Info(IRgen_status::X, nullptr, T_null, false, 0, 0, 0); } while (0)
       output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
     }
     //check that the type matches.
-    if (AST_descriptor[target->tag].parameter_types[x] != T_nonexistent)
+    if (AST_descriptor[target->tag].parameter_types[x] != T::nonexistent)
       if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != 3) 
       return_code(type_mismatch, x);
 
@@ -496,13 +492,14 @@ Return_Info(IRgen_status::X, nullptr, T_null, false, 0, 0, 0); } while (0)
     upper_life, lower_life);
   };
 
-  //call the finish macros when you've constructed something. the _pointer suffix is when you are 
-  //returning a pointer, and need lifetime information.
-  //use finish_passthrough if your AST is not the one constructing the return object.
+  //call the finish macros when you've constructed something.
+  //_pointer suffix is when target lifetime information is relevant (for pointers).
+  //_passthrough if your AST is not the one constructing the return object; it is passing the 
+  //already-constructed object.
   //for example, concatenate() and if() use previously constructed return objects, and simply pass 
   //them through.
 
-  //we can't use X directly because we will be duplicating the argument.
+  //we can't use X directly because that will duplicate any expressions in the argument.
 #define finish_pointer(X, type, u, l) do {llvm::Value* first_value = X; llvm::Value* end_value = \
 stack_degree >= 1 ? move_to_stack(first_value) : first_value; return finish_internal(end_value, \
 type, u, l); } while (0)
@@ -517,18 +514,18 @@ while (0)
   case ASTn("integer"):
     {
       finish(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)), 
-      T_int);
+      T::integer);
     }
   case ASTn("add"): //add two integers.
-    finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR), T_int);
+    finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR), T::integer);
   case ASTn("subtract"):
-    finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR), T_int);
+    finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR), T::integer);
   case ASTn("hello"):
     {
       llvm::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!\n");
 
       //create the function type
-      std::vector<llvm::Type *> putsArgs;
+      std::vector<llvm::Type*> putsArgs;
       putsArgs.push_back(Builder.getInt8Ty()->getPointerTo());
       llvm::ArrayRef<llvm::Type*> argsRef(putsArgs);
       llvm::FunctionType *putsType = llvm::FunctionType::get(Builder.getInt32Ty(), argsRef, false);
@@ -536,16 +533,17 @@ while (0)
       //get the actual function
       llvm::Constant *putsFunc = TheModule->getOrInsertFunction("puts", putsType);
 
-      finish(Builder.CreateCall(putsFunc, helloWorld), T_null);
+      finish(Builder.CreateCall(putsFunc, helloWorld), T::null);
     }
   case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
     {
-      llvm::FunctionType *twister_type = llvm::FunctionType::get(int64_type, false);
-      llvm::PointerType *twister_ptr_type = llvm::PointerType::getUnqual(twister_type);
+      //llvm::FunctionType *twister_type = llvm::FunctionType::get(int64_type, false);
+      llvm::PointerType *twister_ptr_type = llvm::FunctionType::get(int64_type, 
+      false)->getPointerTo();
       llvm::Constant *twister_address = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, 
       (uint64_t)&generate_random));
       llvm::Value *twister_function = Builder.CreateIntToPtr(twister_address, twister_ptr_type);
-      finish(Builder.CreateCall(twister_function), T_int);
+      finish(Builder.CreateCall(twister_function), T::integer);
     }
   case ASTn("if"): //todo: you can see the condition's return object in the branches.
     //we could have another version where the condition's return object is invisible.
@@ -559,8 +557,7 @@ while (0)
       auto condition = generate_IR(target->fields[0].ptr, 0);
       if (condition.error_code) return condition;
 
-      if (type_check(RVO, condition.type, T_int) != 3)
-        return_code(type_mismatch, 0);
+      if (type_check(RVO, condition.type, T::integer) != 3) return_code(type_mismatch, 0);
 
       if (stack_degree == 2)
       {
@@ -594,8 +591,8 @@ while (0)
 
       //calls with stack_degree as 1 in the called function, if it is 2 outside.
       Return_Info then_IR; //default constructor for null object
-      if (target->fields[1].ptr != nullptr)
-        then_IR = generate_IR(target->fields[1].ptr, stack_degree != 0, storage_location);
+      if (target->fields[1].ptr != nullptr) then_IR = generate_IR(target->fields[1].ptr, 
+      stack_degree != 0, storage_location);
       if (then_IR.error_code) return then_IR;
 
       //get rid of any temporaries
@@ -653,7 +650,7 @@ while (0)
       //a continued statement.
     }
   case ASTn("scope"):
-    finish(nullptr, T_null);
+    finish(nullptr, T::null);
   case ASTn("pointer"):
     {
       auto found_AST = objects.find(target->fields[0].ptr);
@@ -679,8 +676,6 @@ while (0)
         found_AST->second.target_upper_lifetime, found_AST->second.target_lower_lifetime);
       else finish(Builder.CreateLoad(found_AST->second.IR), found_AST->second.type);
     }
-    /*case ASTn("get 0"):
-      finish(llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), T_int);*/
   case ASTn("concatenate"):
     {
       //TODO: if stack_degree == 1, then you've already gotten the size. look it up in a special 
@@ -710,8 +705,8 @@ while (0)
         (llvm::AllocaInst*)Builder.CreateConstGEP2_64(storage_location, 0, first_size);
         else
         {
-          llvm::Type* array_type = llvm::ArrayType::get(int64_type, second_size);
-          llvm::Type* pointer_to_array = llvm::PointerType::getUnqual(array_type);
+          llvm::Type* pointer_to_array = llvm::ArrayType::get(int64_type, 
+          second_size)->getPointerTo();
           llvm::Value* second_pointer = Builder.CreateConstGEP2_64(storage_location, 0, 
           first_size); //pointer to int.
           second_location = (llvm::AllocaInst*)Builder.CreatePointerCast(second_pointer, 
@@ -760,8 +755,16 @@ while (0)
         //even if second_half is 0, we return it anyway.
       }
     }
-  }
 
+  case ASTn("dynamic"): //todo: you can see the condition's return object in the branches.
+    {
+      uint64_t* pointer_to_memory = nullptr;
+      uint64_t size_of_object = get_size(target->fields[0].ptr);
+      if (size_of_object >= 1)
+        pointer_to_memory = (uint64_t*)malloc(size_of_object * sizeof(uint64_t));
+      //create_type();
+    }
+  }
   llvm_unreachable("fell through switches");
 }
 

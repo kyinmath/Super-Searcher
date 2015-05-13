@@ -206,8 +206,8 @@ constexpr AST_info AST_descriptor[] =
 	{ "random", T::integer}, //returns a random integer
 	a("pointer", T::special).set_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
 	a("load", T::special).set_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
-	a("dynamic", T::special).set_fields_to_compile(1), //creates dynamic storage for any kind of object. moves it to the heap. its 
 	a("concatenate", T::special).set_pointer_fields(2),
+	a("dynamic", T::dynamic_pointer).set_fields_to_compile(1), //creates dynamic storage for any kind of object. moves it to the heap.
 	{ "never reached", T::special }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	{ "dereference pointer", T::special}, //????
 	a("store", T::special), //????

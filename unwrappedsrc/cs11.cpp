@@ -669,7 +669,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			uint64_t size_of_object = get_size(target->fields[0].ptr);
 			if (size_of_object >= 1)
 				pointer_to_memory = (uint64_t*)malloc(size_of_object * sizeof(uint64_t));
-			create_type();
+			//create_type();
 		}
 	}
 	llvm_unreachable("fell through switches");

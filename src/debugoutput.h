@@ -36,7 +36,7 @@ abort(); } }
 //only call on a non-nullptr target. outputs a single Type.
 void output_type(Type* target)
 {
-  if (target == T_special)
+  if (target == T::special)
   outstream << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), addr " << 
   target << ", ";
   outstream << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
