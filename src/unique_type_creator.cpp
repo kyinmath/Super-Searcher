@@ -92,14 +92,14 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model)
   if (create_new_for_sure)
   {
     Type* handle = new Type(temporary_model);
-    k.insert(handle);
+    type_hash_table.insert(handle);
     return std::make_pair(handle, true);
   }
-  auto existing_type = k.find(&temporary_model);
-  if (existing_type == k.end())
+  auto existing_type = type_hash_table.find(&temporary_model);
+  if (existing_type == type_hash_table.end())
   {
     Type* handle = new Type(temporary_model);
-    k.insert(handle);
+    type_hash_table.insert(handle);
     return std::make_pair(handle, true);
   }
   else return std::make_pair(existing_type->ptr, false);
