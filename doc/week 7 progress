@@ -3,6 +3,7 @@ A link that is worth reading:
 ASTs would silently stop being written to console, even though everything was compiling correctly. But the new fuzzer behavior extracted this segfault.
 Unique type creator. Recursively generates types to handle pointer issues. File is in src/unique_type_creator.h.
 Dynamic pointers can now be created.
+New command: ./toy timer. Create 2k random ASTs and measures the time to compile+run.
 
 My new concern is that my concatenate() function probably won't work too well with dynamic memory, because it will have to copy to make memory contiguous. I'm thinking about introducing twines for dynamic pointers. Also, I'll need a way for the user to refer to a subtype of an object; perhaps my unique_type will be helpful here, but Types don't have the single-reference guarantee that ASTs do...
 Next week will be adding ASTs to read dynamic pointers. The challenge is mainly that I'll need to add allow ASTs to point to Types, which messes with my current model.

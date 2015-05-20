@@ -40,7 +40,7 @@ inline void check(bool condition, string Str) { if (!condition) error(Str); }
 //only call on a non-nullptr target. outputs a single Type.
 inline void output_type(Type* target)
 {
-	if (target == T::special)
+	if (target == T::special) { outstream << "special\n"; return; }
 	outstream << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), addr " << target << ", ";
 	outstream << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
 }

@@ -385,8 +385,9 @@ Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
       storage_location->print(*llvm_outstream);
     else outstream << "null";
     outstream << '\n';
-    outstream << "dumping module before generation:\n";
-    TheModule->print(*llvm_outstream, nullptr);
+    //outstream << "dumping module before generation:\n";
+    //TheModule->print(*llvm_outstream, nullptr);
+    //we dump the module after generation, so we don't need to dump it now.
   }
 
 
@@ -457,6 +458,10 @@ Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
   //places a constructed object into storage_location.
   auto move_to_stack = [&](llvm::Value* return_value) -> llvm::Value*
   {
+    if (VERBOSE_DEBUG)
+    {
+      outstream << "moving to stack\n";
+    }
     if (size_result == -1) size_result = get_size(target); //note that it's -1, not -1ull.
     if (stack_degree == 2 && size_result >= 1 && storage_location == nullptr) storage_location = 
     create_alloca_in_entry_block(size_result);
@@ -485,8 +490,10 @@ Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
     }
     else if (VERBOSE_DEBUG) outstream << "finish() in generate_IR, null value\n";
     if (VERBOSE_DEBUG)
+    {
+      TheModule->print(*llvm_outstream, nullptr);
       outstream << "generate_IR single AST " << target << " vvvvvvvvv\n";
-
+    }
     //we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for 
     //justification.
     if (stack_degree == 2) clear_stack(final_stack_position);
@@ -511,8 +518,7 @@ Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
 
   //call the finish macros when you've constructed something.
   //_pointer suffix is when target lifetime information is relevant (for pointers).
-  //_passthrough if your AST is not the one constructing the return object; it is passing the 
-  //already-constructed object.
+  //_no_alloca if your AST has already created a stack alloca whenever necessary
   //for example, concatenate() and if() use previously constructed return objects, and simply pass 
   //them through.
 
@@ -521,8 +527,8 @@ Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
 stack_degree >= 1 ? move_to_stack(first_value) : first_value; return finish_internal(end_value, \
 type, u, l); } while (0)
 #define finish(X, type) do { finish_pointer(X, type, 0, -1ull); } while (0)
-#define finish_passthrough(X, type) do { return finish_internal(X, type, 0, -1ull); } while (0)
-#define finish_passthrough_pointer(X, type, u, l) do { return finish_internal(X, type, u, l); } \
+#define finish_no_alloca(X, type) do { return finish_internal(X, type, 0, -1ull); } while (0)
+#define finish_no_alloca_pointer(X, type, u, l) do { return finish_internal(X, type, u, l); } \
 while (0)
 
   //we generate code for the AST, depending on its tag.
@@ -661,7 +667,7 @@ while (0)
         finish_pointer(PN, then_IR.type, result_target_upper_lifetime, 
         result_target_lower_lifetime);
       }
-      else finish_passthrough_pointer(storage_location, then_IR.type, result_target_upper_lifetime, 
+      else finish_no_alloca_pointer(storage_location, then_IR.type, result_target_upper_lifetime, 
       result_target_lower_lifetime);
       //even though finish_pointer returns, the else makes it clear from first glance that it's not 
       //a continued statement.
@@ -743,13 +749,13 @@ while (0)
         uint64_t result_target_lower_lifetime = std::min(first_half.target_lower_lifetime, 
         second_half.target_lower_lifetime);
 
-        finish_passthrough_pointer(final_value, &type_scratch_space.back(), 
+        finish_no_alloca_pointer(final_value, &type_scratch_space.back(), 
         result_target_upper_lifetime, result_target_lower_lifetime);
       }
       else //it's convenient having a special case, because no need to worry about integer llvm 
       //values for size-1 objects.
       {
-
+        outstream << "we should be here!\n";
         if (target->fields[0].ptr == nullptr) return_code(null_AST, 0);
         //we only have to RVO if stack_degree is 1, because otherwise we can return the result 
         //directly.
@@ -764,12 +770,13 @@ while (0)
         if (second_half.error_code) return second_half;
 
         if (first_size > 0)
-          finish_passthrough_pointer(first_half.IR, first_half.type, 
-          first_half.target_upper_lifetime, first_half.target_lower_lifetime);
+          finish_pointer(first_half.IR, first_half.type, first_half.target_upper_lifetime, 
+          first_half.target_lower_lifetime);
         else
-          finish_passthrough_pointer(second_half.IR, second_half.type, 
-          second_half.target_upper_lifetime, second_half.target_lower_lifetime);
+          finish_pointer(second_half.IR, second_half.type, second_half.target_upper_lifetime, 
+          second_half.target_lower_lifetime);
         //even if second_half is 0, we return it anyway.
+        //this isn't finish_no_alloca, if stack_degree == 2, we still need an alloca.
       }
     }
 
