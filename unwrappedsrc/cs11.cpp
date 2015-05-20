@@ -461,7 +461,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 	//call the finish macros when you've constructed something.
 	//_pointer suffix is when target lifetime information is relevant (for pointers).
-	//_no_alloca if your AST has already created a stack alloca whenever necessary
+	//_no_alloca if your AST has already created a stack alloca whenever necessary. also, size_result must be already known.
 	//for example, concatenate() and if() use previously constructed return objects, and simply pass them through.
 
 	//we can't use X directly because that will duplicate any expressions in the argument.
@@ -684,7 +684,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				else
 					finish_pointer(second_half.IR, second_half.type, second_half.target_upper_lifetime, second_half.target_lower_lifetime);
 				//even if second_half is 0, we return it anyway.
-				//this isn't finish_no_alloca, if stack_degree == 2, we still need an alloca.
+				//this isn't finish_no_alloca_pointer, because if stack_degree == 2, we still need an alloca.
 			}
 		}
 
@@ -728,10 +728,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				Builder.CreateStore(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, 0)), part1);
 				llvm::Value* part2 = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 1);
 				Builder.CreateStore(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, 0)), part2);
-				if (storage_location != nullptr)
-				{
-					outstream << "PANICCCCCCCCCCCCCCCCCCCCCC";
-				}
 				//abort();
 				finish(Builder.CreateLoad(final_dynamic_pointer), T::dynamic_pointer);
 				//todo: change this to finish(final_dynamic_pointer, T::dynamic_pointer);. llvm will start emitting some errors about function return type. how do I get that to abort the program?
