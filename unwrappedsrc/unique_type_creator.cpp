@@ -1,5 +1,8 @@
 /*
-This creates a new unique type. 
+For any Type, get_unique_type() generates a unique version of it. These unique versions are stored in type_hash_table.
+First, it generates unique versions of any Types in its fields.
+Then, it checks type_hash_table if there is already a unique type that is the same, byte-for-byte.
+	It can do a byte comparison because the fields are already unique. If we didn't make the fields unique, two copies of [pointer [integer]] would register as different, since they would refer to different copies of [integer]. But since [integer] is first made unique, the bytes of the [pointer [integer]] type are exactly the same.
 */
 
 #include "types.h"
@@ -51,7 +54,7 @@ namespace std {
 	};
 }
 
-std::unordered_set<Type_wrapper_pointer> k; //a hash table of all the unique types.
+std::unordered_set<Type_wrapper_pointer> type_hash_table; //a hash table of all the unique types.
 
 
 //an internal function with a bool for speedup.

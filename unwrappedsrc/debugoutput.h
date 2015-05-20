@@ -1,3 +1,8 @@
+/*
+output_AST_and_previous() shows an AST and everything it depends on.
+output_Type_and_previous() is similar.
+Module->print(*llvm_outstream, nullptr) prints the generated llvm code.
+*/
 #pragma once
 #include "types.h"
 #include <unordered_set>

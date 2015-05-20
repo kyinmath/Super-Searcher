@@ -1,7 +1,12 @@
+/*
+output_AST_and_previous() shows an AST and everything it depends on.
+output_Type_and_previous() is similar.
+Module->print(*llvm_outstream, nullptr) prints the generated llvm code.
+*/
 #pragma once
-#include <iostream>
 #include "types.h"
-extern std::ostream& outstream;
+#include <unordered_set>
+#include "cs11.h"
 
 template <class cT, class traits = std::char_traits<cT> >
 class basic_nullbuf : public std::basic_streambuf<cT, traits> {
@@ -26,15 +31,14 @@ private:
 
 
 using std::string;
-void error(string Str) { outstream << "Error: " << Str << '\n'; abort(); }
+inline void error(string Str) { outstream << "Error: " << Str << '\n'; abort(); }
 
 //the condition is true when the program behaves normally.
-void check(bool condition, string Str) { if (!condition) { outstream << "Error: " << Str << '\n'; 
-abort(); } }
+inline void check(bool condition, string Str) { if (!condition) error(Str); }
 
 
 //only call on a non-nullptr target. outputs a single Type.
-void output_type(Type* target)
+inline void output_type(Type* target)
 {
   if (target == T::special)
   outstream << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), addr " << 
@@ -43,7 +47,7 @@ void output_type(Type* target)
 }
 
 //for debugging. outputs a Type and everything it points to, recursively.
-void output_type_and_previous(Type* target)
+inline void output_type_and_previous(Type* target)
 {
   if (target == nullptr)
   {
@@ -59,7 +63,7 @@ void output_type_and_previous(Type* target)
 
 
 //only call on a non-nullptr target. outputs a single AST.
-void output_AST(AST* target)
+inline void output_AST(AST* target)
 {
   outstream << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), addr " << 
   target <<
@@ -69,7 +73,7 @@ void output_AST(AST* target)
 }
 
 //for debugging. outputs an AST and everything it can see, recursively.
-void output_AST_and_previous(AST* target)
+inline void output_AST_and_previous(AST* target)
 {
   if (target == nullptr)
   {

@@ -10,15 +10,9 @@ compiler_object holds state for a compilation. you make a new compiler_state for
 compile_AST() is mainly a wrapper. it generates the llvm::Functions and llvm::Modules that contain the main code. it calls generate_IR() to do the main work.
 generate_IR() is the main AST conversion tool. it turns ASTs into llvm::Values, recursively. these llvm::Values are automatically inserted into a llvm::Module.
 	to do this, generate_IR first runs itself on a target's dependencies. then, it looks at the target's tag, and then uses a switch-case to determine how it should use those dependencies.
-
-Debug:
-output_AST_and_previous() shows an AST and everything it depends on.
-output_Type_and_previous() is similar.
-Module->print(*llvm_outstream, nullptr) prints the generated llvm code.
 */
 #include <cstdint>
 #include <iostream>
-//#include <mutex>
 #include <array>
 #include <stack>
 #include <unordered_set>
@@ -776,8 +770,8 @@ void fuzztester(unsigned iterations)
 		unsigned error_code = compiler.compile_AST(test_AST);
 		if (error_code)
 		{
-				outstream << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << "\n\n";
-				delete test_AST;
+			outstream << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << "\n\n";
+			delete test_AST;
 		}
 		else
 		{

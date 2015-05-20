@@ -18,15 +18,9 @@ generate_IR() is the main AST conversion tool. it turns ASTs into llvm::Values, 
 llvm::Values are automatically inserted into a llvm::Module.
   to do this, generate_IR first runs itself on a target's dependencies. then, it looks at the 
   target's tag, and then uses a switch-case to determine how it should use those dependencies.
-
-Debug:
-output_AST_and_previous() shows an AST and everything it depends on.
-output_Type_and_previous() is similar.
-Module->print(*llvm_outstream, nullptr) prints the generated llvm code.
 */
 #include <cstdint>
 #include <iostream>
-//#include <mutex>
 #include <array>
 #include <stack>
 #include <unordered_set>
@@ -47,11 +41,13 @@ Module->print(*llvm_outstream, nullptr) prints the generated llvm code.
 #include <llvm/Support/raw_ostream.h> 
 #include "types.h"
 #include "debugoutput.h"
+#include "unique_type_creator.h"
 
 bool OPTIMIZE = false;
 bool VERBOSE_DEBUG = false;
 bool INTERACTIVE = false;
 bool CONSOLE = false;
+bool TIMER = false;
 
 basic_onullstream<char> null_stream;
 std::ostream& outstream = std::cerr;
@@ -181,11 +177,10 @@ public:
 
 };
 
-compiler_object::compiler_object() : error_location(nullptr), Builder(thread_context)
+compiler_object::compiler_object() : error_location(nullptr), Builder(thread_context),
+TheModule(new llvm::Module("temp module", thread_context))
 {
-  if (VERBOSE_DEBUG)
-    outstream << "creating compiler object\n";
-  TheModule = new llvm::Module("temp module", thread_context);
+  if (VERBOSE_DEBUG) outstream << "creating compiler object\n";
 
   std::string ErrStr;
   
@@ -198,11 +193,17 @@ compiler_object::compiler_object() : error_location(nullptr), Builder(thread_con
   check(engine, "Could not create ExecutionEngine: " + ErrStr + "\n"); //check engine! :D
 }
 
+template<size_t array_num> void cout_array(std::array<uint64_t, array_num> object)
+{
+  outstream << "Evaluated to";
+  for (int x = 0; x < array_num; ++x) outstream << ' ' << object[x];
+  outstream << '\n';
+}
+
 unsigned compiler_object::compile_AST(AST* target)
 {
 
-  if (VERBOSE_DEBUG)
-    outstream << "starting compilation\n";
+  if (VERBOSE_DEBUG) outstream << "starting compilation\n";
 
   using namespace llvm;
   FunctionType *FT;
@@ -213,6 +214,7 @@ unsigned compiler_object::compile_AST(AST* target)
   false);
   else FT = FunctionType::get(llvm::ArrayType::get(llvm::Type::getInt64Ty(thread_context), 
   size_of_return), false);
+  if (VERBOSE_DEBUG) outstream << "Size of return is " << size_of_return << '\n';
 
   Function *F = Function::Create(FT, Function::ExternalLinkage, "temp function", TheModule);
 
@@ -220,11 +222,9 @@ unsigned compiler_object::compile_AST(AST* target)
   Builder.SetInsertPoint(BB);
 
   auto return_object = generate_IR(target, false);
-  if (return_object.error_code)
-    return return_object.error_code; //error
+  if (return_object.error_code) return return_object.error_code; //error
 
-  if (size_of_return)
-    Builder.CreateRet(return_object.IR);
+  if (size_of_return) Builder.CreateRet(return_object.IR);
   else Builder.CreateRetVoid();
 
   TheModule->print(*llvm_outstream, nullptr);
@@ -265,10 +265,28 @@ unsigned compiler_object::compile_AST(AST* target)
 
   engine->finalizeObject();
   void* fptr = engine->getPointerToFunction(F);
-  if (size_of_return)
+  if (size_of_return == 1)
   {
-    uint64_t(*FP)() = (uint64_t(*)())(intptr_t)fptr;
+    uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
     outstream <<  "Evaluated to " << FP() << '\n';
+  }
+  else if (size_of_return > 1)
+  {
+    using std::array;
+    switch (size_of_return)
+    {
+    case 2: cout_array(((array<uint64_t, 2>(*)())(intptr_t)fptr)()); break;
+    case 3: cout_array(((array<uint64_t, 3>(*)())(intptr_t)fptr)()); break;
+    case 4: cout_array(((array<uint64_t, 4>(*)())(intptr_t)fptr)()); break;
+    case 5: cout_array(((array<uint64_t, 5>(*)())(intptr_t)fptr)()); break;
+    case 6: cout_array(((array<uint64_t, 6>(*)())(intptr_t)fptr)()); break;
+    case 7: cout_array(((array<uint64_t, 7>(*)())(intptr_t)fptr)()); break;
+    case 8: cout_array(((array<uint64_t, 8>(*)())(intptr_t)fptr)()); break;
+    case 9: cout_array(((array<uint64_t, 9>(*)())(intptr_t)fptr)()); break;
+    default: outstream << "function return size is " << size_of_return << " and C++ seems to only \
+take static return types\n"; break;
+
+    }
   }
   else
   {
@@ -309,7 +327,7 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 
 /** generate_IR() is the main code that transforms AST into LLVM IR. it is called with the AST to 
 be transformed, which must not be nullptr.
-
+'
 storage_location is for RVO. if stack_degree says that the return object should be stored 
 somewhere, the location will be storage_location. storage is done by the returning function.
 ASTs that are directly inside basic blocks should allocate their own stack_memory, so they are 
@@ -343,10 +361,11 @@ note that while we have a rich type system, the only types that llvm sees are in
 int64s. pointers, locks, etc. have their information stripped, so llvm only sees the size of each 
 object. we forcefully cast things to integers.
   for an object of size 1, its llvm-type is an integer
-  for an object of size N>=2, the llvm-type is an array of N integers.
-however, note that pointers are still pointers, even though they are casted to integers. so the 
-llvm::Value* of an object that had stack_degree = 2 is a pointer to the memory location, casted to 
-an integer.
+  for an object of size N>=2, the llvm-type is an alloca'd array of N integers, which is [12 x 
+  i64]*. note the * - it's a pointer to an array, not the array itself.
+example: the llvm::Value* of an object that had stack_degree = 2 is a pointer to the memory 
+location, where the pointer is casted to an integer.
+currently, the finish() macro takes in the array itself, not the pointer-to-array.
 */
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* 
 storage_location)
@@ -470,8 +489,6 @@ Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
 
     //we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for 
     //justification.
-    //TODO: what about if statements? they should eliminate temporaries no matter what, since it's 
-    //not guaranteed that the temporary will exist.
     if (stack_degree == 2) clear_stack(final_stack_position);
 
     if (stack_degree >= 1)
@@ -692,7 +709,7 @@ while (0)
 
         llvm::AllocaInst* first_location = storage_location;
         if (first_size == 1) first_location = 
-        (llvm::AllocaInst*)Builder.CreateConstGEP2_64(storage_location, 0, 0);
+        (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 0);
 
         if (target->fields[0].ptr == nullptr)
           return_code(null_AST, 0);
@@ -702,12 +719,12 @@ while (0)
 
         llvm::AllocaInst* second_location;
         if (second_size == 1) second_location = 
-        (llvm::AllocaInst*)Builder.CreateConstGEP2_64(storage_location, 0, first_size);
+        (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(storage_location, 0, first_size);
         else
         {
           llvm::Type* pointer_to_array = llvm::ArrayType::get(int64_type, 
           second_size)->getPointerTo();
-          llvm::Value* second_pointer = Builder.CreateConstGEP2_64(storage_location, 0, 
+          llvm::Value* second_pointer = Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 
           first_size); //pointer to int.
           second_location = (llvm::AllocaInst*)Builder.CreatePointerCast(second_pointer, 
           pointer_to_array); //ptr to array.
@@ -758,11 +775,62 @@ while (0)
 
   case ASTn("dynamic"): //todo: you can see the condition's return object in the branches.
     {
-      uint64_t* pointer_to_memory = nullptr;
       uint64_t size_of_object = get_size(target->fields[0].ptr);
       if (size_of_object >= 1)
-        pointer_to_memory = (uint64_t*)malloc(size_of_object * sizeof(uint64_t));
-      //create_type();
+      {
+        uint64_t* pointer_to_memory = (uint64_t*)malloc(size_of_object * sizeof(uint64_t));
+
+        //can't use ?: because the return objects have different types
+        //this represents either an integer or an array of integers.
+        llvm::Type* target_type = int64_type;
+        if (size_of_object > 1) target_type = llvm::ArrayType::get(int64_type, size_of_object);
+        llvm::Type* target_pointer_type = target_type->getPointerTo();
+
+        //store the returned value into the malloc'd address
+        llvm::Constant* dynamic_object_address = llvm::Constant::getIntegerValue(int64_type, 
+        llvm::APInt(64, (uint64_t)pointer_to_memory));
+        llvm::Value* dynamic_object = Builder.CreateIntToPtr(dynamic_object_address, target_type);
+        Builder.CreateStore(field_results[0].IR, dynamic_object);
+
+        //create a pointer to the type of the dynamic pointer. but we serialize the pointer to be 
+        //an integer.
+        Type* type_of_dynamic_object = get_unique_type(field_results[0].type);
+        llvm::Constant* integer_type_pointer = llvm::Constant::getIntegerValue(int64_type, 
+        llvm::APInt(64, (uint64_t)type_of_dynamic_object));
+
+
+        //we now serialize both objects to become integers.
+        llvm::AllocaInst* final_dynamic_pointer = create_alloca_in_entry_block(2);
+        llvm::Value* part1 = 
+        (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 0);
+        Builder.CreateStore(dynamic_object_address, part1);
+        llvm::Value* part2 = 
+        (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 1);
+        Builder.CreateStore(integer_type_pointer, part2);
+
+        finish(Builder.CreateLoad(final_dynamic_pointer), T::dynamic_pointer);
+      }
+      else
+      {
+        //zero array, for null dynamic object.
+        llvm::AllocaInst* final_dynamic_pointer = create_alloca_in_entry_block(2);
+        llvm::Value* part1 = 
+        (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 0);
+        Builder.CreateStore(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, 0)), 
+        part1);
+        llvm::Value* part2 = 
+        (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 1);
+        Builder.CreateStore(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, 0)), 
+        part2);
+        if (storage_location != nullptr)
+        {
+          outstream << "PANICCCCCCCCCCCCCCCCCCCCCC";
+        }
+        //abort();
+        finish(Builder.CreateLoad(final_dynamic_pointer), T::dynamic_pointer);
+        //todo: change this to finish(final_dynamic_pointer, T::dynamic_pointer);. llvm will start 
+        //emitting some errors about function return type. how do I get that to abort the program?
+      }
     }
   }
   llvm_unreachable("fell through switches");
@@ -811,9 +879,9 @@ void fuzztester(unsigned iterations)
     unsigned error_code = compiler.compile_AST(test_AST);
     if (error_code)
     {
-        outstream << "Malformed AST: code " << error_code << " at AST " << compiler.error_location 
-        << "\n\n";
-        delete test_AST;
+      outstream << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << 
+      "\n\n";
+      delete test_AST;
     }
     else
     {
@@ -969,12 +1037,15 @@ public:
   }
 };
 
+
 int main(int argc, char* argv[])
 {
   //tells LLVM the generated code should be for the native platform
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
   llvm::InitializeNativeTargetAsmParser();
+
+  test_unique_types();
 
   //these do nothing
   //assert(0);
@@ -989,14 +1060,16 @@ int main(int argc, char* argv[])
   for (int x = 1; x < argc; ++x)
   {
     if (strcmp(argv[x], "interactive") == 0) INTERACTIVE = true;
-    if (strcmp(argv[x], "verbose") == 0) VERBOSE_DEBUG = true;
-    if (strcmp(argv[x], "optimize") == 0) OPTIMIZE = true;
-    if (strcmp(argv[x], "console") == 0) CONSOLE = true;
-    if (strcmp(argv[x], "quiet") == 0)
+    else if (strcmp(argv[x], "verbose") == 0) VERBOSE_DEBUG = true;
+    else if (strcmp(argv[x], "optimize") == 0) OPTIMIZE = true;
+    else if (strcmp(argv[x], "console") == 0) CONSOLE = true;
+    else if (strcmp(argv[x], "timer") == 0) TIMER = true;
+    else if (strcmp(argv[x], "quiet") == 0)
     {
       outstream.setstate(std::ios_base::failbit);
       llvm_outstream = &llvm_null_stream;
     }
+    else error(string("unrecognized flag ") + argv[x]);
   }
   /*
   AST get1("integer", nullptr, 1); //get the integer 1
@@ -1011,7 +1084,18 @@ int main(int argc, char* argv[])
   compiler_object compiler;
   compiler.compile_AST(&helloworld);
   */
-
+  if (TIMER)
+  {
+    std::clock_t start = std::clock();
+    for (int x = 0; x < 40; ++x)
+    {
+      std::clock_t ministart = std::clock();
+      fuzztester(100);
+      std::cout << "Minitime: " << (std::clock() - ministart) / (double)CLOCKS_PER_SEC << '\n';
+    }
+    std::cout << "Overall time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
+    return 0;
+  }
   if (CONSOLE)
   {
     while (1)

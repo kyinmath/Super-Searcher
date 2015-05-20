@@ -84,6 +84,8 @@ union int_or_ptr
   constexpr int_or_ptr(target_type* x) : ptr(x) {}
 };
 
+
+//Visual Studio doesn't support constexpr. we use this to make the Intellisense errors go away.
 #ifdef _MSC_VER
 #define constexpr
 #endif
@@ -100,11 +102,12 @@ struct Type_info
   //size of the actual object. -1 if special
   const int size;
 
-  constexpr Type_info(const char a[], unsigned n, int s)
-    : name(a), pointer_fields(n), size(s) {}
+  constexpr Type_info(const char a[], unsigned n, int s) : name(a), pointer_fields(n), size(s) {}
 };
 
-
+/* Guidelines for new Types:
+you must create an entry in type_check.
+*/
 constexpr Type_info Type_descriptor[] =
 {
   { "concatenate", 2, -1 }, //concatenate two types
@@ -137,10 +140,11 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
 constexpr uint64_t Typen(const char name[])
 { return get_enum_from_name<const Type_info, Type_descriptor>(name); }
 
+#define fields_in_Type 2u
 struct Type
 {
   uint64_t tag;
-  std::array<int_or_ptr<Type>, 2> fields;
+  std::array<int_or_ptr<Type>, fields_in_Type> fields;
   constexpr Type(const char name[], const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = 
   nullptr) : tag(Typen(name)), fields{ a, b } {}
   constexpr Type(const uint64_t t, const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = 
@@ -155,7 +159,7 @@ namespace T
   static constexpr Type int_internal("integer");
   static constexpr Type nonexistent_internal("integer");
   static constexpr Type special_internal("integer");
-  static constexpr Type dynamic_pointer_internal("integer");
+  static constexpr Type dynamic_pointer_internal("dynamic pointer");
   constexpr Type* nonexistent = const_cast<Type* const>(&nonexistent_internal); //nothing at all. 
   //used to say that a parameter field is missing, or for goto. effectively disables type checking 
   //for that field.
@@ -230,14 +234,10 @@ struct AST_info
   {
     int number_of_fields = 4; //by default, both pointer_fields and number_of_fields will be equal 
     //to this.
-    if (f4 == T::nonexistent)
-      number_of_fields = 3;
-    if (f3 == T::nonexistent)
-      number_of_fields = 2;
-    if (f2 == T::nonexistent)
-      number_of_fields = 1;
-    if (f1 == T::nonexistent)
-      number_of_fields = 0;
+    if (f4 == T::nonexistent) number_of_fields = 3;
+    if (f3 == T::nonexistent) number_of_fields = 2;
+    if (f2 == T::nonexistent) number_of_fields = 1;
+    if (f1 == T::nonexistent) number_of_fields = 0;
     return number_of_fields;
   };
 
@@ -251,10 +251,27 @@ struct AST_info
 };
 
 using a = AST_info;
-//this is an enum which has extra information for each element. it is constexpr so that it can be 
-//used in a switch-case statement.
-//note: keep AST names to one word only. because our console input takes a single word for the 
-//name.
+/*this is an enum which has extra information for each element. it is constexpr so that it can be 
+used in a switch-case statement.
+
+Guidelines for new ASTs:
+first field is the AST name. second field is the return type. remaining optional fields are the 
+parameter types.
+return type is T_special if it can't be determined automatically from the AST tag. that means a 
+deeper inspection is necessary.
+then, write the compilation code for the AST in generate_IR().
+
+the number of parameter types determines the number of subfields to be compiled and type-checked 
+automatically.
+  if you want to compile but not type-check a field, use set_fields_to_compile() and do not list a 
+  parameter type.
+  if you want to neither compile or type-check a field, use set_pointer_fields().
+    in these cases, you must handle the type-checking/compilation manually if it's not done 
+    automatically and you want it to be done.
+if the AST branches, then make sure to clear temporaries from the stack list before running the 
+other branch.
+keep AST names to one word only, because our console input takes a single word for the name.
+*/
 constexpr AST_info AST_descriptor[] =
 {
   { "integer", T::integer}, //first argument is an integer, which is the returned value.
