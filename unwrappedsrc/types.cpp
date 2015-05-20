@@ -114,6 +114,11 @@ check_next_token:
 			//maybe we should also allow two uints in a row to take a dynamic pointer?
 				//we'd have to think about that. the current system allows for large types in the new reference to accept pieces, but I don't know if that's the best.
 			return 0;
+
+		case Typen("dynamic pointer"):
+			if (iter[0]->tag == iter[1]->tag)
+				goto finished_checking;
+			return 0;
 		default:
 			llvm_unreachable("default switch in fully immut/RVO branch");
 		}
@@ -129,7 +134,6 @@ check_next_token:
 		//first type field must be the same
 		if (iter[1]->tag != iter[0]->tag) return 0;
 
-		//todo: dyn pointers
 		switch (iter[1]->tag)
 		{
 		case Typen("cheap pointer"):
@@ -144,6 +148,9 @@ check_next_token:
 		case Typen("integer"):
 			goto finished_checking;
 
+		case Typen("dynamic pointer"):
+			goto finished_checking;
+	
 		default:
 			llvm_unreachable("default case in other branch");
 		}

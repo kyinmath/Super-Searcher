@@ -24,12 +24,21 @@
     <ClCompile Include="unwrappedsrc\testdriver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="unwrappedsrc\unique_type_creator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="unwrappedsrc\types.h">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="unwrappedsrc\debugoutput.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unwrappedsrc\cs11.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unwrappedsrc\unique_type_creator.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

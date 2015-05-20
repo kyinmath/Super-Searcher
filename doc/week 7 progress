@@ -1,0 +1,10 @@
+A link that is worth reading:
+	http://llvm.org/docs/Frontend/PerformanceTips.html
+	it tells me that my large loads and stores are bad.
+	I've made a change because of it, GEP -> InboundsGEP.
+New fuzzer behavior revealed that after a long time, ASTs would silently stop being written to console, even though everything was compiling correctly. Further investigation revealed that the cause was stack corruption from mismatch of function type and expected function type.
+Unique type creator. Recursively generates types to handle pointer issues.
+
+My new concern is that my concatenate() function probably won't work too well with dynamic memory, because it will have to copy to make memory contiguous. I'm thinking about introducing twines for dynamic pointers.
+Next week will be adding ASTs to read dynamic pointers. The challenge is mainly that I'll need to add fuzzing to test these dynamic pointers, which will require random type generation, which I don't have yet.
+Also, sometimes llvm emits some error messages, and I want this to abort the program, but it doesn't.

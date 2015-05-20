@@ -14,10 +14,13 @@
     <ClCompile Include="unwrappedsrc\cs11.cpp" />
     <ClCompile Include="unwrappedsrc\testdriver.cpp" />
     <ClCompile Include="unwrappedsrc\types.cpp" />
+    <ClCompile Include="unwrappedsrc\unique_type_creator.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="unwrappedsrc\cs11.h" />
     <ClInclude Include="unwrappedsrc\debugoutput.h" />
     <ClInclude Include="unwrappedsrc\types.h" />
+    <ClInclude Include="unwrappedsrc\unique_type_creator.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A3908F65-10ED-4CB5-AC9B-B1D10CDAB936}</ProjectGuid>

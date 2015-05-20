@@ -63,7 +63,9 @@ struct Type_info
 	constexpr Type_info(const char a[], unsigned n, int s) : name(a), pointer_fields(n), size(s) {}
 };
 
-
+/* Guidelines for new Types:
+you must create an entry in type_check.
+*/
 constexpr Type_info Type_descriptor[] =
 {
 	{ "concatenate", 2, -1 }, //concatenate two types
@@ -92,10 +94,11 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
 constexpr uint64_t Typen(const char name[])
 { return get_enum_from_name<const Type_info, Type_descriptor>(name); }
 
+#define fields_in_Type 2u
 struct Type
 {
 	uint64_t tag;
-	std::array<int_or_ptr<Type>, 2> fields;
+	std::array<int_or_ptr<Type>, fields_in_Type> fields;
 	constexpr Type(const char name[], const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(Typen(name)), fields{ a, b } {}
 	constexpr Type(const uint64_t t, const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(t), fields{ a, b } {}
 };
@@ -190,8 +193,20 @@ struct AST_info
 };
 
 using a = AST_info;
-//this is an enum which has extra information for each element. it is constexpr so that it can be used in a switch-case statement.
-//note: keep AST names to one word only. because our console input takes a single word for the name.
+/*this is an enum which has extra information for each element. it is constexpr so that it can be used in a switch-case statement.
+
+Guidelines for new ASTs:
+first field is the AST name. second field is the return type. remaining optional fields are the parameter types.
+return type is T_special if it can't be determined automatically from the AST tag. that means a deeper inspection is necessary.
+then, write the compilation code for the AST in generate_IR().
+
+the number of parameter types determines the number of subfields to be compiled and type-checked automatically.
+	if you want to compile but not type-check a field, use set_fields_to_compile() and do not list a parameter type.
+	if you want to neither compile or type-check a field, use set_pointer_fields().
+		in these cases, you must handle the type-checking/compilation manually if it's not done automatically and you want it to be done.
+if the AST branches, then make sure to clear temporaries from the stack list before running the other branch.
+keep AST names to one word only, because our console input takes a single word for the name.
+*/
 constexpr AST_info AST_descriptor[] =
 {
 	{ "integer", T::integer}, //first argument is an integer, which is the returned value.

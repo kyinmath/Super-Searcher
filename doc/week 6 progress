@@ -13,3 +13,6 @@ Right now, the fuzztester segfaults because it's testing an unfinished AST branc
 Makefile now automatically removes the core file, since Ubuntu has a bug where core dumps don't overwrite previous core dumps. This may not be a good thing for everyone.
 
 todo: check if unreachable is really working by placing one in main
+
+
+add ({int i; i = 0; return i}, 5);
