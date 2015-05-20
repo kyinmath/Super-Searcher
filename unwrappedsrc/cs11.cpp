@@ -194,6 +194,7 @@ unsigned compiler_object::compile_AST(AST* target)
 	if (size_of_return == 0) FT = FunctionType::get(llvm::Type::getVoidTy(thread_context), false);
 	else if (size_of_return == 1) FT = FunctionType::get(llvm::Type::getInt64Ty(thread_context), false);
 	else FT = FunctionType::get(llvm::ArrayType::get(llvm::Type::getInt64Ty(thread_context), size_of_return), false);
+	if (VERBOSE_DEBUG) outstream << "Size of return is " << size_of_return << '\n';
 
 	Function *F = Function::Create(FT, Function::ExternalLinkage, "temp function", TheModule);
 
@@ -201,11 +202,9 @@ unsigned compiler_object::compile_AST(AST* target)
 	Builder.SetInsertPoint(BB);
 
 	auto return_object = generate_IR(target, false);
-	if (return_object.error_code)
-		return return_object.error_code; //error
+	if (return_object.error_code) return return_object.error_code; //error
 
-	if (size_of_return)
-		Builder.CreateRet(return_object.IR);
+	if (size_of_return) Builder.CreateRet(return_object.IR);
 	else Builder.CreateRetVoid();
 
 	TheModule->print(*llvm_outstream, nullptr);

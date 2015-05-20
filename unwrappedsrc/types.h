@@ -111,7 +111,7 @@ namespace T
 	static constexpr Type int_internal("integer");
 	static constexpr Type nonexistent_internal("integer");
 	static constexpr Type special_internal("integer");
-	static constexpr Type dynamic_pointer_internal("integer");
+	static constexpr Type dynamic_pointer_internal("dynamic pointer");
 	constexpr Type* nonexistent = const_cast<Type* const>(&nonexistent_internal); //nothing at all. used to say that a parameter field is missing, or for goto. effectively disables type checking for that field.
 	constexpr Type* special = const_cast<Type* const>(&special_internal); //indicates that a return type is to be handled differently
 	constexpr Type* integer = const_cast<Type* const>(&int_internal); //describes an integer type
