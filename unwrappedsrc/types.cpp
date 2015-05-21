@@ -1,5 +1,6 @@
 #include <stack>
 #include "types.h"
+#include "debugoutput.h"
 
 /*
 the docs in this file are incomplete.
@@ -120,7 +121,7 @@ check_next_token:
 				goto finished_checking;
 			return 0;
 		default:
-			llvm_unreachable("default switch in fully immut/RVO branch");
+			error("default switch in fully immut/RVO branch");
 		}
 	}
 
@@ -141,6 +142,7 @@ check_next_token:
 			if (type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr) > 1)
 				goto finished_checking;
 			return 0;
+		
 		case Typen("fixed integer"): //no need for lock check.
 			if (iter[1]->fields[0].num == iter[0]->fields[0].num)
 				goto finished_checking;
@@ -152,11 +154,10 @@ check_next_token:
 			goto finished_checking;
 	
 		default:
-			llvm_unreachable("default case in other branch");
+			error("default case in other branch");
 		}
 	}
-
-	llvm_unreachable("end of type_check");
+	error("end of type_check");
 finished_checking:
 	iter[0] = iter[1] = nullptr; //rely on the beginning to set them properly.
 	goto check_next_token;

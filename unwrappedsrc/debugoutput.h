@@ -30,11 +30,6 @@ private:
 };
 
 
-using std::string;
-inline void error(string Str) { outstream << "Error: " << Str << '\n'; abort(); }
-
-//the condition is true when the program behaves normally.
-inline void check(bool condition, string Str) { if (!condition) error(Str); }
 
 
 //only call on a non-nullptr target. outputs a single Type.

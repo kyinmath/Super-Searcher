@@ -202,12 +202,7 @@ unsigned compiler_object::compile_AST(AST* target)
 	else Builder.CreateRetVoid();
 
 	TheModule->print(*llvm_outstream, nullptr);
-	// Validate the generated code, checking for consistency.
-	if (llvm::verifyFunction(*F, llvm_outstream))
-	{
-		llvm_unreachable("verification failed");
-	}
-
+	check(!llvm::verifyFunction(*F, llvm_outstream), "verification failed");
 	if (OPTIMIZE)
 	{
 		outstream << "optimized code: \n";
@@ -276,8 +271,7 @@ maybe scalarrepl is more useful for us.
 clang likes to allocate everything in the beginning, so we follow their lead
 */
 llvm::AllocaInst* compiler_object::create_alloca_in_entry_block(uint64_t size) {
-	if (size == 0)
-		llvm_unreachable("tried to create a 0-size alloca");
+	check(size > 0, "tried to create a 0-size alloca");
 	llvm::BasicBlock& first_block = Builder.GetInsertBlock()->getParent()->getEntryBlock();
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
 
@@ -327,6 +321,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
 #define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
 
+	if (stack_degree == 2) debugcheck(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
+	if (stack_degree == 1) debugcheck((storage_location != nullptr) && (get_size(target) > 0), "if stack degree is 1, we should have a storage_location");
+
 	if (VERBOSE_DEBUG)
 	{
 		outstream << "generate_IR single AST start ^^^^^^^^^\n";
@@ -344,7 +341,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 
 	//target should never be nullptr.
-	if (target == nullptr) llvm_unreachable("null AST compiler bug");
+	check(target != nullptr, "null AST compiler bug");
 
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
 	if (this->loop_catcher.find(target) != this->loop_catcher.end()) return_code(infinite_loop, 10);
@@ -370,6 +367,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 	uint64_t size_result = -1; //note: it's only active when stack_degree = 1. otherwise, you must have special cases.
 	//-1 is a debug choice, since having it at 0 led to invisible errors.
+	//note that it's -1, not -1ull.
 	//whenever you use create_alloca(), make sure size_result is actually set.
 
 	uint64_t final_stack_position = object_stack.size();
@@ -404,27 +402,34 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 
 	//internal: do not call this directly. use the finish macro instead
-	//places a constructed object into storage_location.
-	auto move_to_stack = [&](llvm::Value* return_value) -> llvm::Value*
-	{
-		if (VERBOSE_DEBUG)
-		{
-			outstream << "moving to stack\n";
-		}
-		if (size_result == -1) size_result = get_size(target); //note that it's -1, not -1ull.
-		if (stack_degree == 2 && size_result >= 1 && storage_location == nullptr) storage_location = create_alloca_in_entry_block(size_result);
-		if (size_result >= 1)
-		{
-			Builder.CreateStore(return_value, storage_location);
-			return storage_location;
-		}
-		return return_value;
-	};
-
-	//internal: do not call this directly. use the finish macro instead
 	//clears dead objects off the stack, and makes your result visible to other ASTs
-	auto finish_internal = [&](llvm::Value* return_value, Type* type, uint64_t upper_life, uint64_t lower_life) -> Return_Info
+	//if it's necessary to create and write to storage_location, we do so.
+	//if move_to_stack == true, it writes into a previously created storage_location
+	auto finish_internal = [&](llvm::Value* return_value, Type* type, uint64_t upper_life, uint64_t lower_life, bool move_to_stack) -> Return_Info
 	{
+		if (stack_degree >= 1)
+		{
+			if (size_result == -1) size_result = get_size(target); //note that it's -1, not -1ull.
+		}
+		if (stack_degree == 2 && size_result != 0 && storage_location == nullptr)
+		{
+			if (storage_location == nullptr)
+			{
+				storage_location = create_alloca_in_entry_block(size_result);
+				Builder.CreateStore(return_value, storage_location);
+				return_value = storage_location;
+			}
+			else check(move_to_stack == false, "if move_to_stack is true, then we shouldn't have already created the storage_location");
+		}
+		if (stack_degree == 1 && move_to_stack)
+		{
+			if (size_result >= 1) //we don't do it for stack_degree = 2, because if storage_location =/= nullptr, we shouldn't write
+			{
+				Builder.CreateStore(return_value, storage_location);
+				return_value = storage_location;
+			}
+		}
+
 		if (VERBOSE_DEBUG && return_value != nullptr)
 		{
 			outstream << "finish() in generate_IR, called value is ";
@@ -441,6 +446,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			TheModule->print(*llvm_outstream, nullptr);
 			outstream << "generate_IR single AST " << target << " vvvvvvvvv\n";
 		}
+
+
 		//we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for justification.
 		if (stack_degree == 2) clear_stack(final_stack_position);
 
@@ -461,14 +468,14 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 	//call the finish macros when you've constructed something.
 	//_pointer suffix is when target lifetime information is relevant (for pointers).
-	//_no_alloca if your AST has already created a stack alloca whenever necessary. also, size_result must be already known.
+	//_stack_handled if your AST has already created a stack alloca whenever necessary. also, size_result must be already known.
 	//for example, concatenate() and if() use previously constructed return objects, and simply pass them through.
 
 	//we can't use X directly because that will duplicate any expressions in the argument.
-#define finish_pointer(X, type, u, l) do {llvm::Value* first_value = X; llvm::Value* end_value = stack_degree >= 1 ? move_to_stack(first_value) : first_value; return finish_internal(end_value, type, u, l); } while (0)
+#define finish_pointer(X, type, u, l) do {return finish_internal(X, type, u, l, true); } while (0)
 #define finish(X, type) do { finish_pointer(X, type, 0, -1ull); } while (0)
-#define finish_no_alloca(X, type) do { return finish_internal(X, type, 0, -1ull); } while (0)
-#define finish_no_alloca_pointer(X, type, u, l) do { return finish_internal(X, type, u, l); } while (0)
+#define finish_stack_handled(X, type) do { return finish_internal(X, type, 0, -1ull, false); } while (0)
+#define finish_stack_handled_pointer(X, type, u, l) do { return finish_internal(X, type, u, l, false); } while (0)
 
 	//we generate code for the AST, depending on its tag.
 	switch (target->tag)
@@ -595,7 +602,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				PN->addIncoming(else_IR.IR, ElseBB);
 				finish_pointer(PN, then_IR.type, result_target_upper_lifetime, result_target_lower_lifetime);
 			}
-			else finish_no_alloca_pointer(storage_location, then_IR.type, result_target_upper_lifetime, result_target_lower_lifetime);
+			else finish_stack_handled_pointer(storage_location, then_IR.type, result_target_upper_lifetime, result_target_lower_lifetime);
 			//even though finish_pointer returns, the else makes it clear from first glance that it's not a continued statement.
 		}
 	case ASTn("scope"):
@@ -636,7 +643,16 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 						storage_location = create_alloca_in_entry_block(size_result);
 
 				llvm::AllocaInst* first_location = storage_location;
-				if (first_size == 1) first_location = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 0);
+				if (first_size == 1)
+				{
+					first_location = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 0);
+				}
+				else
+				{
+					llvm::Type* pointer_to_array = llvm::ArrayType::get(int64_type, first_size)->getPointerTo();
+					llvm::Value* first_pointer = Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 0);
+					first_location = (llvm::AllocaInst*)Builder.CreatePointerCast(first_pointer, pointer_to_array);
+				}
 
 				if (target->fields[0].ptr == nullptr)
 					return_code(null_AST, 0);
@@ -664,11 +680,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				uint64_t result_target_upper_lifetime = std::max(first_half.target_upper_lifetime, second_half.target_upper_lifetime);
 				uint64_t result_target_lower_lifetime = std::min(first_half.target_lower_lifetime, second_half.target_lower_lifetime);
 
-				finish_no_alloca_pointer(final_value, &type_scratch_space.back(), result_target_upper_lifetime, result_target_lower_lifetime);
+				finish_stack_handled_pointer(final_value, &type_scratch_space.back(), result_target_upper_lifetime, result_target_lower_lifetime);
 			}
 			else //it's convenient having a special case, because no need to worry about integer llvm values for size-1 objects.
 			{
-				outstream << "we should be here!\n";
 				if (target->fields[0].ptr == nullptr) return_code(null_AST, 0);
 				//we only have to RVO if stack_degree is 1, because otherwise we can return the result directly.
 				//that means we don't have to create a storage_location here.
@@ -680,11 +695,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				if (second_half.error_code) return second_half;
 
 				if (first_size > 0)
-					finish_pointer(first_half.IR, first_half.type, first_half.target_upper_lifetime, first_half.target_lower_lifetime);
+					finish_stack_handled_pointer(first_half.IR, first_half.type, first_half.target_upper_lifetime, first_half.target_lower_lifetime);
 				else
-					finish_pointer(second_half.IR, second_half.type, second_half.target_upper_lifetime, second_half.target_lower_lifetime);
+					finish_stack_handled_pointer(second_half.IR, second_half.type, second_half.target_upper_lifetime, second_half.target_lower_lifetime);
 				//even if second_half is 0, we return it anyway.
-				//this isn't finish_no_alloca_pointer, because if stack_degree == 2, we still need an alloca.
 			}
 		}
 
@@ -703,7 +717,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 				//store the returned value into the malloc'd address
 				llvm::Constant* dynamic_object_address = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, (uint64_t)pointer_to_memory));
-				llvm::Value* dynamic_object = Builder.CreateIntToPtr(dynamic_object_address, target_type);
+				llvm::Value* dynamic_object = Builder.CreateIntToPtr(dynamic_object_address, target_pointer_type);
 				Builder.CreateStore(field_results[0].IR, dynamic_object);
 
 				//create a pointer to the type of the dynamic pointer. but we serialize the pointer to be an integer.
@@ -734,7 +748,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			}
 		}
 	}
-	llvm_unreachable("fell through switches");
+	error("fell through switches");
 }
 
 /**

@@ -41,5 +41,8 @@
     <ClInclude Include="unwrappedsrc\unique_type_creator.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="unwrappedsrc\errorhandling.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

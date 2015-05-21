@@ -27,6 +27,7 @@ Later, we'll have some ASTs that let the user actually query this information.
 #include <cstdint>
 #include <array>
 #include <llvm/Support/ErrorHandling.h>
+#include "errorhandling.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -86,7 +87,7 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
 	{
 		if (static_strequal(vector_name[k].name, name)) return k;
 		if (static_strequal(vector_name[k].name, "never reached")) //this isn't recursive, because the previous if statement returns.
-			llvm_unreachable( "tried to get a nonexistent name");
+			error( "tried to get a nonexistent name");
 		//llvm_unreachable doesn't give proper errors for run time mistakes, only when it's compile time.
 
 	}
@@ -134,7 +135,7 @@ constexpr uint64_t get_size(Type* target)
 	{
 		return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
 	}
-	llvm_unreachable("couldn't get size of type tag, check backtrace for target->tag");
+	error("couldn't get size of type tag, check backtrace for target->tag");
 }
 
 /**
@@ -275,7 +276,7 @@ constexpr uint64_t get_size(AST* target)
 	else if (target->tag == ASTn("pointer")) return 1;
 	else if (target->tag == ASTn("load")) return get_size(target->fields[0].ptr);
 	else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr); //todo: this is slow. takes n^2 time.
-	llvm_unreachable(strcat("couldn't get size of tag in get_size(), target->tag was", AST_descriptor[target->tag].name));
+	error(strcat("couldn't get size of tag in get_size(), target->tag was", AST_descriptor[target->tag].name));
 }
 
 

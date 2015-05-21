@@ -19,6 +19,7 @@
   <ItemGroup>
     <ClInclude Include="unwrappedsrc\cs11.h" />
     <ClInclude Include="unwrappedsrc\debugoutput.h" />
+    <ClInclude Include="unwrappedsrc\errorhandling.h" />
     <ClInclude Include="unwrappedsrc\types.h" />
     <ClInclude Include="unwrappedsrc\unique_type_creator.h" />
   </ItemGroup>

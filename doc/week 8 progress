@@ -1,0 +1,1 @@
+Resolved: llvm_unreachable() claims to assert() in debug builds and optimize in release builds, but I discovered that doesn't happen. Some of my error checks were being silently bypassed. I replaced it with a new error() function, so verification works now. Hopefully, there will be no more mysterious llvm segfault-on-execute.
