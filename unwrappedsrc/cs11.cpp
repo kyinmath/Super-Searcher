@@ -321,8 +321,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
 #define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
 
-	if (stack_degree == 2) debugcheck(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
-	if (stack_degree == 1) debugcheck((storage_location != nullptr) && (get_size(target) > 0), "if stack degree is 1, we should have a storage_location");
 
 	if (VERBOSE_DEBUG)
 	{
@@ -330,18 +328,13 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		output_AST(target);
 		outstream << "stack degree " << stack_degree;
 		outstream << ", storage location is ";
-		if (storage_location)
-			storage_location->print(*llvm_outstream);
-		else outstream << "null";
-		outstream << '\n';
-		//outstream << "dumping module before generation:\n";
-		//TheModule->print(*llvm_outstream, nullptr);
-		//we dump the module after generation, so we don't need to dump it now.
+		if (storage_location) storage_location->print(*llvm_outstream);
+		else outstream << "null\n";
 	}
 
-
-	//target should never be nullptr.
-	check(target != nullptr, "null AST compiler bug");
+	if (stack_degree == 2) debugcheck(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
+	if (stack_degree == 1) debugcheck((storage_location != nullptr) || (get_size(target) == 0), "if stack degree is 1, we should have a storage_location");
+	check(target != nullptr, "generate_IR should never receive a nullptr target");
 
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
 	if (this->loop_catcher.find(target) != this->loop_catcher.end()) return_code(infinite_loop, 10);
@@ -407,10 +400,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//if move_to_stack == true, it writes into a previously created storage_location
 	auto finish_internal = [&](llvm::Value* return_value, Type* type, uint64_t upper_life, uint64_t lower_life, bool move_to_stack) -> Return_Info
 	{
-		if (stack_degree >= 1)
-		{
-			if (size_result == -1) size_result = get_size(target); //note that it's -1, not -1ull.
-		}
+		if (stack_degree >= 1 && size_result == -1) size_result = get_size(target); //note that it's -1, not -1ull.
 		if (stack_degree == 2 && size_result != 0 && storage_location == nullptr)
 		{
 			if (storage_location == nullptr)

@@ -118,6 +118,7 @@ namespace T
 	constexpr Type* integer = const_cast<Type* const>(&int_internal); //describes an integer type
 	constexpr Type* dynamic_pointer = const_cast<Type* const>(&dynamic_pointer_internal); //describes an integer type
 	constexpr Type* null = nullptr;
+	//later: noreturn. for goto.
 };
 
 
@@ -276,7 +277,7 @@ constexpr uint64_t get_size(AST* target)
 	else if (target->tag == ASTn("pointer")) return 1;
 	else if (target->tag == ASTn("load")) return get_size(target->fields[0].ptr);
 	else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr); //todo: this is slow. takes n^2 time.
-	error(strcat("couldn't get size of tag in get_size(), target->tag was", AST_descriptor[target->tag].name));
+	error(string("couldn't get size of tag in get_size(), target->tag was") + AST_descriptor[target->tag].name);
 }
 
 

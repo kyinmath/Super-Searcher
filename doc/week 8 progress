@@ -1,1 +1,6 @@
-Resolved: llvm_unreachable() claims to assert() in debug builds and optimize in release builds, but I discovered that doesn't happen. Some of my error checks were being silently bypassed. I replaced it with a new error() function, so verification works now. Hopefully, there will be no more mysterious llvm segfault-on-execute.
+I figured out why llvm was segfaulting so much. I was using llvm_unreachable(), but it silently changed behavior in 2011: https://llvm.org/bugs/show_bug.cgi?id=8973
+My error checks were being silently bypassed. I replaced llvm_unreachable() with a new error() function. Hopefully, there will be no more mysterious segfaults on execution.
+
+
+valgrind --tool=memcheck ./toy
+	found leaks but no memory errors
