@@ -1,4 +1,4 @@
-I figured out why llvm was segfaulting. I was using llvm_unreachable() to assert(), but it silently changed behavior in 2011: https://llvm.org/bugs/show_bug.cgi?id=8973
+I figured out why llvm was segfaulting. I was using llvm_unreachable() to assert(), but it silently changed behavior.
 My error checks were being silently bypassed. I replaced llvm_unreachable() with a new error() function. Hopefully, there will be no more mysterious segfaults on execution.
 Hacked-up AST to generate random ASTs, "temp_generate_AST"
 Hacked-up AST to compile ASTs, "compile".
