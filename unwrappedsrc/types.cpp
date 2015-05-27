@@ -117,6 +117,7 @@ check_next_token:
 			return 0;
 
 		case Typen("dynamic pointer"):
+		case Typen("AST"):
 			if (iter[0]->tag == iter[1]->tag)
 				goto finished_checking;
 			return 0;
@@ -148,6 +149,7 @@ check_next_token:
 				goto finished_checking;
 			return 0;
 		case Typen("integer"):
+		case Typen("AST"):
 			goto finished_checking;
 
 		case Typen("dynamic pointer"):

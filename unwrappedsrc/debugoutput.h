@@ -117,7 +117,8 @@ struct output_AST_console_version
 	}
 
 	//the purpose of "might be end in BB" is to decide whether to output {} or not.
-	void output_console(AST* target, bool might_be_end_in_BB){
+	void output_console(AST* target, bool might_be_end_in_BB)
+	{
 		if (AST_list.find(target) != AST_list.end())
 		{
 			outstream << target;
