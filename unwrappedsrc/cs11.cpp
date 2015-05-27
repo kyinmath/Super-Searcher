@@ -271,6 +271,11 @@ unsigned compiler_object::compile_AST(AST* target)
 
 	if (VERBOSE_DEBUG) outstream << "starting compilation\n";
 	outstream << "target is " << target << '\n'; //necessary in case it crashes here
+
+	if (target == nullptr)
+	{
+		return IRgen_status::null_AST;
+	}
 	using namespace llvm;
 	FunctionType *FT;
 
