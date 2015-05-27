@@ -68,18 +68,19 @@ std::unordered_set<Type_wrapper_pointer> type_hash_table; //a hash table of all 
 //the bool is true if you created a type instead of finding a type.
 //this means that any types pointing to this type must necessarily not already exist in the type 
 //hash table.
-std::pair<Type*, bool> get_unique_type_internal(Type* model)
+std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_parameter)
 {
   Type temporary_model = *model;
 
-  bool create_new_for_sure; //if this is true, then we don't have to check if this object is in the 
-  //hash table. we know it is new.
+  bool create_new_for_sure; //it's true if one of the subfields created a type instead of finding 
+  //it.
+  //in that case, we don't have to check if this object is in the hash table. we know it is new.
   //but if it's false, it still might not be new.
 
   //uniqueify any pointer fields.
   for (int x; x < Type_descriptor[model->tag].pointer_fields; ++x)
   {
-    auto result = get_unique_type_internal(model->fields[x].ptr);
+    auto result = get_unique_type_internal(model->fields[x].ptr, can_reuse_parameter);
     create_new_for_sure |= result.second;
     temporary_model.fields[x] = result.first;
   }
@@ -98,15 +99,20 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model)
   auto existing_type = type_hash_table.find(&temporary_model);
   if (existing_type == type_hash_table.end())
   {
-    Type* handle = new Type(temporary_model);
-    type_hash_table.insert(handle);
-    return std::make_pair(handle, true);
+    if (!can_reuse_parameter)
+      model = new Type(temporary_model);
+    type_hash_table.insert(model);
+    return std::make_pair(model, true);
   }
   else return std::make_pair(existing_type->ptr, false);
 
 }
 
-Type* get_unique_type(Type* model) { return get_unique_type_internal(model).first; }
+Type* get_unique_type(Type* model, bool can_reuse_parameter)
+{
+  if (model == nullptr) return nullptr;
+  else return get_unique_type_internal(model, can_reuse_parameter).first;
+}
 
 
 void test_unique_types()
@@ -114,20 +120,20 @@ void test_unique_types()
   Type zero("integer");
   Type one("integer", 1);
 
-  Type* unique_zero = get_unique_type(&zero);
-  Type* second_zero = get_unique_type(&zero);
+  Type* unique_zero = get_unique_type(&zero, false);
+  Type* second_zero = get_unique_type(&zero, false);
   check(unique_zero == second_zero, "duplicated type doesn't even unique");
 
-  Type* unique_one = get_unique_type(&one);
+  Type* unique_one = get_unique_type(&one, false);
   check(unique_zero != unique_one, "zero and one uniqued to same element");
 
   Type pointer_zero("cheap pointer", &zero);
   Type pointer_zero_second("cheap pointer", &zero);
-  Type* unique_pointer_zero = get_unique_type(&pointer_zero);
-  Type* unique_pointer_zero_second = get_unique_type(&pointer_zero);
+  Type* unique_pointer_zero = get_unique_type(&pointer_zero, false);
+  Type* unique_pointer_zero_second = get_unique_type(&pointer_zero, false);
   check(unique_pointer_zero == unique_pointer_zero_second, "pointers don't unique");
 
   Type pointer_one("cheap pointer", &one);
-  Type* unique_pointer_one = get_unique_type(&pointer_one);
+  Type* unique_pointer_one = get_unique_type(&pointer_one, false);
   check(unique_pointer_zero != unique_pointer_one, "different pointers unique");
 }

@@ -54,6 +54,14 @@ std::ostream& outstream = std::cerr;
 llvm::raw_null_ostream llvm_null_stream;
 llvm::raw_ostream* llvm_outstream = &llvm::outs();
 
+//s("test") returns "test" if debug_names is true, and an empty string if debug_names is false.
+#define debug_names
+#ifdef debug_names
+std::string s(std::string k) {return k;}
+#else
+std::string s(std::string k) { return ""; }
+#endif
+
 //todo: threading. create non-global contexts
 #ifndef _MSC_VER
 thread_local
@@ -170,12 +178,100 @@ public:
   compiler_object();
   unsigned compile_AST(AST* target); //we can't combine this with the ctor, because it needs to 
   //return an int
+  //todo: right now, compile_AST runs the function that it creates. that's not what we want.
 
   //exists when IRgen_status has an error.
   AST* error_location;
   unsigned error_field; //which field in error_location has the error
 
+  //these exist on successful compilation. guaranteed to be uniqued and in the heap.
+  //currently, parameters are not implemented
+  Type* return_type;
+  Type* parameter_type = nullptr;
 };
+
+
+uint64_t ASTmaker()
+{
+  unsigned iterations = 4;
+  std::vector<AST*> AST_list{ nullptr }; //start with nullptr as the default referenceable AST
+  while (iterations--)
+  {
+    //create a random AST
+    unsigned tag = mersenne() % ASTn("never reached");
+    unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST 
+    //pointers. they will come at the beginning
+    unsigned prev_AST = generate_exponential_dist() % AST_list.size(); //todo: prove that 
+    //exponential_dist is desired.
+    //birthday collisions is the problem. a concatenate with two branches will almost never appear, 
+    //because it'll result in an active object duplication.
+    //but does exponential falloff solve this problem in the way we want?
+
+    int_or_ptr<AST> fields[4]{nullptr, nullptr, nullptr, nullptr};
+    int incrementor = 0;
+    for (; incrementor < pointer_fields; ++incrementor)
+      fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous 
+      //ASTs
+    for (; incrementor < max_fields_in_AST; ++incrementor)
+      fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the 
+      //remaining fields
+    AST* test_AST = new AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], 
+    fields[3]);
+    output_AST_and_previous(test_AST);
+    output_AST_console_version a(test_AST);
+
+    compiler_object compiler;
+    unsigned error_code = compiler.compile_AST(test_AST);
+    if (error_code) delete test_AST;
+    else AST_list.push_back(test_AST);
+  }
+  output_AST_and_previous(AST_list.back());
+  return (uint64_t)AST_list.back();
+}
+
+/* this is a function that the compile() AST will call.
+returns a pointer to the return object, which is either:
+1. a working pointer to AST
+2. a failure object to be read
+the bool is TRUE if the compilation is successful, and FALSE if not.
+this determines what the type of the pointer is.
+
+the type of target is actually of type AST*. it's stated as uint64_t for current convenience
+Note: memory allocations that interact with the user should use new, not malloc.
+we might need realloc. BUT, the advantage of new is that it throws an exception on failure.
+
+NOTE: std::array<2> becomes {uint64_t, uint64_t}. but array<4> becomes [i64 x 4].
+*/
+std::array<uint64_t, 2> compile_user_facing(uint64_t target)
+{
+  compiler_object a;
+  unsigned error = a.compile_AST((AST*)target);
+
+  void* return_object_pointer;
+  Type* return_type_pointer;
+  if (error)
+  {
+    uint64_t* error_return = new uint64_t[3];
+    error_return[0] = error;
+    error_return[1] = (uint64_t)a.error_location;
+    error_return[2] = a.error_field;
+
+    return_object_pointer = error_return;
+    return_type_pointer = T::error_object;
+  }
+  else
+  {
+    return_object_pointer = nullptr;
+    //todo: make this actually work.
+
+    Type* function_return_type = a.return_type;
+    return_type_pointer = new Type("function in clouds", a.return_type, a.parameter_type);
+  }
+  return std::array < uint64_t, 2 > {(uint64_t)return_object_pointer, 
+  (uint64_t)return_type_pointer};
+}
+
+
 
 compiler_object::compiler_object() : error_location(nullptr), Builder(thread_context),
 TheModule(new llvm::Module("temp module", thread_context))
@@ -200,11 +296,17 @@ template<size_t array_num> void cout_array(std::array<uint64_t, array_num> objec
   outstream << '\n';
 }
 
+//return value is the error code, which is 0 if successful
 unsigned compiler_object::compile_AST(AST* target)
 {
 
   if (VERBOSE_DEBUG) outstream << "starting compilation\n";
+  outstream << "target is " << target << '\n'; //necessary in case it crashes here
 
+  if (target == nullptr)
+  {
+    return IRgen_status::null_AST;
+  }
   using namespace llvm;
   FunctionType *FT;
 
@@ -224,16 +326,12 @@ unsigned compiler_object::compile_AST(AST* target)
   auto return_object = generate_IR(target, false);
   if (return_object.error_code) return return_object.error_code; //error
 
+  return_type = get_unique_type(return_object.type, false);
   if (size_of_return) Builder.CreateRet(return_object.IR);
   else Builder.CreateRetVoid();
 
   TheModule->print(*llvm_outstream, nullptr);
-  // Validate the generated code, checking for consistency.
-  if (llvm::verifyFunction(*F, llvm_outstream))
-  {
-    llvm_unreachable("verification failed");
-  }
-
+  debugcheck(!llvm::verifyFunction(*F, llvm_outstream), "verification failed");
   if (OPTIMIZE)
   {
     outstream << "optimized code: \n";
@@ -303,8 +401,7 @@ maybe scalarrepl is more useful for us.
 clang likes to allocate everything in the beginning, so we follow their lead
 */
 llvm::AllocaInst* compiler_object::create_alloca_in_entry_block(uint64_t size) {
-  if (size == 0)
-    llvm_unreachable("tried to create a 0-size alloca");
+  debugcheck(size > 0, "tried to create a 0-size alloca");
   llvm::BasicBlock& first_block = Builder.GetInsertBlock()->getParent()->getEntryBlock();
   llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
 
@@ -317,7 +414,6 @@ llvm::AllocaInst* compiler_object::create_alloca_in_entry_block(uint64_t size) {
 
 void compiler_object::clear_stack(uint64_t desired_stack_size)
 {
-
   while (object_stack.size() != desired_stack_size)
   {
     //todo: run dtors if necessary, such as for lock elements
@@ -375,31 +471,30 @@ storage_location)
 #define return_code(X, Y) do { error_location = target; error_field = Y; return \
 Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
 
+
   if (VERBOSE_DEBUG)
   {
     outstream << "generate_IR single AST start ^^^^^^^^^\n";
     output_AST(target);
     outstream << "stack degree " << stack_degree;
     outstream << ", storage location is ";
-    if (storage_location)
-      storage_location->print(*llvm_outstream);
-    else outstream << "null";
-    outstream << '\n';
-    //outstream << "dumping module before generation:\n";
-    //TheModule->print(*llvm_outstream, nullptr);
-    //we dump the module after generation, so we don't need to dump it now.
+    if (storage_location) storage_location->print(*llvm_outstream);
+    else outstream << "null\n";
   }
 
-
-  //target should never be nullptr.
-  if (target == nullptr) llvm_unreachable("null AST compiler bug");
+  if (stack_degree == 2) debugcheck(storage_location == nullptr, "if stack degree is 2, we should \
+have a nullptr storage_location");
+  if (stack_degree == 1) debugcheck((storage_location != nullptr) || (get_size(target) == 0), "if \
+stack degree is 1, we should have a storage_location");
+  debugcheck(target != nullptr, "generate_IR should never receive a nullptr target");
 
   //if we've seen this AST before, we're stuck in an infinite loop. return an error.
   if (this->loop_catcher.find(target) != this->loop_catcher.end()) return_code(infinite_loop, 10);
   loop_catcher.insert(target); //we've seen this AST now.
 
   //after we're done with this AST, we remove it from loop_catcher.
-  struct loop_catcher_destructor_cleanup{
+  struct loop_catcher_destructor_cleanup
+  {
     //compiler_state can only be used if it is passed in.
     compiler_object* object; AST* targ;
     loop_catcher_destructor_cleanup(compiler_object* x, AST* t) : object(x), targ(t) {}
@@ -419,6 +514,7 @@ Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
   uint64_t size_result = -1; //note: it's only active when stack_degree = 1. otherwise, you must 
   //have special cases.
   //-1 is a debug choice, since having it at 0 led to invisible errors.
+  //note that it's -1, not -1ull.
   //whenever you use create_alloca(), make sure size_result is actually set.
 
   uint64_t final_stack_position = object_stack.size();
@@ -455,29 +551,35 @@ Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
   llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 
   //internal: do not call this directly. use the finish macro instead
-  //places a constructed object into storage_location.
-  auto move_to_stack = [&](llvm::Value* return_value) -> llvm::Value*
-  {
-    if (VERBOSE_DEBUG)
-    {
-      outstream << "moving to stack\n";
-    }
-    if (size_result == -1) size_result = get_size(target); //note that it's -1, not -1ull.
-    if (stack_degree == 2 && size_result >= 1 && storage_location == nullptr) storage_location = 
-    create_alloca_in_entry_block(size_result);
-    if (size_result >= 1)
-    {
-      Builder.CreateStore(return_value, storage_location);
-      return storage_location;
-    }
-    return return_value;
-  };
-
-  //internal: do not call this directly. use the finish macro instead
   //clears dead objects off the stack, and makes your result visible to other ASTs
+  //if it's necessary to create and write to storage_location, we do so.
+  //if move_to_stack == true, it writes into a previously created storage_location
   auto finish_internal = [&](llvm::Value* return_value, Type* type, uint64_t upper_life, uint64_t 
-  lower_life) -> Return_Info
+  lower_life, bool move_to_stack) -> Return_Info
   {
+    if (stack_degree >= 1 && size_result == -1) size_result = get_size(target); //note that it's 
+    //-1, not -1ull.
+    if (stack_degree == 2 && size_result != 0 && storage_location == nullptr)
+    {
+      if (storage_location == nullptr)
+      {
+        storage_location = create_alloca_in_entry_block(size_result);
+        Builder.CreateStore(return_value, storage_location);
+        return_value = storage_location;
+      }
+      else debugcheck(move_to_stack == false, "if move_to_stack is true, then we shouldn't have \
+already created the storage_location");
+    }
+    if (stack_degree == 1 && move_to_stack)
+    {
+      if (size_result >= 1) //we don't do it for stack_degree = 2, because if storage_location =/= 
+      //nullptr, we shouldn't write
+      {
+        Builder.CreateStore(return_value, storage_location);
+        return_value = storage_location;
+      }
+    }
+
     if (VERBOSE_DEBUG && return_value != nullptr)
     {
       outstream << "finish() in generate_IR, called value is ";
@@ -494,6 +596,8 @@ Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
       TheModule->print(*llvm_outstream, nullptr);
       outstream << "generate_IR single AST " << target << " vvvvvvvvv\n";
     }
+
+
     //we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for 
     //justification.
     if (stack_degree == 2) clear_stack(final_stack_position);
@@ -518,18 +622,18 @@ Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
 
   //call the finish macros when you've constructed something.
   //_pointer suffix is when target lifetime information is relevant (for pointers).
-  //_no_alloca if your AST has already created a stack alloca whenever necessary
+  //_stack_handled if your AST has already created a stack alloca whenever necessary. also, 
+  //size_result must be already known.
   //for example, concatenate() and if() use previously constructed return objects, and simply pass 
   //them through.
 
   //we can't use X directly because that will duplicate any expressions in the argument.
-#define finish_pointer(X, type, u, l) do {llvm::Value* first_value = X; llvm::Value* end_value = \
-stack_degree >= 1 ? move_to_stack(first_value) : first_value; return finish_internal(end_value, \
-type, u, l); } while (0)
+#define finish_pointer(X, type, u, l) do {return finish_internal(X, type, u, l, true); } while (0)
 #define finish(X, type) do { finish_pointer(X, type, 0, -1ull); } while (0)
-#define finish_no_alloca(X, type) do { return finish_internal(X, type, 0, -1ull); } while (0)
-#define finish_no_alloca_pointer(X, type, u, l) do { return finish_internal(X, type, u, l); } \
+#define finish_stack_handled(X, type) do { return finish_internal(X, type, 0, -1ull, false); } \
 while (0)
+#define finish_stack_handled_pointer(X, type, u, l) do { return finish_internal(X, type, u, l, \
+false); } while (0)
 
   //we generate code for the AST, depending on its tag.
   switch (target->tag)
@@ -667,8 +771,8 @@ while (0)
         finish_pointer(PN, then_IR.type, result_target_upper_lifetime, 
         result_target_lower_lifetime);
       }
-      else finish_no_alloca_pointer(storage_location, then_IR.type, result_target_upper_lifetime, 
-      result_target_lower_lifetime);
+      else finish_stack_handled_pointer(storage_location, then_IR.type, 
+      result_target_upper_lifetime, result_target_lower_lifetime);
       //even though finish_pointer returns, the else makes it clear from first glance that it's not 
       //a continued statement.
     }
@@ -692,12 +796,12 @@ while (0)
   case ASTn("load"):
     {
       auto found_AST = objects.find(target->fields[0].ptr);
-      if (found_AST == objects.end())
-        return_code(pointer_without_target, 0);
-      if (found_AST->second.on_stack == false) //it's not an AllocaInst
-        finish_pointer(found_AST->second.IR, found_AST->second.type, 
-        found_AST->second.target_upper_lifetime, found_AST->second.target_lower_lifetime);
-      else finish(Builder.CreateLoad(found_AST->second.IR), found_AST->second.type);
+      if (found_AST == objects.end()) return_code(pointer_without_target, 0);
+      //if on_stack is false, it's not an alloca so we should copy instead of loading.
+      Return_Info AST_to_load = found_AST->second;
+      if (AST_to_load.on_stack == false) finish_pointer(AST_to_load.IR, AST_to_load.type, 
+      AST_to_load.target_upper_lifetime, AST_to_load.target_lower_lifetime);
+      else finish(Builder.CreateLoad(AST_to_load.IR), AST_to_load.type);
     }
   case ASTn("concatenate"):
     {
@@ -714,8 +818,19 @@ while (0)
             storage_location = create_alloca_in_entry_block(size_result);
 
         llvm::AllocaInst* first_location = storage_location;
-        if (first_size == 1) first_location = 
-        (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 0);
+        if (first_size == 1)
+        {
+          first_location = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(storage_location, 
+          0, 0);
+        }
+        else
+        {
+          llvm::Type* pointer_to_array = llvm::ArrayType::get(int64_type, 
+          first_size)->getPointerTo();
+          llvm::Value* first_pointer = Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 0);
+          first_location = (llvm::AllocaInst*)Builder.CreatePointerCast(first_pointer, 
+          pointer_to_array);
+        }
 
         if (target->fields[0].ptr == nullptr)
           return_code(null_AST, 0);
@@ -749,13 +864,12 @@ while (0)
         uint64_t result_target_lower_lifetime = std::min(first_half.target_lower_lifetime, 
         second_half.target_lower_lifetime);
 
-        finish_no_alloca_pointer(final_value, &type_scratch_space.back(), 
+        finish_stack_handled_pointer(final_value, &type_scratch_space.back(), 
         result_target_upper_lifetime, result_target_lower_lifetime);
       }
       else //it's convenient having a special case, because no need to worry about integer llvm 
       //values for size-1 objects.
       {
-        outstream << "we should be here!\n";
         if (target->fields[0].ptr == nullptr) return_code(null_AST, 0);
         //we only have to RVO if stack_degree is 1, because otherwise we can return the result 
         //directly.
@@ -770,13 +884,12 @@ while (0)
         if (second_half.error_code) return second_half;
 
         if (first_size > 0)
-          finish_pointer(first_half.IR, first_half.type, first_half.target_upper_lifetime, 
-          first_half.target_lower_lifetime);
+          finish_stack_handled_pointer(first_half.IR, first_half.type, 
+          first_half.target_upper_lifetime, first_half.target_lower_lifetime);
         else
-          finish_pointer(second_half.IR, second_half.type, second_half.target_upper_lifetime, 
-          second_half.target_lower_lifetime);
+          finish_stack_handled_pointer(second_half.IR, second_half.type, 
+          second_half.target_upper_lifetime, second_half.target_lower_lifetime);
         //even if second_half is 0, we return it anyway.
-        //this isn't finish_no_alloca, if stack_degree == 2, we still need an alloca.
       }
     }
 
@@ -785,7 +898,7 @@ while (0)
       uint64_t size_of_object = get_size(target->fields[0].ptr);
       if (size_of_object >= 1)
       {
-        uint64_t* pointer_to_memory = (uint64_t*)malloc(size_of_object * sizeof(uint64_t));
+        uint64_t* pointer_to_memory = new uint64_t[size_of_object];
 
         //can't use ?: because the return objects have different types
         //this represents either an integer or an array of integers.
@@ -793,15 +906,16 @@ while (0)
         if (size_of_object > 1) target_type = llvm::ArrayType::get(int64_type, size_of_object);
         llvm::Type* target_pointer_type = target_type->getPointerTo();
 
-        //store the returned value into the malloc'd address
+        //store the returned value into the acquired address
         llvm::Constant* dynamic_object_address = llvm::Constant::getIntegerValue(int64_type, 
         llvm::APInt(64, (uint64_t)pointer_to_memory));
-        llvm::Value* dynamic_object = Builder.CreateIntToPtr(dynamic_object_address, target_type);
+        llvm::Value* dynamic_object = Builder.CreateIntToPtr(dynamic_object_address, 
+        target_pointer_type);
         Builder.CreateStore(field_results[0].IR, dynamic_object);
 
         //create a pointer to the type of the dynamic pointer. but we serialize the pointer to be 
         //an integer.
-        Type* type_of_dynamic_object = get_unique_type(field_results[0].type);
+        Type* type_of_dynamic_object = get_unique_type(field_results[0].type, false);
         llvm::Constant* integer_type_pointer = llvm::Constant::getIntegerValue(int64_type, 
         llvm::APInt(64, (uint64_t)type_of_dynamic_object));
 
@@ -829,18 +943,87 @@ while (0)
         (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 1);
         Builder.CreateStore(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, 0)), 
         part2);
-        if (storage_location != nullptr)
-        {
-          outstream << "PANICCCCCCCCCCCCCCCCCCCCCC";
-        }
         //abort();
         finish(Builder.CreateLoad(final_dynamic_pointer), T::dynamic_pointer);
         //todo: change this to finish(final_dynamic_pointer, T::dynamic_pointer);. llvm will start 
         //emitting some errors about function return type. how do I get that to abort the program?
       }
     }
+  case ASTn("compile"):
+    {
+      std::vector<llvm::Type*> argument_types{ int64_type };
+      llvm::ArrayRef<llvm::Type*> argument_type_refs(argument_types);
+      //llvm::Type* return_type = llvm::ArrayType::get(int64_type, 2);
+      
+
+      //this is a very fragile transformation, which is necessary because array<uint64_t, 2> 
+      //becomes {i64, i64}
+      //if ever the optimization changes, we'll be in trouble.
+      std::vector<llvm::Type*> return_type_members{ int64_type, int64_type };
+      llvm::ArrayRef<llvm::Type*> return_type_refs(return_type_members);
+      llvm::Type* return_type = llvm::StructType::get(thread_context, return_type_refs);
+      
+      
+      llvm::FunctionType* compile_type = llvm::FunctionType::get(return_type, argument_type_refs, 
+      false);
+
+
+      
+      llvm::PointerType* compile_type_pointer = compile_type->getPointerTo();
+      llvm::Constant *twister_address = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, 
+      (uint64_t)&compile_user_facing));
+      llvm::Value* compile_function = Builder.CreateIntToPtr(twister_address, compile_type_pointer, \
+s("convert integer address to actual function"));
+
+      //llvm::Constant *compile_function = TheModule->getOrInsertFunction("compile_user_facing", 
+      //compile_type);
+
+      std::vector<llvm::Value*> arguments{ field_results[0].IR };
+      llvm::ArrayRef<llvm::Value*> argument_refs(arguments);
+      llvm::Value* result_of_compile = Builder.CreateCall(compile_function, argument_refs, 
+      s("compile"));
+
+
+
+      //this is a very fragile transformation, which is necessary because array<uint64_t, 2> 
+      //becomes {i64, i64}
+      //if ever the optimization changes, we'll be in trouble.
+      llvm::AllocaInst* final_dynamic_pointer = create_alloca_in_entry_block(2);
+
+      llvm::Value* part1 = 
+      (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 0);
+      std::vector<unsigned> zero_index{ 0 };
+      llvm::ArrayRef<unsigned> zero_index_ref(zero_index);
+      llvm::Value* first_return = Builder.CreateExtractValue(result_of_compile, zero_index_ref);
+      Builder.CreateStore(first_return, part1);
+
+      llvm::Value* part2 = 
+      (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 1);
+      std::vector<unsigned> one_index{ 1 };
+      llvm::ArrayRef<unsigned> one_index_ref(one_index);
+      llvm::Value* second_return = Builder.CreateExtractValue(result_of_compile, one_index_ref);
+      Builder.CreateStore(second_return, part2);
+
+      finish(Builder.CreateLoad(final_dynamic_pointer), T::dynamic_pointer);
+    }
+  case ASTn("temp_generate_AST"):
+    {
+      llvm::FunctionType* AST_maker_type = llvm::FunctionType::get(int64_type, false);
+
+      llvm::PointerType* AST_maker_type_pointer = AST_maker_type->getPointerTo();
+      llvm::Constant *twister_address = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, 
+      (uint64_t)&ASTmaker));
+      llvm::Value* twister_function = Builder.CreateIntToPtr(twister_address, 
+      AST_maker_type_pointer, s("convert integer address to actual function"));
+      //llvm::Constant *twister_function = TheModule->getOrInsertFunction("ASTmaker", 
+      //AST_maker_type);
+
+      llvm::Value* result_AST = Builder.CreateCall(twister_function, s("ASTmaker"));
+
+      finish(result_AST, T::pointer_to_AST);
+    }
   }
-  llvm_unreachable("fell through switches");
+  error("fell through switches");
 }
 
 /**
@@ -886,8 +1069,8 @@ void fuzztester(unsigned iterations)
     unsigned error_code = compiler.compile_AST(test_AST);
     if (error_code)
     {
-      outstream << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << 
-      "\n\n";
+      outstream << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << \
+"field " << compiler.error_field << "\n\n";
       delete test_AST;
     }
     else
@@ -902,6 +1085,8 @@ void fuzztester(unsigned iterations)
     }
   }
 }
+
+
 
 #ifdef NDEBUG
 panic time!

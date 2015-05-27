@@ -69,6 +69,7 @@ Later, we'll have some ASTs that let the user actually query this information.
 #include <cstdint>
 #include <array>
 #include <llvm/Support/ErrorHandling.h>
+#include "errorhandling.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
@@ -116,9 +117,13 @@ constexpr Type_info Type_descriptor[] =
   { "cheap pointer", 1, 1 }, //pointer to anything
   { "dynamic pointer", 0, 2 }, //dynamic pointer. first field is the pointer, second field is a 
   //pointer to the type
+  { "AST", 0, 6 }, //tag, then previous, then 4 fields. TODO: write the type check.
+  { "function in clouds", 2, 2 }, //points to: return AST, then parameter AST, then compiled area. 
+  //we don't embed the AST along with the function signature, in order to keep them separate.
   { "never reached", 0, 0 },
-  { "AST in clouds", 2, 2 }, //points to an AST, and to the compiled area. we don't embed the AST 
-  //along with the function signature, in order to keep them separate.
+  //except: if we have two ASTs, it's going to bloat our type object. and meanwhile, we want the 
+  //parameter AST to be before everything that might use it, so having it as a first_pointer is not 
+  //good, since the beginning of the function might change.
   { "lock", 0, 1 },
   { "type", 0, 3 },
 };
@@ -131,7 +136,7 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
     if (static_strequal(vector_name[k].name, name)) return k;
     if (static_strequal(vector_name[k].name, "never reached")) //this isn't recursive, because the 
     //previous if statement returns.
-      llvm_unreachable( "tried to get a nonexistent name");
+      error(string("tried to get a nonexistent name") + name);
     //llvm_unreachable doesn't give proper errors for run time mistakes, only when it's compile 
     //time.
 
@@ -156,19 +161,35 @@ struct AST;
 
 namespace T
 {
-  static constexpr Type int_internal("integer");
-  static constexpr Type nonexistent_internal("integer");
-  static constexpr Type special_internal("integer");
-  static constexpr Type dynamic_pointer_internal("dynamic pointer");
-  constexpr Type* nonexistent = const_cast<Type* const>(&nonexistent_internal); //nothing at all. 
-  //used to say that a parameter field is missing, or for goto. effectively disables type checking 
-  //for that field.
-  constexpr Type* special = const_cast<Type* const>(&special_internal); //indicates that a return 
-  //type is to be handled differently
-  constexpr Type* integer = const_cast<Type* const>(&int_internal); //describes an integer type
-  constexpr Type* dynamic_pointer = const_cast<Type* const>(&dynamic_pointer_internal); //describes 
-  //an integer type
+  namespace internal
+  {
+    static constexpr Type int_("integer");
+    static constexpr Type nonexistent("integer");
+    static constexpr Type special("integer");
+    static constexpr Type dynamic_pointer("dynamic pointer");
+    static constexpr Type AST("AST");
+    static constexpr Type pointer_to_AST("cheap pointer", const_cast<Type* const>(&AST)); //todo: 
+    //this is wrong, we want a full pointer to AST.
+    static constexpr Type conca1("concatenate", const_cast<Type* const>(&int_), const_cast<Type* 
+    const>(&pointer_to_AST));
+    static constexpr Type error_object("concatenate", const_cast<Type* const>(&conca1), 
+    const_cast<Type* const>(&int_));
+    //error_object is int, pointer to AST, int. it's what is returned when compilation fails: the 
+    //error code, then the AST, then the field.
+  }
+  namespace i = internal;
+  constexpr Type* nonexistent = const_cast<Type* const>(&i::nonexistent); //nothing at all. used to 
+  //say that a parameter field is missing, or for goto. effectively disables type checking for that 
+  //field.
+  constexpr Type* special = const_cast<Type* const>(&i::special); //indicates that a return type is 
+  //to be handled differently
+  constexpr Type* integer = const_cast<Type* const>(&i::int_); //describes an integer type
+  constexpr Type* dynamic_pointer = const_cast<Type* const>(&i::dynamic_pointer);
   constexpr Type* null = nullptr;
+  constexpr Type* error_object = const_cast<Type* const>(&i::error_object);
+  constexpr Type* AST = const_cast<Type* const>(&i::AST);
+  constexpr Type* pointer_to_AST = const_cast<Type* const>(&i::pointer_to_AST);
+  //later: noreturn. for goto.
 };
 
 
@@ -186,16 +207,17 @@ constexpr uint64_t get_size(Type* target)
   {
     return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
   }
-  llvm_unreachable("couldn't get size of type tag, check backtrace for target->tag");
+  error("couldn't get size of type tag, check backtrace for target->tag");
 }
 
 /**
 this is a cool C++ hack to attach information to enums.
-first, we construct a vector with strings and integers (information).
+first, we construct a vector, where each element has a string and some information attached (in the 
+form of integers)
 then, get_enum_from_name() associates numbers to the strings.
-this lets us switch-case on the strings that are the first element of each enum.
-since the information is in the vector, we are guaranteed not to forget it.
-this reduces the potential for careless errors.
+this lets us switch-case on the strings that are the first element of each enum. since the 
+information is attached to the string, we are guaranteed not to forget to implement it, which 
+reduces the potential for careless errors.
 */
 struct AST_info
 {
@@ -290,6 +312,9 @@ constexpr AST_info AST_descriptor[] =
   a("concatenate", T::special).set_pointer_fields(2),
   a("dynamic", T::dynamic_pointer).set_fields_to_compile(1), //creates dynamic storage for any kind 
   //of object. moves it to the heap.
+  a("compile", T::dynamic_pointer, T::pointer_to_AST), //compiles an AST, returning a dynamic 
+  //object which is either the error object or the desired info.
+  a("temp_generate_AST", T::pointer_to_AST), //hacked in, generates a random AST.
   { "never reached", T::special }, //marks the end of the currently-implemented ASTs. beyond this 
   //is rubbish.
   { "dereference pointer", T::special}, //????
@@ -353,8 +378,8 @@ constexpr uint64_t get_size(AST* target)
   else if (target->tag == ASTn("load")) return get_size(target->fields[0].ptr);
   else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + 
   get_size(target->fields[1].ptr); //todo: this is slow. takes n^2 time.
-  llvm_unreachable(strcat("couldn't get size of tag in get_size(), target->tag was", 
-  AST_descriptor[target->tag].name));
+  error(string("couldn't get size of tag in get_size(), target->tag was") + 
+  AST_descriptor[target->tag].name);
 }
 
 

@@ -2,6 +2,7 @@ I figured out why llvm was segfaulting. I was using llvm_unreachable() to assert
 My error checks were being silently bypassed. I replaced llvm_unreachable() with a new error() function. Hopefully, there will be no more mysterious segfaults on execution.
 Hacked-up AST to generate random ASTs, "temp_generate_AST"
 Hacked-up AST to compile ASTs, "compile". Segfaults at the moment.
+Docs in "doc/overall progress"
 
 LLVM's JIT bindings are once again going through a complete overhaul. Since this will totally change memory management, I'm going to give up on my memory manager and let my functions leak for now.
 
