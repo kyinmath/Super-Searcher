@@ -170,7 +170,7 @@ public:
 
 uint64_t ASTmaker()
 {
-	unsigned iterations = 10;
+	unsigned iterations = 4;
 	std::vector<AST*> AST_list{ nullptr }; //start with nullptr as the default referenceable AST
 	while (iterations--)
 	{

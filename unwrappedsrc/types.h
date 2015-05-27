@@ -75,8 +75,8 @@ constexpr Type_info Type_descriptor[] =
 	{ "cheap pointer", 1, 1 }, //pointer to anything
 	{ "dynamic pointer", 0, 2 }, //dynamic pointer. first field is the pointer, second field is a pointer to the type
 	{ "AST", 0, 6 }, //tag, then previous, then 4 fields. TODO: write the type check.
-	{ "never reached", 0, 0 },
 	{ "function in clouds", 2, 2 }, //points to: return AST, then parameter AST, then compiled area. we don't embed the AST along with the function signature, in order to keep them separate.
+	{ "never reached", 0, 0 },
 	//except: if we have two ASTs, it's going to bloat our type object. and meanwhile, we want the parameter AST to be before everything that might use it, so having it as a first_pointer is not good, since the beginning of the function might change.
 	{ "lock", 0, 1 },
 	{ "type", 0, 3 },
