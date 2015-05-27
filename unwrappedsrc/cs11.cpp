@@ -170,7 +170,7 @@ public:
 
 uint64_t ASTmaker()
 {
-	unsigned iterations = 0;
+	unsigned iterations = 10;
 	std::vector<AST*> AST_list{ nullptr }; //start with nullptr as the default referenceable AST
 	while (iterations--)
 	{
@@ -196,7 +196,8 @@ uint64_t ASTmaker()
 		if (error_code) delete test_AST;
 		else AST_list.push_back(test_AST);
 	}
-	return (uint64_t)&AST_list.back();
+	output_AST_and_previous(AST_list.back());
+	return (uint64_t)AST_list.back();
 }
 
 /* this is a function that the compile() AST will call.
@@ -269,7 +270,7 @@ unsigned compiler_object::compile_AST(AST* target)
 {
 
 	if (VERBOSE_DEBUG) outstream << "starting compilation\n";
-
+	outstream << "target is " << target << '\n'; //necessary in case it crashes here
 	using namespace llvm;
 	FunctionType *FT;
 
@@ -855,23 +856,25 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			llvm::ArrayRef<llvm::Value*> argument_refs(arguments);
 			llvm::Value* result_of_compile = Builder.CreateCall(compile_function, argument_refs, s("compile"));
 
-			outstream << "type dump \n";
-			result_of_compile->getType()->dump();
-			outstream << "type dump22 \n";
-			llvm::Value* first_retu2rn = Builder.CreateConstInBoundsGEP2_64(result_of_compile, 0, 0);
-			first_retu2rn->getType()->dump();
+
 
 			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
 			//if ever the optimization changes, we'll be in trouble.
 			llvm::AllocaInst* final_dynamic_pointer = create_alloca_in_entry_block(2);
+
 			llvm::Value* part1 = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 0);
-			llvm::Value* first_return = Builder.CreateConstInBoundsGEP1_64(result_of_compile, 0);
+			std::vector<unsigned> zero_index{ 0 };
+			llvm::ArrayRef<unsigned> zero_index_ref(zero_index);
+			llvm::Value* first_return = Builder.CreateExtractValue(result_of_compile, zero_index_ref);
 			Builder.CreateStore(first_return, part1);
+
 			llvm::Value* part2 = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 1);
-			llvm::Value* second_return = Builder.CreateConstInBoundsGEP1_64(result_of_compile, 1);
+			std::vector<unsigned> one_index{ 1 };
+			llvm::ArrayRef<unsigned> one_index_ref(one_index);
+			llvm::Value* second_return = Builder.CreateExtractValue(result_of_compile, one_index_ref);
 			Builder.CreateStore(second_return, part2);
 
-			finish(final_dynamic_pointer, T::dynamic_pointer);
+			finish(Builder.CreateLoad(final_dynamic_pointer), T::dynamic_pointer);
 		}
 	case ASTn("temp_generate_AST"):
 		{

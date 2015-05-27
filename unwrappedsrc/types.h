@@ -89,7 +89,7 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
 	{
 		if (static_strequal(vector_name[k].name, name)) return k;
 		if (static_strequal(vector_name[k].name, "never reached")) //this isn't recursive, because the previous if statement returns.
-			error( "tried to get a nonexistent name");
+			error(string("tried to get a nonexistent name") + name);
 		//llvm_unreachable doesn't give proper errors for run time mistakes, only when it's compile time.
 
 	}
