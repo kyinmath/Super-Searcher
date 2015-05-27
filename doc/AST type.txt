@@ -1,0 +1,12 @@
+the return type of the AST compile_AST() must be dynamic in some way.
+	having a static return type is impossible. because the result of compile_AST cannot be known until runtime.
+requiring the user to specify the type is horrible for automatic compilation
+the ASTs contain their conversion?
+
+
+does it EVER make any sense to have a static function type?
+yes, if we want function pointers. pass in a pointer to a specific AST type, which can then be run.
+	basically, we can't always know what the type of an AST you're looking at is at compile time, because it might be hidden underneath a non-const pointer.
+yes, since our thread system relies on having a static function (with void return, void parameters)
+
+it kind of makes sense to have a special dynamic AST type, since when you run compile_AST(), you know it's an AST, not just some generic object.
