@@ -15,7 +15,9 @@ The main tool I use to manage LLVM's interface is compile_AST(), which handles t
 The main tool I use to convert ASTs into IR is generate_IR().
 The fuzzer is fuzztester() in cs11.cpp. This has been amazingly useful, giving coverage far beyond any set of manual unit tests. The reason I ever know about segfaulting behavior is thanks to the power of fuzztester(); otherwise, I would have found almost none of the segfaults that appear week after week. Implementing a fuzzer was the best decision in the entire program.
 The console input is handled by main() in cs11.cpp. It takes in user-constructed ASTs and then compiles them. This has also been excellent for debugging and reducing testcases, as the fuzzer often produces huge testcases with a lot of junk. Having a user-controllable AST generator was an excellent complement to the fuzzer.
+The timer is handled by main() as well; it runs the fuzzer a few time and then calculates the overall time.
 
 
 Errata:
 There is a C++ source wrapper that converts code with long lines into code with <100 lines.
+Profiling guide in "docs/profiling"
