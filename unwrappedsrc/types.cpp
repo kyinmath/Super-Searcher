@@ -117,7 +117,7 @@ check_next_token:
 			return 0;
 
 		case Typen("dynamic pointer"):
-		case Typen("AST"):
+		case Typen("AST pointer"):
 			if (iter[0]->tag == iter[1]->tag)
 				goto finished_checking;
 			return 0;
@@ -149,7 +149,7 @@ check_next_token:
 				goto finished_checking;
 			return 0;
 		case Typen("integer"):
-		case Typen("AST"):
+		case Typen("AST pointer"):
 			goto finished_checking;
 
 		case Typen("dynamic pointer"):
@@ -163,4 +163,33 @@ check_next_token:
 finished_checking:
 	iter[0] = iter[1] = nullptr; //rely on the beginning to set them properly.
 	goto check_next_token;
+}
+
+#include <functional>
+//this takes a vector of types, and then puts them in concatenation
+Type* concatenate_types(std::vector<Type*>& components)
+{
+	std::function<Type*(Type**, int)> concatenate_types = [&concatenate_types](Type** array_of_type_pointers, int number_of_terms)
+	{
+		if (number_of_terms == 1) return *array_of_type_pointers;
+		else return new Type("concatenate", *array_of_type_pointers, concatenate_types(array_of_type_pointers + 1, number_of_terms - 1));
+	};
+
+	if (components.size() == 0) return nullptr;
+	else return concatenate_types(components.data(), components.size());
+}
+
+//we construct a model type, then run type_check on it.
+//checks if they match exactly
+bool is_AST(uint64_t tag, Type* reference)
+{
+	std::vector<Type*> fields;
+	int number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
+	for (int x = 0; x < number_of_AST_pointers; ++x)
+		fields.push_back(T::AST_pointer);
+	for (int x = 0; x < AST_descriptor[tag].additional_special_fields; ++x)
+		fields.push_back(AST_descriptor[tag].parameter_types[number_of_AST_pointers + x]);
+
+	return type_check(RVO, reference, concatenate_types(fields)) == 3;
+	//this is RVO because we're copying the dynamic object over.
 }

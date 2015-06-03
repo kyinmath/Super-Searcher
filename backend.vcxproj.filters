@@ -27,6 +27,9 @@
     <ClCompile Include="unwrappedsrc\unique_type_creator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="unwrappedsrc\helperfunctions.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="unwrappedsrc\types.h">
@@ -42,6 +45,9 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="unwrappedsrc\errorhandling.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unwrappedsrc\helperfunctions.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

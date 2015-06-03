@@ -33,6 +33,7 @@ generate_IR() is the main AST conversion tool. it turns ASTs into llvm::Values, 
 #include <llvm/Support/raw_ostream.h> 
 #include "types.h"
 #include "debugoutput.h"
+#include "helperfunctions.h"
 #include "unique_type_creator.h"
 
 bool OPTIMIZE = false;
@@ -104,18 +105,18 @@ struct Return_Info
 	//it's important that it is a deletion time, because deletion and creation are not in perfect stack configuration.
 	//because temporaries are created before the base object, and die just after.
 
-	uint64_t target_upper_lifetime; //higher is stricter. the target must last longer than this.
+	uint64_t target_life_guarantee; //higher is stricter. the target must last longer than this.
 	//measures the pointer's target's lifetime, for when the pointer wants to be written into a memory location
 
-	uint64_t target_lower_lifetime; //lower is stricter. the target must die faster than this.
+	uint64_t target_hit_contract; //lower is stricter. the target must die faster than this.
 	//measures the pointer's target's lifetime, for when the pointed-to memory location wants something to be written into it.
 	
 	Return_Info(IRgen_status err, llvm::Value* b, Type* t, bool o, uint64_t s, uint64_t u, uint64_t l)
-		: error_code(err), IR(b), type(t), on_stack(o), self_lifetime(s), target_upper_lifetime(u), target_lower_lifetime(l) {}
+		: error_code(err), IR(b), type(t), on_stack(o), self_lifetime(s), target_life_guarantee(u), target_hit_contract(l) {}
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
-	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T::null), on_stack(false), self_lifetime(0), target_upper_lifetime(0), target_lower_lifetime(-1ull) {}
+	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T::null), on_stack(false), self_lifetime(0), target_life_guarantee(0), target_hit_contract(-1ull) {}
 };
 
 
@@ -167,6 +168,28 @@ public:
 	Type* parameter_type = nullptr;
 };
 
+std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_pointer, uint64_t first_type, uint64_t second_pointer, uint64_t second_type)
+{
+	uint64_t* pointer[2] = { (uint64_t*)first_pointer, (uint64_t*)second_pointer };
+	Type* type[2] = { (Type*)first_type, (Type*)second_type };
+	uint64_t size[2];
+	for (int x : { 0, 1 })
+	{
+		size[x] = get_size(type[x]);
+	}
+	uint64_t* new_dynamic = new uint64_t[size[0] + size[1]];
+	for (int idx = 0; idx < size[0]; ++idx)
+	{
+		new_dynamic[idx] = pointer[0][idx];
+	}
+	for (int idx = 0; idx < size[1]; ++idx)
+	{
+		new_dynamic[idx + size[0]] = pointer[1][idx];
+	}
+	Type end_model("concatenate", first_type, second_type);
+	Type* new_type = get_unique_type(&end_model, false);
+	return std::array<uint64_t, 2>{(uint64_t)new_dynamic, (uint64_t)new_type};
+}
 
 uint64_t ASTmaker()
 {
@@ -281,8 +304,8 @@ unsigned compiler_object::compile_AST(AST* target)
 
 	auto size_of_return = get_size(target);
 	if (size_of_return == 0) FT = FunctionType::get(llvm::Type::getVoidTy(thread_context), false);
-	else if (size_of_return == 1) FT = FunctionType::get(llvm::Type::getInt64Ty(thread_context), false);
-	else FT = FunctionType::get(llvm::ArrayType::get(llvm::Type::getInt64Ty(thread_context), size_of_return), false);
+	else if (size_of_return == 1) FT = FunctionType::get(int64_type, false);
+	else FT = FunctionType::get(llvm_array(size_of_return), false);
 	if (VERBOSE_DEBUG) outstream << "Size of return is " << size_of_return << '\n';
 
 	Function *F = Function::Create(FT, Function::ExternalLinkage, "temp function", TheModule);
@@ -304,23 +327,15 @@ unsigned compiler_object::compile_AST(AST* target)
 		outstream << "optimized code: \n";
 		llvm::legacy::FunctionPassManager FPM(TheModule);
 		TheModule->setDataLayout(engine->getDataLayout());
-		// Provide basic AliasAnalysis support for GVN.
-		FPM.add(createBasicAliasAnalysisPass());
-		// Do simple "peephole" optimizations and bit-twiddling optzns.
-		FPM.add(createInstructionCombiningPass());
-		// Reassociate expressions.
-		FPM.add(createReassociatePass());
-		// Eliminate Common SubExpressions.
-		FPM.add(createGVNPass());
-		// Simplify the control flow graph (deleting unreachable blocks, etc).
-		FPM.add(createCFGSimplificationPass());
 
-		// Promote allocas to registers.
-		FPM.add(createPromoteMemoryToRegisterPass());
-		// Do simple "peephole" optimizations and bit-twiddling optzns.
-		FPM.add(createInstructionCombiningPass());
-		// Reassociate expressions.
-		FPM.add(createReassociatePass());
+		FPM.add(createBasicAliasAnalysisPass()); //Provide basic AliasAnalysis support for GVN.
+		FPM.add(createInstructionCombiningPass()); //Do simple "peephole" optimizations and bit-twiddling optzns.
+		FPM.add(createReassociatePass()); //Reassociate expressions.
+		FPM.add(createGVNPass()); //Eliminate Common SubExpressions.
+		FPM.add(createCFGSimplificationPass()); //Simplify the control flow graph (deleting unreachable blocks, etc).
+		FPM.add(createPromoteMemoryToRegisterPass()); //Promote allocas to registers.
+		FPM.add(createInstructionCombiningPass()); //Do simple "peephole" optimizations and bit-twiddling optzns.
+		FPM.add(createReassociatePass()); //Reassociate expressions.
 
 		FPM.doInitialization();
 		FPM.run(*TheModule->begin());
@@ -340,7 +355,7 @@ unsigned compiler_object::compile_AST(AST* target)
 		using std::array;
 		switch (size_of_return)
 		{
-		case 2: cout_array(((array<uint64_t, 2>(*)())(intptr_t)fptr)()); break;
+		case 2: cout_array(((array<uint64_t, 2>(*)())(intptr_t)fptr)()); break; //theoretically, this ought to break. array<2> = {int, int}
 		case 3: cout_array(((array<uint64_t, 3>(*)())(intptr_t)fptr)()); break;
 		case 4: cout_array(((array<uint64_t, 4>(*)())(intptr_t)fptr)()); break;
 		case 5: cout_array(((array<uint64_t, 5>(*)())(intptr_t)fptr)()); break;
@@ -372,8 +387,7 @@ llvm::AllocaInst* compiler_object::create_alloca_in_entry_block(uint64_t size) {
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
 
 	//we explicitly create the array type instead of allocating multiples, because that's what clang does for C++ arrays.
-	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
-	if (size > 1) return TmpB.CreateAlloca(llvm::ArrayType::get(int64_type, size));
+	if (size > 1) return TmpB.CreateAlloca(llvm_array(size));
 	else return TmpB.CreateAlloca(int64_type);
 }
 
@@ -488,7 +502,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		field_results.push_back(result);
 	}
 
-	llvm::IntegerType* int64_type = llvm::Type::getInt64Ty(thread_context);
 
 	//internal: do not call this directly. use the finish macro instead
 	//clears dead objects off the stack, and makes your result visible to other ASTs
@@ -568,12 +581,12 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	{
 	case ASTn("integer"):
 		{
-			finish(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, target->fields[0].num)), T::integer);
+			finish(llvm_integer(target->fields[0].num), T::integer);
 		}
 	case ASTn("add"): //add two integers.
-		finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR), T::integer);
+		finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR, s("add")), T::integer);
 	case ASTn("subtract"):
-		finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR), T::integer);
+		finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")), T::integer);
 	case ASTn("hello"):
 		{
 			llvm::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!\n");
@@ -587,13 +600,13 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			//get the actual function
 			llvm::Constant *putsFunc = TheModule->getOrInsertFunction("puts", putsType);
 
-			finish(Builder.CreateCall(putsFunc, helloWorld), T::null);
+			finish(Builder.CreateCall(putsFunc, helloWorld, s("hello world")), T::null);
 		}
 	case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
 		{
 			//llvm::FunctionType *twister_type = llvm::FunctionType::get(int64_type, false);
 			llvm::PointerType *twister_ptr_type = llvm::FunctionType::get(int64_type, false)->getPointerTo();
-			llvm::Constant *twister_address = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, (uint64_t)&generate_random));
+			llvm::Constant *twister_address = llvm_integer((uint64_t)&generate_random);
 			llvm::Value *twister_function = Builder.CreateIntToPtr(twister_address, twister_ptr_type);
 			finish(Builder.CreateCall(twister_function), T::integer);
 		}
@@ -604,8 +617,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 
 			//the condition statement
-			if (target->fields[0].ptr == nullptr)
-				return_code(null_AST, 0);
+			if (target->fields[0].ptr == nullptr) return_code(null_AST, 0);
 			auto condition = generate_IR(target->fields[0].ptr, 0);
 			if (condition.error_code) return condition;
 
@@ -622,13 +634,13 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			uint64_t if_stack_position = object_stack.size();
 
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
-			llvm::Value* comparison = Builder.CreateICmpNE(condition.IR, llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)));
+			llvm::Value* comparison = Builder.CreateICmpNE(condition.IR, llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), s("if() condition"));
 			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
 			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
-			llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(thread_context, "then", TheFunction);
-			llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(thread_context, "else");
-			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(thread_context, "ifcont");
+			llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(thread_context, s("then"), TheFunction);
+			llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(thread_context, s("else"));
+			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(thread_context, s("ifcont"));
 
 			Builder.CreateCondBr(comparison, ThenBB, ElseBB);
 
@@ -668,8 +680,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			TheFunction->getBasicBlockList().push_back(MergeBB);
 			Builder.SetInsertPoint(MergeBB);
 
-			uint64_t result_target_upper_lifetime = std::max(then_IR.target_upper_lifetime, else_IR.target_upper_lifetime);
-			uint64_t result_target_lower_lifetime = std::min(then_IR.target_lower_lifetime, else_IR.target_lower_lifetime);
+			uint64_t result_target_life_guarantee = std::max(then_IR.target_life_guarantee, else_IR.target_life_guarantee);
+			uint64_t result_target_hit_contract = std::min(then_IR.target_hit_contract, else_IR.target_hit_contract);
 			if (stack_degree == 0)
 			{
 				size_result = get_size(target->fields[1].ptr);
@@ -678,17 +690,17 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 				llvm::PHINode *PN;
 				if (size_result == 1)
-					PN = Builder.CreatePHI(int64_type, 2);
+					PN = Builder.CreatePHI(int64_type, 2, s("if() end phi integer"));
 				else
 				{
-					llvm::Type* array_type = llvm::ArrayType::get(int64_type, size_result);
-					PN = Builder.CreatePHI(array_type, 2);
+					llvm::Type* array_type = llvm_array(size_result);
+					PN = Builder.CreatePHI(array_type, 2, s("if() end phi array"));
 				}
 				PN->addIncoming(then_IR.IR, ThenBB);
 				PN->addIncoming(else_IR.IR, ElseBB);
-				finish_pointer(PN, then_IR.type, result_target_upper_lifetime, result_target_lower_lifetime);
+				finish_pointer(PN, then_IR.type, result_target_life_guarantee, result_target_hit_contract);
 			}
-			else finish_stack_handled_pointer(storage_location, then_IR.type, result_target_upper_lifetime, result_target_lower_lifetime);
+			else finish_stack_handled_pointer(storage_location, then_IR.type, result_target_life_guarantee, result_target_hit_contract);
 			//even though finish_pointer returns, the else makes it clear from first glance that it's not a continued statement.
 		}
 	case ASTn("scope"):
@@ -702,7 +714,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			type_scratch_space.push_back(Type("cheap pointer", found_AST->second.type));
 
 			///we force cast all llvm pointer types to integers. this makes it easy to represent types inside llvm, since they're described by a single number - their size.
-			llvm::Value* final_result = Builder.CreatePtrToInt(found_AST->second.IR, int64_type);
+			llvm::Value* final_result = Builder.CreatePtrToInt(found_AST->second.IR, int64_type, s("flattening pointer"));
 
 			finish_pointer(final_result, &type_scratch_space.back(), found_AST->second.self_lifetime, found_AST->second.self_lifetime);
 		}
@@ -712,36 +724,31 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			//if on_stack is false, it's not an alloca so we should copy instead of loading.
 			Return_Info AST_to_load = found_AST->second;
-			if (AST_to_load.on_stack == false) finish_pointer(AST_to_load.IR, AST_to_load.type, AST_to_load.target_upper_lifetime, AST_to_load.target_lower_lifetime);
+			if (AST_to_load.on_stack == false) finish_pointer(AST_to_load.IR, AST_to_load.type, AST_to_load.target_life_guarantee, AST_to_load.target_hit_contract);
 			else finish(Builder.CreateLoad(AST_to_load.IR), AST_to_load.type);
 		}
 	case ASTn("concatenate"):
 		{
 			//TODO: if stack_degree == 1, then you've already gotten the size. look it up in a special location.
 
-			int64_t first_size = get_size(target->fields[0].ptr);
+			uint64_t first_size = get_size(target->fields[0].ptr);
 			uint64_t second_size = get_size(target->fields[1].ptr);
 			size_result = first_size + second_size;
 			if (first_size > 0 && second_size > 0)
 			{
 				//we want the return objects to RVO. thus, we create a memory slot.
-				if (stack_degree == 0 || stack_degree == 2)
-						storage_location = create_alloca_in_entry_block(size_result);
+				if (stack_degree == 0 || stack_degree == 2) storage_location = create_alloca_in_entry_block(size_result);
 
-				llvm::AllocaInst* first_location = storage_location;
-				if (first_size == 1)
-				{
-					first_location = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 0);
-				}
+				llvm::AllocaInst* first_location;
+				if (first_size == 1) first_location = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 0);
 				else
 				{
-					llvm::Type* pointer_to_array = llvm::ArrayType::get(int64_type, first_size)->getPointerTo();
-					llvm::Value* first_pointer = Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 0);
-					first_location = (llvm::AllocaInst*)Builder.CreatePointerCast(first_pointer, pointer_to_array);
+					llvm::Type* pointer_to_array = llvm_array(first_size)->getPointerTo();
+					llvm::Value* first_pointer = Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 0, s("first half of concatenate"));
+					first_location = (llvm::AllocaInst*)Builder.CreatePointerCast(first_pointer, pointer_to_array, s("pointer cast to array"));
 				}
 
-				if (target->fields[0].ptr == nullptr)
-					return_code(null_AST, 0);
+				if (target->fields[0].ptr == nullptr) return_code(null_AST, 0);
 				Return_Info first_half = generate_IR(target->fields[0].ptr, 1, first_location);
 				if (first_half.error_code) return first_half;
 
@@ -750,9 +757,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				if (second_size == 1) second_location = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(storage_location, 0, first_size);
 				else
 				{
-					llvm::Type* pointer_to_array = llvm::ArrayType::get(int64_type, second_size)->getPointerTo();
-					llvm::Value* second_pointer = Builder.CreateConstInBoundsGEP2_64(storage_location, 0, first_size); //pointer to int.
-					second_location = (llvm::AllocaInst*)Builder.CreatePointerCast(second_pointer, pointer_to_array); //ptr to array.
+					llvm::Type* pointer_to_array = llvm_array(second_size)->getPointerTo();
+					llvm::Value* second_pointer = Builder.CreateConstInBoundsGEP2_64(storage_location, 0, first_size, s("second half of concatenate")); //pointer to int.
+					second_location = (llvm::AllocaInst*)Builder.CreatePointerCast(second_pointer, pointer_to_array, s("pointer cast to array")); //ptr to array.
 				}
 				if (target->fields[1].ptr == nullptr) return_code(null_AST, 1);
 				Return_Info second_half = generate_IR(target->fields[1].ptr, 1, second_location);
@@ -760,15 +767,15 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				type_scratch_space.push_back(Type("concatenate", first_half.type, second_half.type));
 
 				llvm::Value* final_value;
-				if (stack_degree == 0) final_value = Builder.CreateLoad(storage_location);
+				if (stack_degree == 0) final_value = Builder.CreateLoad(storage_location, s("load concatenated object"));
 				else final_value = storage_location;
 
-				uint64_t result_target_upper_lifetime = std::max(first_half.target_upper_lifetime, second_half.target_upper_lifetime);
-				uint64_t result_target_lower_lifetime = std::min(first_half.target_lower_lifetime, second_half.target_lower_lifetime);
+				uint64_t result_target_life_guarantee = std::max(first_half.target_life_guarantee, second_half.target_life_guarantee);
+				uint64_t result_target_hit_contract = std::min(first_half.target_hit_contract, second_half.target_hit_contract);
 
-				finish_stack_handled_pointer(final_value, &type_scratch_space.back(), result_target_upper_lifetime, result_target_lower_lifetime);
+				finish_stack_handled_pointer(final_value, &type_scratch_space.back(), result_target_life_guarantee, result_target_hit_contract);
 			}
-			else //it's convenient having a special case, because no need to worry about integer llvm values for size-1 objects.
+			else //it's convenient having a pass-through special case, because pass-through means we don't need to have special cases for size-1 objects.
 			{
 				if (target->fields[0].ptr == nullptr) return_code(null_AST, 0);
 				//we only have to RVO if stack_degree is 1, because otherwise we can return the result directly.
@@ -781,9 +788,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				if (second_half.error_code) return second_half;
 
 				if (first_size > 0)
-					finish_stack_handled_pointer(first_half.IR, first_half.type, first_half.target_upper_lifetime, first_half.target_lower_lifetime);
+					finish_stack_handled_pointer(first_half.IR, first_half.type, first_half.target_life_guarantee, first_half.target_hit_contract);
 				else
-					finish_stack_handled_pointer(second_half.IR, second_half.type, second_half.target_upper_lifetime, second_half.target_lower_lifetime);
+					finish_stack_handled_pointer(second_half.IR, second_half.type, second_half.target_life_guarantee, second_half.target_hit_contract);
 				//even if second_half is 0, we return it anyway.
 			}
 		}
@@ -798,24 +805,24 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				//can't use ?: because the return objects have different types
 				//this represents either an integer or an array of integers.
 				llvm::Type* target_type = int64_type;
-				if (size_of_object > 1) target_type = llvm::ArrayType::get(int64_type, size_of_object);
+				if (size_of_object > 1) target_type = llvm_array(size_of_object);
 				llvm::Type* target_pointer_type = target_type->getPointerTo();
 
 				//store the returned value into the acquired address
-				llvm::Constant* dynamic_object_address = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, (uint64_t)pointer_to_memory));
+				llvm::Constant* dynamic_object_address = llvm_integer((uint64_t)pointer_to_memory);
 				llvm::Value* dynamic_object = Builder.CreateIntToPtr(dynamic_object_address, target_pointer_type);
 				Builder.CreateStore(field_results[0].IR, dynamic_object);
 
 				//create a pointer to the type of the dynamic pointer. but we serialize the pointer to be an integer.
 				Type* type_of_dynamic_object = get_unique_type(field_results[0].type, false);
-				llvm::Constant* integer_type_pointer = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, (uint64_t)type_of_dynamic_object));
+				llvm::Constant* integer_type_pointer = llvm_integer((uint64_t)type_of_dynamic_object);
 
 
 				//we now serialize both objects to become integers.
 				llvm::AllocaInst* final_dynamic_pointer = create_alloca_in_entry_block(2);
-				llvm::Value* part1 = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 0);
+				llvm::Value* part1 = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 0, s("object pointer of dynamic"));
 				Builder.CreateStore(dynamic_object_address, part1);
-				llvm::Value* part2 = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 1);
+				llvm::Value* part2 = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 1, s("type pointer of dynamic"));
 				Builder.CreateStore(integer_type_pointer, part2);
 
 				finish(Builder.CreateLoad(final_dynamic_pointer), T::dynamic_pointer);
@@ -825,19 +832,75 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				//zero array, for null dynamic object.
 				llvm::AllocaInst* final_dynamic_pointer = create_alloca_in_entry_block(2);
 				llvm::Value* part1 = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 0);
-				Builder.CreateStore(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, 0)), part1);
+				Builder.CreateStore(llvm_integer(0), part1);
 				llvm::Value* part2 = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 1);
-				Builder.CreateStore(llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, 0)), part2);
-				//abort();
+				Builder.CreateStore(llvm_integer(0), part2);
 				finish(Builder.CreateLoad(final_dynamic_pointer), T::dynamic_pointer);
-				//todo: change this to finish(final_dynamic_pointer, T::dynamic_pointer);. llvm will start emitting some errors about function return type. how do I get that to abort the program?
 			}
+		}
+	case ASTn("dynamic_conc"):
+		{
+			outstream << "dumping dync type\n";
+			field_results[0].IR->getType()->dump();
+			llvm::Value* pointer[2];
+			llvm::Value* type[2];
+			for (int x : {0, 1})
+			{
+				//can't gep because it's not in memory
+				std::vector<unsigned> zero_index{ 0 };
+				llvm::ArrayRef<unsigned> zero_index_ref(zero_index);
+				pointer[x] = Builder.CreateExtractValue(field_results[x].IR, zero_index_ref, s("object pointer of dynamic"));
+
+				std::vector<unsigned> one_index{ 1 };
+				llvm::ArrayRef<unsigned> one_index_ref(one_index);
+				type[x] = Builder.CreateExtractValue(field_results[x].IR, one_index_ref, s("type pointer of dynamic"));
+			}
+
+			std::vector<llvm::Type*> argument_types{ int64_type, int64_type, int64_type, int64_type };
+			llvm::ArrayRef<llvm::Type*> argument_type_refs(argument_types);
+			//llvm::Type* return_type = llvm_array(2);
+
+			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
+			//if ever the optimization changes, we'll be in trouble.
+			std::vector<llvm::Type*> return_type_members{ int64_type, int64_type };
+			llvm::ArrayRef<llvm::Type*> return_type_refs(return_type_members);
+			llvm::Type* return_type = llvm::StructType::get(thread_context, return_type_refs);
+			llvm::FunctionType* dynamic_conc_type = llvm::FunctionType::get(return_type, argument_type_refs, false);
+
+			llvm::PointerType* dynamic_conc_type_pointer = dynamic_conc_type->getPointerTo();
+			llvm::Constant *twister_address = llvm_integer((uint64_t)&concatenate_dynamic);
+			llvm::Value* dynamic_conc_function = Builder.CreateIntToPtr(twister_address, dynamic_conc_type_pointer, s("convert integer address to actual function"));
+
+			std::vector<llvm::Value*> arguments{ pointer[0], type[0], pointer[1], type[1] };
+			llvm::ArrayRef<llvm::Value*> argument_refs(arguments);
+			llvm::Value* result_of_compile = Builder.CreateCall(dynamic_conc_function, argument_refs, s("dynamic concatenate"));
+
+
+
+			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
+			//if ever the optimization changes, we'll be in trouble.
+			//we can't use getelementptr because it's not on the stack, so it can't be referred to.
+			llvm::AllocaInst* final_dynamic_pointer = create_alloca_in_entry_block(2);
+
+			llvm::Value* part1 = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 0);
+			std::vector<unsigned> zero_index{ 0 };
+			llvm::ArrayRef<unsigned> zero_index_ref(zero_index);
+			llvm::Value* first_return = Builder.CreateExtractValue(result_of_compile, zero_index_ref);
+			Builder.CreateStore(first_return, part1);
+
+			llvm::Value* part2 = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 1);
+			std::vector<unsigned> one_index{ 1 };
+			llvm::ArrayRef<unsigned> one_index_ref(one_index);
+			llvm::Value* second_return = Builder.CreateExtractValue(result_of_compile, one_index_ref);
+			Builder.CreateStore(second_return, part2);
+
+			finish(Builder.CreateLoad(final_dynamic_pointer), T::dynamic_pointer);
 		}
 	case ASTn("compile"):
 		{
 			std::vector<llvm::Type*> argument_types{ int64_type };
 			llvm::ArrayRef<llvm::Type*> argument_type_refs(argument_types);
-			//llvm::Type* return_type = llvm::ArrayType::get(int64_type, 2);
+			//llvm::Type* return_type = llvm_array(2);
 			
 
 			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
@@ -852,7 +915,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 			
 			llvm::PointerType* compile_type_pointer = compile_type->getPointerTo();
-			llvm::Constant *twister_address = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, (uint64_t)&compile_user_facing));
+			llvm::Constant *twister_address = llvm_integer((uint64_t)&compile_user_facing);
 			llvm::Value* compile_function = Builder.CreateIntToPtr(twister_address, compile_type_pointer, s("convert integer address to actual function"));
 
 			//llvm::Constant *compile_function = TheModule->getOrInsertFunction("compile_user_facing", compile_type);
@@ -865,6 +928,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
 			//if ever the optimization changes, we'll be in trouble.
+			//we can't use getelementptr because it's not on the stack, so it can't be referred to.
 			llvm::AllocaInst* final_dynamic_pointer = create_alloca_in_entry_block(2);
 
 			llvm::Value* part1 = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(final_dynamic_pointer, 0, 0);
@@ -886,13 +950,13 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			llvm::FunctionType* AST_maker_type = llvm::FunctionType::get(int64_type, false);
 
 			llvm::PointerType* AST_maker_type_pointer = AST_maker_type->getPointerTo();
-			llvm::Constant *twister_address = llvm::Constant::getIntegerValue(int64_type, llvm::APInt(64, (uint64_t)&ASTmaker));
+			llvm::Constant *twister_address = llvm_integer((uint64_t)&ASTmaker);
 			llvm::Value* twister_function = Builder.CreateIntToPtr(twister_address, AST_maker_type_pointer, s("convert integer address to actual function"));
 			//llvm::Constant *twister_function = TheModule->getOrInsertFunction("ASTmaker", AST_maker_type);
 
 			llvm::Value* result_AST = Builder.CreateCall(twister_function, s("ASTmaker"));
 
-			finish(result_AST, T::pointer_to_AST);
+			finish(result_AST, T::AST_pointer);
 		}
 	}
 	error("fell through switches");
@@ -902,11 +966,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 The fuzztester generates random ASTs and attempts to compile them.
 the output "Malformed AST" is fine. not all randomly-generated ASTs will be well-formed.
 
-fuzztester starts with a vector of pointers to working, compilable ASTs (originally just a nullptr).
-it chooses a random AST tag. this tag requires AST_descriptor[tag].pointer_fields pointers
-then, it chooses pointers randomly from the vector of working ASTs.
-these pointers go in the first few fields.
-each remaining field has a 50-50 chance of either being a random number, or 0.
+fuzztester has a vector of pointers to working, compilable ASTs (initially just a nullptr).
+it chooses a random AST tag.
+then, it chooses pointers randomly from the vector of working ASTs, which go in the first few fields.
+each remaining field is chosen randomly according to an exponential distribution
 finally, if the created AST successfully compiles, it is added to the vector of working ASTs.
 */
 void fuzztester(unsigned iterations)

@@ -74,7 +74,8 @@ constexpr Type_info Type_descriptor[] =
 	{ "fixed integer", 1, 1 }, //64-bit integer whose value is fixed by the type.
 	{ "cheap pointer", 1, 1 }, //pointer to anything
 	{ "dynamic pointer", 0, 2 }, //dynamic pointer. first field is the pointer, second field is a pointer to the type
-	{ "AST", 0, 6 }, //tag, then previous, then 4 fields. TODO: write the type check.
+	{ "AST pointer", 0, 1 }, //just a pointer. (a full pointer)
+	//the actual object has 6: tag, then previous, then 4 fields.
 	{ "function in clouds", 2, 2 }, //points to: return AST, then parameter AST, then compiled area. we don't embed the AST along with the function signature, in order to keep them separate.
 	{ "never reached", 0, 0 },
 	//except: if we have two ASTs, it's going to bloat our type object. and meanwhile, we want the parameter AST to be before everything that might use it, so having it as a first_pointer is not good, since the beginning of the function might change.
@@ -101,9 +102,10 @@ constexpr uint64_t Typen(const char name[])
 struct Type
 {
 	uint64_t tag;
-	std::array<int_or_ptr<Type>, fields_in_Type> fields;
-	constexpr Type(const char name[], const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(Typen(name)), fields{ a, b } {}
-	constexpr Type(const uint64_t t, const int_or_ptr<Type> a = nullptr, const int_or_ptr<Type> b = nullptr) : tag(t), fields{ a, b } {}
+	using iop = int_or_ptr<Type>;
+	std::array<iop, fields_in_Type> fields;
+	constexpr Type(const char name[], const iop a = nullptr, const iop b = nullptr) : tag(Typen(name)), fields{ a, b } {}
+	constexpr Type(const uint64_t t, const iop a = nullptr, const iop b = nullptr) : tag(t), fields{ a, b } {}
 };
 #define max_fields_in_AST 4u
 //should accomodate the largest possible AST
@@ -117,9 +119,8 @@ namespace T
 		static constexpr Type nonexistent("integer");
 		static constexpr Type special("integer");
 		static constexpr Type dynamic_pointer("dynamic pointer");
-		static constexpr Type AST("AST");
-		static constexpr Type pointer_to_AST("cheap pointer", const_cast<Type* const>(&AST)); //todo: this is wrong, we want a full pointer to AST.
-		static constexpr Type conca1("concatenate", const_cast<Type* const>(&int_), const_cast<Type* const>(&pointer_to_AST));
+		static constexpr Type AST_pointer("AST pointer");
+		static constexpr Type conca1("concatenate", const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer));
 		static constexpr Type error_object("concatenate", const_cast<Type* const>(&conca1), const_cast<Type* const>(&int_));
 		//error_object is int, pointer to AST, int. it's what is returned when compilation fails: the error code, then the AST, then the field.
 	}
@@ -130,8 +131,7 @@ namespace T
 	constexpr Type* dynamic_pointer = const_cast<Type* const>(&i::dynamic_pointer);
 	constexpr Type* null = nullptr;
 	constexpr Type* error_object = const_cast<Type* const>(&i::error_object);
-	constexpr Type* AST = const_cast<Type* const>(&i::AST);
-	constexpr Type* pointer_to_AST = const_cast<Type* const>(&i::pointer_to_AST);
+	constexpr Type* AST_pointer = const_cast<Type* const>(&i::AST_pointer);
 	//later: noreturn. for goto.
 };
 
@@ -183,12 +183,29 @@ struct AST_info
 
 	unsigned pointer_fields; //how many field elements are pointers.
 	//for ASTs, this means pointers to other ASTs. for Types, this means pointers to other Types.
+	//this forces fields_to_compile downward if it is too high. by default, they are equal.
 	constexpr AST_info set_pointer_fields(int x)
 	{
 		AST_info new_copy(*this);
 		new_copy.pointer_fields = x;
+		if (new_copy.pointer_fields <= new_copy.fields_to_compile)
+			new_copy.fields_to_compile = new_copy.pointer_fields;
 		return new_copy;
 	}
+
+	unsigned additional_special_fields = 0; //these fields come after the pointer fields. they are REAL types, not AST return types.
+	//for example, if you have a Type* in the second field and a normal AST* in the first field, then this would be 1.
+	//then, in the argument list, you'd put a Type* in the second parameter slot.
+
+	//this reduces the number of pointer fields, because those are special fields instead.
+	constexpr AST_info set_special_fields(int x)
+	{
+		AST_info new_copy(*this);
+		new_copy.additional_special_fields = x;
+		new_copy.set_pointer_fields(pointer_fields - x);
+		return new_copy;
+	}
+
 	//unsigned non_pointer_fields; //how many fields are not pointers. but maybe not necessary.
 	constexpr int field_count(Type* f1, Type* f2, Type* f3, Type* f4)
 	{
@@ -234,8 +251,9 @@ constexpr AST_info AST_descriptor[] =
 	a("load", T::special).set_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
 	a("concatenate", T::special).set_pointer_fields(2),
 	a("dynamic", T::dynamic_pointer).set_fields_to_compile(1), //creates dynamic storage for any kind of object. moves it to the heap.
-	a("compile", T::dynamic_pointer, T::pointer_to_AST), //compiles an AST, returning a dynamic object which is either the error object or the desired info.
-	a("temp_generate_AST", T::pointer_to_AST), //hacked in, generates a random AST.
+	a("compile", T::dynamic_pointer, T::AST_pointer), //compiles an AST, returning a dynamic object which is either the error object or the desired info.
+	a("temp_generate_AST", T::AST_pointer), //hacked in, generates a random AST.
+	{ "dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, T::dynamic_pointer }, //concatenate the interiors of two dynamic pointers
 	{ "never reached", T::special }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	{ "dereference pointer", T::special}, //????
 	a("store", T::special), //????
@@ -273,10 +291,11 @@ struct AST
 	//std::mutex lock;
 	uint64_t tag;
 	AST* preceding_BB_element; //this object survives on the stack and can be referenced. it's the previous basic block element.
-	std::array<int_or_ptr<AST>, max_fields_in_AST> fields;
-	AST(const char name[], AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> f2 = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
+	using iop = int_or_ptr<AST>;
+	std::array<iop, max_fields_in_AST> fields;
+	AST(const char name[], AST* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
 		: tag(ASTn(name)), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {} //VS complains about aggregate initialization, but it is wrong.
-	AST(unsigned direct_tag, AST* preceding = nullptr, int_or_ptr<AST> f1 = nullptr, int_or_ptr<AST> f2 = nullptr, int_or_ptr<AST> f3 = nullptr, int_or_ptr<AST> f4 = nullptr)
+	AST(unsigned direct_tag, AST* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
 		: tag(direct_tag), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {}
 	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };

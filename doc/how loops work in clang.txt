@@ -1,0 +1,27 @@
+define void @_Z4testv() #0 {
+  %x = alloca i32, align 4
+  %y = alloca i32, align 4
+  store i32 0, i32* %x, align 4
+  store i32 14, i32* %y, align 4
+  %1 = load i32* %x, align 4
+  %2 = add nsw i32 %1, 4
+  store i32 %2, i32* %y, align 4
+  br label %3
+
+; <label>:3                                       ; preds = %6, %0
+  %4 = load i32* %x, align 4
+  %5 = icmp ne i32 %4, 0
+  br i1 %5, label %6, label %11
+
+; <label>:6                                       ; preds = %3
+  %7 = load i32* %y, align 4
+  %8 = add nsw i32 %7, 20
+  store i32 %8, i32* %x, align 4
+  %9 = load i32* %x, align 4
+  %10 = mul nsw i32 %9, 2
+  store i32 %10, i32* %y, align 4
+  br label %3
+
+; <label>:11                                      ; preds = %3
+  ret void
+}

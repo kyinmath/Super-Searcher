@@ -12,6 +12,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="unwrappedsrc\cs11.cpp" />
+    <ClCompile Include="unwrappedsrc\helperfunctions.cpp" />
     <ClCompile Include="unwrappedsrc\testdriver.cpp" />
     <ClCompile Include="unwrappedsrc\types.cpp" />
     <ClCompile Include="unwrappedsrc\unique_type_creator.cpp" />
@@ -20,6 +21,7 @@
     <ClInclude Include="unwrappedsrc\cs11.h" />
     <ClInclude Include="unwrappedsrc\debugoutput.h" />
     <ClInclude Include="unwrappedsrc\errorhandling.h" />
+    <ClInclude Include="unwrappedsrc\helperfunctions.h" />
     <ClInclude Include="unwrappedsrc\types.h" />
     <ClInclude Include="unwrappedsrc\unique_type_creator.h" />
   </ItemGroup>

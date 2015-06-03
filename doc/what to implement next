@@ -1,3 +1,5 @@
+next: directed AST creation
+
 we want:
 variable changing (CreateStore)
 locks

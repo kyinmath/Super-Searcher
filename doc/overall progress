@@ -5,7 +5,7 @@ The language uses a stack, and is mainly C-like in its architecture.
 
 
 Technical details:
-There are two classes in types.h that support attaching compile-time information to enums; they are named AST_info and Type_info. They have a few helper functions to work with this information, such as Typen(), which converts a string to the relevant integer, and can be run at compile time. All of this relies strongly on C++14 features, and this is the reason that Visual Studio stands no chance of compiling my program.
+There are two classes in types.h that support attaching compile-time information to enums; they are named AST_info and Type_info. They have a few helper functions to work with this information, such as Typen(), which converts a string to the relevant integer, and can be run at compile time. All of this relies strongly on the C++14 feature constexpr, and this is the reason that Visual Studio stands no chance of compiling my program.
 	This enables me to consolidate significant loose information into a single spot, to reduce potential for errors.
 There is a type uniquer in unique_type_creator.cpp that takes a copy of a Type, searches for any existing versions of that Type, and then returns a unique version of that Type. To do this, it operates recursively on subtypes. In addition, it uses a special hash table for Types.
 	There is a basic unit test for this type uniquer in unique_type_creator.cpp, under the name test_unique_types().
