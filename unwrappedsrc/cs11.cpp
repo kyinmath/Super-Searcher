@@ -1106,13 +1106,11 @@ void fuzztester(unsigned iterations)
 			fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous ASTs
 		if (NONINTELLIGENT) //fill every field with rubbish
 		{
-			outstream << "UNntelligent\n";
 			for (; incrementor < max_fields_in_AST; ++incrementor)
 				fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields
 		}
 		else //only fill in relevant fields with rubbish
 		{
-			outstream << "supposedly intelligent\n";
 			outstream << "number of total fields is " << pointer_fields + AST_descriptor[tag].additional_special_fields << '\n';
 			for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
 				fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields

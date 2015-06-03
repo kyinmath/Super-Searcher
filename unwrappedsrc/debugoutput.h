@@ -143,14 +143,16 @@ struct output_AST_console_version
 			outstream << ' ';
 			output_console(target->fields[x].ptr, true);
 		}
-		unsigned final_nonzero_field = x;
+		unsigned first_zero_field = x;
 		for (unsigned check_further_nonzero_fields = x + 1; check_further_nonzero_fields < max_fields_in_AST; ++check_further_nonzero_fields)
-			if (target->fields[check_further_nonzero_fields].num) final_nonzero_field = check_further_nonzero_fields;
-		for (; x <= final_nonzero_field; ++x)
+			if (target->fields[check_further_nonzero_fields].num) first_zero_field = check_further_nonzero_fields;
+		for (; x < first_zero_field; ++x)
 		{
 			outstream << ' ';
 			outstream << target->fields[x].num;
 		}
+		//outstream << "final x is " << x << '\n';
+		//outstream << "final nonzero is " << first_zero_field << '\n';
 		outstream << ']';
 
 		if (reference_necessary.find(target) != reference_necessary.end()) outstream << target;
