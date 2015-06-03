@@ -35,6 +35,7 @@ generate_IR() is the main AST conversion tool. it turns ASTs into llvm::Values, 
 #include "debugoutput.h"
 #include "helperfunctions.h"
 #include "unique_type_creator.h"
+#include "user_facing_functions.h"
 
 bool OPTIMIZE = false;
 bool VERBOSE_DEBUG = false;
@@ -502,7 +503,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
 		}
 		//check that the type matches.
-		if (AST_descriptor[target->tag].parameter_types[x] != T::nonexistent)
+		if (AST_descriptor[target->tag].parameter_types[x] != T::missing_field)
 			if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != 3) return_code(type_mismatch, x);
 
 		field_results.push_back(result);
@@ -640,7 +641,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			uint64_t if_stack_position = object_stack.size();
 
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
-			llvm::Value* comparison = Builder.CreateICmpNE(condition.IR, llvm::ConstantInt::get(thread_context, llvm::APInt(64, 0)), s("if() condition"));
+			llvm::Value* comparison = Builder.CreateICmpNE(condition.IR, llvm_integer(0), s("if() condition"));
 			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
 			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
@@ -829,7 +830,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 					finish_stack_handled_pointer(first_half.IR, first_half.type, first_half.target_life_guarantee, first_half.target_hit_contract);
 				else
 					finish_stack_handled_pointer(second_half.IR, second_half.type, second_half.target_life_guarantee, second_half.target_hit_contract);
-				//even if second_half is 0, we return it anyway.
+				//even if second_half is 0, we return it anyway. this is actually good, because of T::nonexistent? well, I would have to think about this more.
 			}
 		}
 
@@ -878,8 +879,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		}
 	case ASTn("dynamic_conc"):
 		{
-			outstream << "dumping dync type\n";
-			field_results[0].IR->getType()->dump();
 			llvm::Value* pointer[2];
 			llvm::Value* type[2];
 			for (int x : {0, 1})
@@ -990,17 +989,77 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			llvm::ArrayRef<llvm::Type*> argument_type_refs(argument_types);
 			llvm::IntegerType* boolean = llvm::IntegerType::get(thread_context, 1);
 
-			llvm::FunctionType* AST_maker_type = llvm::FunctionType::get(boolean, argument_type_refs, false);
+			llvm::FunctionType* checker_type = llvm::FunctionType::get(boolean, argument_type_refs, false);
 
-			llvm::PointerType* AST_maker_type_pointer = AST_maker_type->getPointerTo();
+			llvm::PointerType* checker_type_pointer = checker_type->getPointerTo();
 			llvm::Constant *checker_int = llvm_integer((uint64_t)&is_AST_user_facing);
-			llvm::Value* checker_function = Builder.CreateIntToPtr(checker_int, AST_maker_type_pointer, s("convert checker address to function"));
+			llvm::Value* checker_function = Builder.CreateIntToPtr(checker_int, checker_type_pointer, s("convert checker address to function"));
 
-			llvm::Value* conversion_result = Builder.CreateCall(checker_function, s("ASTmaker"));
+			
+			std::vector<unsigned> zero_index{ 0 };
+			llvm::ArrayRef<unsigned> zero_index_ref(zero_index);
+			llvm::Value* pointer = Builder.CreateExtractValue(field_results[1].IR, zero_index_ref, s("fields of hopeful AST"));
 
-			finish(result_AST, T::AST_pointer);
+			std::vector<unsigned> one_index{ 1 };
+			llvm::ArrayRef<unsigned> one_index_ref(one_index);
+			llvm::Value* type = Builder.CreateExtractValue(field_results[1].IR, one_index_ref, s("type of hopeful AST"));
+
+
+			std::vector<llvm::Value*> arguments{ field_results[0].IR, type };
+			llvm::ArrayRef<llvm::Value*> argument_refs(arguments);
+			llvm::Value* check_result = Builder.CreateCall(checker_function, argument_refs, s("converter"));
+
+
+
+
+
+			//NOTE: we are testing if it is NOT True!!!
+			//this is because we want the failure branch to appear first, since finish() fills in the type.
+			//finish() should go at the end.
+			llvm::Value* comparison = Builder.CreateICmpNE(check_result, llvm::ConstantInt::getTrue(thread_context), s("if() condition"));
+			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+
+			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
+			llvm::BasicBlock *FailureBB = llvm::BasicBlock::Create(thread_context, s("failure"), TheFunction);
+			llvm::BasicBlock *SuccessBB = llvm::BasicBlock::Create(thread_context, s("else"));
+
+
+			//again, note that we've reversed them!
+			Builder.CreateCondBr(comparison, FailureBB, SuccessBB);
+
+			//start inserting code in the "failure" branch
+			Builder.SetInsertPoint(FailureBB);
+
+			//calls with stack_degree as 1 in the called function, if it is 2 outside.
+			Return_Info failure_IR; //default constructor for null object
+			if (target->fields[2].ptr != nullptr) failure_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, storage_location);
+			if (failure_IR.error_code) return failure_IR;
+
+			output_type_and_previous(failure_IR.type);
+			if (failure_IR.type != T::nonexistent)
+				return_code(type_mismatch, 2);
+
+			TheFunction->getBasicBlockList().push_back(SuccessBB);
+			Builder.SetInsertPoint(SuccessBB);
+
+
+
+
+			llvm::FunctionType* AST_converter_type = llvm::FunctionType::get(int64_type, argument_type_refs, false);
+
+			llvm::PointerType* AST_converter_pointer = AST_converter_type->getPointerTo();
+			llvm::Constant *AST_converter_int = llvm_integer((uint64_t)&make_AST_pointer_from_dynamic);
+			llvm::Value* converter_function = Builder.CreateIntToPtr(AST_converter_int, AST_converter_pointer, s("converter function"));
+
+
+
+
+			std::vector<llvm::Value*> arguments2{ field_results[0].IR, pointer };
+			llvm::ArrayRef<llvm::Value*> argument2_refs(arguments);
+			llvm::Value* conversion_result = Builder.CreateCall(converter_function, argument2_refs, s("convert pointer to full AST pointer"));
+
+			finish(conversion_result, T::AST_pointer); //todo: we should definitely copy them, instead of just copying the pointer
 		}
-	}
 	case ASTn("temp_generate_AST"):
 		{
 			llvm::FunctionType* AST_maker_type = llvm::FunctionType::get(int64_type, false);
@@ -1154,7 +1213,7 @@ class source_reader
 				bool isNumber = true;
 				for (auto& k : next_token)
 					isNumber = isNumber && isdigit(k);
-				check(isNumber, "tried to input non - number");
+				check(isNumber, string("tried to input non - number") + next_token);
 				fields[field_num] = std::stoull(next_token);
 			}
 		}
@@ -1284,7 +1343,7 @@ int main(int argc, char* argv[])
 			compiler_object j;
 			unsigned error_code = j.compile_AST(end);
 			if (error_code)
-				outstream << "Malformed AST: code " << error_code << " at AST " << j.error_location << "\n\n";
+				outstream << "Malformed AST: code " << error_code << " at AST " << j.error_location << " " << AST_descriptor[j.error_location->tag].name << " field " << j.error_field << "\n\n";
 			else outstream << "Successful compile\n\n";
 			}
 	}

@@ -18,7 +18,7 @@ What AST_descriptor[] does is utilize this constructor to build a rich descripti
 Type_descriptor[] works similarly, using the enum-like class Type_info. Looking at the constructor for Type_info, we see that the first argument is the type name, the second type is the number of pointer fields each Type requires, and the third type is the size of the object that the Type describes.
 For example, { "cheap pointer", 1, 1 } tells us that there is a Type that has name "cheap pointer" (the first argument), and its first field is a pointer to a Type that describes the object that is being pointed to (the second argument), and the size of the pointer is 1 (the third argument).
 
-The class AST_info has some other functions, which are mainly for special cases. For example, the "if" AST should not have its fields automatically converted to IR, because it needs to build basic blocks before it can emit the IR in the correct basic block. Moreover, its return value is not known beforehand - it depends on its "then" and "else" fields. Therefore, its return value is "T::special", indicating that it cannot be treated in the usual way. Since its fields cannot be automatically compiled, its parameter types are left blank, and the function "set_pointer_fields" is applied instead. This says that the fields are there, but that IR should not be automatically generated for them.
+The class AST_info has some other functions, which are mainly for special cases. For example, the "if" AST should not have its fields automatically converted to IR, because it needs to build basic blocks before it can emit the IR in the correct basic block. Moreover, its return value is not known beforehand - it depends on its "then" and "else" fields. Therefore, its return value is "T::special", indicating that it cannot be treated in the usual way. Since its fields cannot be automatically compiled, its parameter types are left blank, and the function "make_pointer_fields" is applied instead. This says that the fields are there, but that IR should not be automatically generated for them.
 
 Later, we'll have some ASTs that let the user actually query this information.
 */
@@ -118,6 +118,7 @@ namespace T
 	{
 		static constexpr Type int_("integer");
 		static constexpr Type nonexistent("nonexistent");
+		static constexpr Type missing_field("nonexistent");
 		static constexpr Type special("integer");
 		static constexpr Type dynamic_pointer("dynamic pointer");
 		static constexpr Type AST_pointer("AST pointer");
@@ -126,7 +127,8 @@ namespace T
 		//error_object is int, pointer to AST, int. it's what is returned when compilation fails: the error code, then the AST, then the field.
 	}
 	namespace i = internal;
-	constexpr Type* nonexistent = const_cast<Type* const>(&i::nonexistent); //nothing at all. used to say that a parameter field is missing, or for goto. effectively disables type checking for that field.
+	constexpr Type* nonexistent = const_cast<Type* const>(&i::nonexistent); //nothing at all. used for goto. effectively disables type checking for that field.
+	constexpr Type* missing_field = const_cast<Type* const>(&i::missing_field); //used to say that a parameter field is missing
 	constexpr Type* special = const_cast<Type* const>(&i::special); //indicates that a return type is to be handled differently
 	constexpr Type* integer = const_cast<Type* const>(&i::int_); //describes an integer type
 	constexpr Type* dynamic_pointer = const_cast<Type* const>(&i::dynamic_pointer);
@@ -159,6 +161,7 @@ this is a cool C++ hack to attach information to enums.
 first, we construct a vector, where each element has a string and some information attached (in the form of integers)
 then, get_enum_from_name() associates numbers to the strings.
 this lets us switch-case on the strings that are the first element of each enum. since the information is attached to the string, we are guaranteed not to forget to implement it, which reduces the potential for careless errors.
+the total number of fields for the AST is pointer_fields + additional_special_fields.
 */
 struct AST_info
 {
@@ -173,7 +176,7 @@ struct AST_info
 
 	unsigned fields_to_compile; //we may not always compile all pointers, such as with "copy".
 	//number_to_compile < pointer_fields, so this also forces pointer_fields upward if it is too low. by default, they are equal.
-	constexpr AST_info set_fields_to_compile(int x)
+	constexpr AST_info make_fields_to_compile(int x)
 	{
 		AST_info new_copy(*this);
 		new_copy.fields_to_compile = x;
@@ -185,7 +188,7 @@ struct AST_info
 	unsigned pointer_fields; //how many field elements are pointers.
 	//for ASTs, this means pointers to other ASTs. for Types, this means pointers to other Types.
 	//this forces fields_to_compile downward if it is too high. by default, they are equal.
-	constexpr AST_info set_pointer_fields(int x)
+	constexpr AST_info make_pointer_fields(int x)
 	{
 		AST_info new_copy(*this);
 		new_copy.pointer_fields = x;
@@ -199,29 +202,38 @@ struct AST_info
 	//then, in the argument list, you'd put a Type* in the second parameter slot.
 
 	//this reduces the number of pointer fields, because those are special fields instead.
-	constexpr AST_info set_special_fields(int x)
+	constexpr AST_info make_special_fields(int x)
 	{
 		AST_info new_copy(*this);
 		new_copy.additional_special_fields = x;
-		new_copy.set_pointer_fields(pointer_fields - x);
-		return new_copy;
+		return new_copy.make_pointer_fields(pointer_fields - x);
 	}
 
 	//unsigned non_pointer_fields; //how many fields are not pointers. but maybe not necessary.
 	constexpr int field_count(Type* f1, Type* f2, Type* f3, Type* f4)
 	{
 		int number_of_fields = 4; //by default, both pointer_fields and number_of_fields will be equal to this.
-		if (f4 == T::nonexistent) number_of_fields = 3;
-		if (f3 == T::nonexistent) number_of_fields = 2;
-		if (f2 == T::nonexistent) number_of_fields = 1;
-		if (f1 == T::nonexistent) number_of_fields = 0;
+		if (f4 == T::missing_field) number_of_fields = 3;
+		if (f3 == T::missing_field) number_of_fields = 2;
+		if (f2 == T::missing_field) number_of_fields = 1;
+		if (f1 == T::missing_field) number_of_fields = 0;
 		return number_of_fields;
 	};
 
 	//in AST_descriptor[], fields_to_compile and pointer_fields are normally set to the number of parameter types specified.
-	//	however, they can be overridden by set_fields_to_compile() and set_pointer_fields()
-	constexpr AST_info(const char a[], Type* r, Type* f1 = T::nonexistent, Type* f2 = T::nonexistent, Type* f3 = T::nonexistent, Type* f4 = T::nonexistent)
+	//	however, they can be overridden by make_fields_to_compile() and make_pointer_fields()
+	constexpr AST_info(const char a[], Type* r, Type* f1 = T::missing_field, Type* f2 = T::missing_field, Type* f3 = T::missing_field, Type* f4 = T::missing_field)
 		: name(a), return_object(r), parameter_types{ f1, f2, f3, f4 }, pointer_fields(field_count(f1, f2, f3, f4)), fields_to_compile(field_count(f1, f2, f3, f4)), size_of_return(get_size(r)) { }
+
+	/*
+	template<typename T, typename... Args>
+	constexpr AST_info(const char a[], Type* r, Type* f1, Args... args) // recursive variadic function
+	{
+		std::cout << t << std::endl;
+
+		func(args...);
+	}
+	*/
 };
 
 using a = AST_info;
@@ -233,32 +245,32 @@ return type is T_special if it can't be determined automatically from the AST ta
 then, write the compilation code for the AST in generate_IR().
 
 the number of parameter types determines the number of subfields to be compiled and type-checked automatically.
-	if you want to compile but not type-check a field, use set_fields_to_compile() and do not list a parameter type.
-	if you want to neither compile or type-check a field, use set_pointer_fields().
+	if you want to compile but not type-check a field, use make_fields_to_compile() and do not list a parameter type.
+	if you want to neither compile or type-check a field, use make_pointer_fields().
 		in these cases, you must handle the type-checking/compilation manually if it's not done automatically and you want it to be done.
 if the AST branches, then make sure to clear temporaries from the stack list before running the other branch.
 keep AST names to one word only, because our console input takes a single word for the name.
 */
 constexpr AST_info AST_descriptor[] =
 {
-	a("integer", T::integer, T::integer).set_special_fields(1), //first argument is an integer, which is the returned value.
+	a("integer", T::integer, T::integer).make_special_fields(1), //first argument is an integer, which is the returned value.
 	{ "hello", T::null },
-	a("if", T::special).set_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
-	a("scope", T::null).set_fields_to_compile(1), //fulfills the purpose of {} from C++
+	a("if", T::special).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
+	a("scope", T::null).make_fields_to_compile(1), //fulfills the purpose of {} from C++
 	{ "add", T::integer, T::integer, T::integer }, //adds two integers
 	{ "subtract", T::integer, T::integer, T::integer },
 	{ "random", T::integer }, //returns a random integer
-	a("pointer", T::special).set_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
-	a("load", T::special).set_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
-	a("concatenate", T::special).set_pointer_fields(2),
-	a("dynamic", T::dynamic_pointer).set_fields_to_compile(1), //creates dynamic storage for any kind of object. moves it to the heap.
+	a("pointer", T::special).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
+	a("load", T::special).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
+	a("concatenate", T::special).make_pointer_fields(2),
+	a("dynamic", T::dynamic_pointer).make_fields_to_compile(1), //creates dynamic storage for any kind of object. moves it to the heap.
 	a("compile", T::dynamic_pointer, T::AST_pointer), //compiles an AST, returning a dynamic object which is either the error object or the desired info.
 	a("temp_generate_AST", T::AST_pointer), //hacked in, generates a random AST.
 	{ "dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, T::dynamic_pointer }, //concatenate the interiors of two dynamic pointers
-	a("goto", T::nonexistent).set_pointer_fields(1),
+	a("goto", T::nonexistent).make_pointer_fields(1),
 	{ "label", T::null },
+	a("convert_to_AST", T::AST_pointer, T::integer, T::dynamic_pointer, T::nonexistent).make_fields_to_compile(2), //don't compile the nonexistent branch, because it needs to go in a special basic block.
 	{ "never reached", T::special }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
-	a("convert_to_AST", T::AST_pointer, T::integer, T::dynamic_pointer, T::nonexistent).set_pointer_fields(2), //don't compile the nonexistent branch, because it needs to go in a special branch.
 	{ "dereference pointer", T::special}, //????
 	a("store", T::special), //????
 	/*	
@@ -321,4 +333,4 @@ enum type_status { RVO, reference }; //distinguishes between RVOing an object, o
 
 unsigned type_check(type_status version, Type* existing_reference, Type* new_reference);
 
-extern uint64_t is_AST_user_facing(uint64_t tag, uint64_t reference);
+extern bool is_AST_user_facing(uint64_t tag, uint64_t reference);

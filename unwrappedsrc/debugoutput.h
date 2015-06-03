@@ -99,7 +99,6 @@ struct output_AST_console_version
 		output_console(target, false); //we call it with "false", because the overall function has no braces.
 
 		outstream << '\n';
-
 	}
 
 	void determine_references(AST* target)

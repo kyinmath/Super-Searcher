@@ -34,6 +34,9 @@ unsigned type_check(type_status version, Type* existing_reference, Type* new_ref
 	if (iter[0] == iter[1])// && (lock[0] == lock[1] || version == RVO))
 		return 3; //easy way out, if lucky. we can't do this later, because our stack might have extra things to look at.
 
+	if (existing_reference == T::nonexistent && version == RVO)
+		return 3; //nonexistent means that the code path is never seen.
+
 	//this stack enables two-part recursion using both type objects, which isn't possible otherwise.
 	//fully_immut must always be exactly the same for both types, so we technically don't need to store it twice. but we do anyway, for now.
 	struct stack_element{
