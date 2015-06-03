@@ -138,7 +138,7 @@ struct output_AST_console_version
 		}
 		outstream << "[" << AST_descriptor[target->tag].name;
 		int x = 0;
-		for (; x < AST_descriptor[target->tag].pointer_fields; ++x)
+		for (; x < AST_descriptor[target->tag].pointer_fields + AST_descriptor[target->tag].additional_special_fields; ++x)
 		{
 			outstream << ' ';
 			output_console(target->fields[x].ptr, true);
