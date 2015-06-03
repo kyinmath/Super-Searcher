@@ -77,6 +77,7 @@ constexpr Type_info Type_descriptor[] =
 	{ "AST pointer", 0, 1 }, //just a pointer. (a full pointer)
 	//the actual object has 6: tag, then previous, then 4 fields.
 	{ "function in clouds", 2, 2 }, //points to: return AST, then parameter AST, then compiled area. we don't embed the AST along with the function signature, in order to keep them separate.
+	{ "nonexistent", 0, 0 }, //a special value
 	{ "never reached", 0, 0 },
 	//except: if we have two ASTs, it's going to bloat our type object. and meanwhile, we want the parameter AST to be before everything that might use it, so having it as a first_pointer is not good, since the beginning of the function might change.
 	{ "lock", 0, 1 },
@@ -116,7 +117,7 @@ namespace T
 	namespace internal
 	{
 		static constexpr Type int_("integer");
-		static constexpr Type nonexistent("integer");
+		static constexpr Type nonexistent("nonexistent");
 		static constexpr Type special("integer");
 		static constexpr Type dynamic_pointer("dynamic pointer");
 		static constexpr Type AST_pointer("AST pointer");
@@ -240,13 +241,13 @@ keep AST names to one word only, because our console input takes a single word f
 */
 constexpr AST_info AST_descriptor[] =
 {
-	{ "integer", T::integer}, //first argument is an integer, which is the returned value.
-	{ "hello", T::null},
+	a("integer", T::integer, T::integer).set_special_fields(1), //first argument is an integer, which is the returned value.
+	{ "hello", T::null },
 	a("if", T::special).set_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
 	a("scope", T::null).set_fields_to_compile(1), //fulfills the purpose of {} from C++
 	{ "add", T::integer, T::integer, T::integer }, //adds two integers
 	{ "subtract", T::integer, T::integer, T::integer },
-	{ "random", T::integer}, //returns a random integer
+	{ "random", T::integer }, //returns a random integer
 	a("pointer", T::special).set_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
 	a("load", T::special).set_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
 	a("concatenate", T::special).set_pointer_fields(2),
@@ -254,11 +255,13 @@ constexpr AST_info AST_descriptor[] =
 	a("compile", T::dynamic_pointer, T::AST_pointer), //compiles an AST, returning a dynamic object which is either the error object or the desired info.
 	a("temp_generate_AST", T::AST_pointer), //hacked in, generates a random AST.
 	{ "dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, T::dynamic_pointer }, //concatenate the interiors of two dynamic pointers
+	a("goto", T::nonexistent).set_pointer_fields(1),
+	{ "label", T::null },
 	{ "never reached", T::special }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
+	a("convert_to_AST", T::AST_pointer, T::integer, T::dynamic_pointer, T::nonexistent).set_pointer_fields(2), //don't compile the nonexistent branch, because it needs to go in a special branch.
 	{ "dereference pointer", T::special}, //????
 	a("store", T::special), //????
-	/*	{ "goto", 2 }, //label and failure branch
-	{ "label" },
+	/*	
 	{ "no op", 0, 0 },
 	{ "sub", 2 },
 	{ "mul", 2 },
@@ -317,3 +320,5 @@ constexpr uint64_t get_size(AST* target)
 enum type_status { RVO, reference }; //distinguishes between RVOing an object, or just creating a reference
 
 unsigned type_check(type_status version, Type* existing_reference, Type* new_reference);
+
+extern uint64_t is_AST_user_facing(uint64_t tag, uint64_t reference);

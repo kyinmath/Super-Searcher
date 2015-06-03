@@ -84,6 +84,8 @@ enum IRgen_status {
 	null_AST, //tried to generate_IR() a nullptr but was caught, which is normal.
 	pointer_without_target, //tried to get a pointer to an AST, but it was not found at all
 	pointer_to_temporary, //tried to get a pointer to an AST, but it was not placed on the stack.
+	missing_label, //tried to goto a label, but the label was not found
+	label_incorrect_stack, //tried to goto a label, but the stack elements didn't match
 };
 
 //every time IR is generated, this holds the relevant return info.
@@ -130,13 +132,17 @@ class compiler_object
 	std::unordered_set<AST*> loop_catcher;
 
 	//a stack for bookkeeping lifetimes; keeps track of when objects are alive.
-	std::stack<AST*> object_stack;
+	//it's only a vector because we have to go through it during "goto()" while checking if the stacks match up
+	std::vector<AST*> object_stack;
 
 	//maps ASTs to their generated IR and return type.
 	std::unordered_map<AST*, Return_Info> objects;
 
 	//these are the labels which are later in the basic block. you can jump to them without checking finiteness, but you must check the type stack
 	//std::stack<AST*> future_labels;
+
+	//these are labels which can be jumped to. the basic block, and the object stack.
+	std::map<AST*, std::pair<llvm::BasicBlock*, std::vector<AST*>>> labels;
 
 	//a memory pool for storing temporary types. will be cleared at the end of compilation.
 	//it must be a deque so that its memory locations stay valid after push_back().
@@ -396,7 +402,7 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 	while (object_stack.size() != desired_stack_size)
 	{
 		//todo: run dtors if necessary, such as for lock elements
-		object_stack.pop();
+		object_stack.pop_back();
 	}
 }
 
@@ -554,7 +560,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		{
 			if (size_result >= 1)
 			{
-				object_stack.push(target);
+				object_stack.push_back(target);
 				auto insert_result = objects.insert({ target, Return_Info(IRgen_status::no_error, return_value, type, true, lifetime_of_return_value, upper_life, lower_life) });
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication, 10);
@@ -702,6 +708,38 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			}
 			else finish_stack_handled_pointer(storage_location, then_IR.type, result_target_life_guarantee, result_target_hit_contract);
 			//even though finish_pointer returns, the else makes it clear from first glance that it's not a continued statement.
+		}
+
+	case ASTn("label"):
+		{
+			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
+			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+
+			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
+			llvm::BasicBlock *label = llvm::BasicBlock::Create(thread_context, s("label"), TheFunction);
+
+			Builder.CreateBr(label);
+			Builder.SetInsertPoint(label);
+			labels.insert(std::make_pair(target, std::make_pair(label, object_stack)));
+
+			finish(nullptr, nullptr);
+		}
+
+	case ASTn("goto"):
+		{
+			auto labelsearch = labels.find(target->fields[0].ptr);
+			if (labelsearch == labels.end()) return_code(missing_label, 0);
+
+			//check if the stacks match up
+			std::vector<AST*>& stack = labelsearch->second.second;
+			for (int x = 0; x < stack.size(); ++x)
+				if (stack[x] != object_stack[x])
+					return_code(label_incorrect_stack, 0);
+
+			Builder.CreateBr(labelsearch->second.first);
+			Builder.ClearInsertionPoint();
+
+			finish(nullptr, T::nonexistent);
 		}
 	case ASTn("scope"):
 		finish(nullptr, T::null);
@@ -945,6 +983,24 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 			finish(Builder.CreateLoad(final_dynamic_pointer), T::dynamic_pointer);
 		}
+	case ASTn("convert_to_AST"):
+		{
+
+			std::vector<llvm::Type*> argument_types{ int64_type, int64_type };
+			llvm::ArrayRef<llvm::Type*> argument_type_refs(argument_types);
+			llvm::IntegerType* boolean = llvm::IntegerType::get(thread_context, 1);
+
+			llvm::FunctionType* AST_maker_type = llvm::FunctionType::get(boolean, argument_type_refs, false);
+
+			llvm::PointerType* AST_maker_type_pointer = AST_maker_type->getPointerTo();
+			llvm::Constant *checker_int = llvm_integer((uint64_t)&is_AST_user_facing);
+			llvm::Value* checker_function = Builder.CreateIntToPtr(checker_int, AST_maker_type_pointer, s("convert checker address to function"));
+
+			llvm::Value* conversion_result = Builder.CreateCall(checker_function, s("ASTmaker"));
+
+			finish(result_AST, T::AST_pointer);
+		}
+	}
 	case ASTn("temp_generate_AST"):
 		{
 			llvm::FunctionType* AST_maker_type = llvm::FunctionType::get(int64_type, false);

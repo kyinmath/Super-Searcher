@@ -87,6 +87,10 @@ check_next_token:
 		}
 		else goto check_next_token;
 	}
+	//T::nonexistent is a special value. we can't be handling it here.
+	check(iter[0] != T::nonexistent, "can't handle nonexistent types in type_check()");
+	check(iter[1] != T::nonexistent, "can't handle nonexistent types in type_check()");
+
 
 	/*if fully immut + immut, the new reference can't change the object
 	if RVO, there's no old reference to interfere with changes
@@ -192,4 +196,9 @@ bool is_AST(uint64_t tag, Type* reference)
 
 	return type_check(RVO, reference, concatenate_types(fields)) == 3;
 	//this is RVO because we're copying the dynamic object over.
+}
+
+bool is_AST_user_facing(uint64_t tag, uint64_t reference)
+{
+	return is_AST(tag, (Type*)reference);
 }
