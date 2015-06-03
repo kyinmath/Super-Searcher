@@ -42,6 +42,7 @@ bool VERBOSE_DEBUG = false;
 bool INTERACTIVE = false;
 bool CONSOLE = false;
 bool TIMER = false;
+bool NONINTELLIGENT = false;
 
 basic_onullstream<char> null_stream;
 std::ostream& outstream = std::cerr;
@@ -1103,8 +1104,19 @@ void fuzztester(unsigned iterations)
 		int incrementor = 0;
 		for (; incrementor < pointer_fields; ++incrementor)
 			fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous ASTs
-		for (; incrementor < max_fields_in_AST; ++incrementor)
-			fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields
+		if (NONINTELLIGENT) //fill every field with rubbish
+		{
+			outstream << "UNntelligent\n";
+			for (; incrementor < max_fields_in_AST; ++incrementor)
+				fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields
+		}
+		else //only fill in relevant fields with rubbish
+		{
+			outstream << "supposedly intelligent\n";
+			outstream << "number of total fields is " << pointer_fields + AST_descriptor[tag].additional_special_fields << '\n';
+			for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
+				fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields
+		}
 		AST* test_AST= new AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
 		output_AST_and_previous(test_AST);
 		output_AST_console_version a(test_AST);
@@ -1294,6 +1306,7 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "optimize") == 0) OPTIMIZE = true;
 		else if (strcmp(argv[x], "console") == 0) CONSOLE = true;
 		else if (strcmp(argv[x], "timer") == 0) TIMER = true;
+		else if (strcmp(argv[x], "nonintelligent") == 0) NONINTELLIGENT = true; //fuzztester generates random numbers in all fields, not just fields that are used
 		else if (strcmp(argv[x], "quiet") == 0)
 		{
 			outstream.setstate(std::ios_base::failbit);
