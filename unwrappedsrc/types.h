@@ -69,18 +69,18 @@ you must create an entry in type_check.
 */
 constexpr Type_info Type_descriptor[] =
 {
-	{ "concatenate", 2, -1 }, //concatenate two types
-	{ "integer", 0, 1 }, //64-bit integer
-	{ "cheap pointer", 1, 1 }, //pointer to anything
-	{ "dynamic pointer", 0, 2 }, //dynamic pointer. first field is the pointer, second field is a pointer to the type
-	{ "AST pointer", 0, 1 }, //just a pointer. (a full pointer)
+	{"concatenate", 2, -1}, //concatenate two types
+	{"integer", 0, 1}, //64-bit integer
+	{"cheap pointer", 1, 1}, //pointer to anything
+	{"dynamic pointer", 0, 2}, //dynamic pointer. first field is the pointer, second field is a pointer to the type
+	{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
 	//the actual object has 6: tag, then previous, then 4 fields.
-	{ "function in clouds", 2, 2 }, //points to: return AST, then parameter AST, then compiled area. we don't embed the AST along with the function signature, in order to keep them separate.
-	{ "nonexistent", 0, 0 }, //a special value
-	{ "never reached", 0, 0 },
+	{"function in clouds", 2, 2}, //points to: return AST, then parameter AST, then compiled area. we don't embed the AST along with the function signature, in order to keep them separate.
+	{"nonexistent", 0, 0}, //a special value
+	{"never reached", 0, 0},
 	//except: if we have two ASTs, it's going to bloat our type object. and meanwhile, we want the parameter AST to be before everything that might use it, so having it as a first_pointer is not good, since the beginning of the function might change.
-	{ "lock", 0, 1 },
-	{ "type", 0, 3 },
+	{"lock", 0, 1},
+	{"type", 0, 3},
 };
 
 #include <iostream>
