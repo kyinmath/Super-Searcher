@@ -6,7 +6,14 @@ Module->print(*llvm_outstream, nullptr) prints the generated llvm code.
 #pragma once
 #include "types.h"
 #include <unordered_set>
-#include "cs11.h"
+
+//s("test") returns "test" if debug_names is true, and an empty string if debug_names is false.
+#define debug_names
+#ifdef debug_names
+inline std::string s(std::string k) { return k; }
+#else
+inline std::string s(std::string k) { return ""; }
+#endif
 
 template <class cT, class traits = std::char_traits<cT> >
 class basic_nullbuf : public std::basic_streambuf<cT, traits> {
@@ -138,10 +145,16 @@ struct output_AST_console_version
 		}
 		outstream << "[" << AST_descriptor[target->tag].name;
 		int x = 0;
-		for (; x < AST_descriptor[target->tag].pointer_fields + AST_descriptor[target->tag].additional_special_fields; ++x)
+		for (; x < AST_descriptor[target->tag].pointer_fields; ++x)
 		{
 			outstream << ' ';
 			output_console(target->fields[x].ptr, true);
+		}
+
+		//any additional fields that aren't pointers
+		for (; x < AST_descriptor[target->tag].pointer_fields + AST_descriptor[target->tag].additional_special_fields; ++x)
+		{
+			outstream << ' ' << target->fields[x].ptr;
 		}
 		unsigned first_zero_field = x;
 		for (unsigned check_further_nonzero_fields = x + 1; check_further_nonzero_fields < max_fields_in_AST; ++check_further_nonzero_fields)

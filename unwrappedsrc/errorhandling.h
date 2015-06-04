@@ -1,5 +1,6 @@
 #include <string>
-#include "cs11.h"
+#include <iostream>
+extern std::ostream& outstream;
 using std::string;
 [[noreturn]] inline void error(const string& Str) { outstream << "Error: " << Str << '\n'; abort(); }
 

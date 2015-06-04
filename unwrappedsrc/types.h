@@ -71,7 +71,6 @@ constexpr Type_info Type_descriptor[] =
 {
 	{ "concatenate", 2, -1 }, //concatenate two types
 	{ "integer", 0, 1 }, //64-bit integer
-	{ "fixed integer", 1, 1 }, //64-bit integer whose value is fixed by the type.
 	{ "cheap pointer", 1, 1 }, //pointer to anything
 	{ "dynamic pointer", 0, 2 }, //dynamic pointer. first field is the pointer, second field is a pointer to the type
 	{ "AST pointer", 0, 1 }, //just a pointer. (a full pointer)

@@ -111,13 +111,14 @@ check_next_token:
 					if (type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr) > 1)
 						goto finished_checking;
 			return 0; //else
+			/*
 		case Typen("fixed integer"): //no need for lock check.
 			if (iter[0]->tag == iter[1]->tag)
 				if (iter[1]->fields[0].num == iter[0]->fields[0].num)
 					goto finished_checking;
-			return 0;
+			return 0;*/
 		case Typen("integer"):
-				if (iter[0]->tag == iter[1]->tag || iter[0]->tag == Typen("fixed integer") || iter[0]->tag == Typen("cheap pointer")) //also full pointer
+				if (iter[0]->tag == iter[1]->tag /*|| iter[0]->tag == Typen("fixed integer") */|| iter[0]->tag == Typen("cheap pointer")) //also full pointer
 					goto finished_checking;
 			//maybe we should also allow two uints in a row to take a dynamic pointer?
 				//we'd have to think about that. the current system allows for large types in the new reference to accept pieces, but I don't know if that's the best.
@@ -150,11 +151,11 @@ check_next_token:
 			if (type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr) > 1)
 				goto finished_checking;
 			return 0;
-		
+		/*
 		case Typen("fixed integer"): //no need for lock check.
 			if (iter[1]->fields[0].num == iter[0]->fields[0].num)
 				goto finished_checking;
-			return 0;
+			return 0; */
 		case Typen("integer"):
 		case Typen("AST pointer"):
 			goto finished_checking;

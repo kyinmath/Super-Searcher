@@ -6,5 +6,6 @@ You can create and compile ASTs inside the language now. Try:
 ./toy console
 [label]a [compile [convert_to_AST [integer 1] [dynamic] [goto a]]]
 
+
 Or:
 [label]a [hello] [goto a]
