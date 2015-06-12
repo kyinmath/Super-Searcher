@@ -34,7 +34,7 @@ unsigned type_check(type_status version, Type* existing_reference, Type* new_ref
 	if (iter[0] == iter[1])// && (lock[0] == lock[1] || version == RVO))
 		return 3; //easy way out, if lucky. we can't do this later, because our stack might have extra things to look at.
 
-	if (existing_reference == T::nonexistent && version == RVO)
+	if (existing_reference == T::nonexistent)
 		return 3; //nonexistent means that the code path is never seen.
 
 	//this stack enables two-part recursion using both type objects, which isn't possible otherwise.
@@ -185,24 +185,4 @@ Type* concatenate_types(std::vector<Type*>& components)
 
 	if (components.size() == 0) return nullptr;
 	else return concatenate_types(components.data(), components.size());
-}
-
-//we construct a model type, then run type_check on it.
-//checks if they match exactly
-bool is_AST(uint64_t tag, Type* reference)
-{
-	std::vector<Type*> fields;
-	int number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
-	for (int x = 0; x < number_of_AST_pointers; ++x)
-		fields.push_back(T::AST_pointer);
-	for (int x = 0; x < AST_descriptor[tag].additional_special_fields; ++x)
-		fields.push_back(AST_descriptor[tag].parameter_types[number_of_AST_pointers + x]);
-
-	return type_check(RVO, reference, concatenate_types(fields)) == 3;
-	//this is RVO because we're copying the dynamic object over.
-}
-
-bool is_AST_user_facing(uint64_t tag, uint64_t reference)
-{
-	return is_AST(tag, (Type*)reference);
 }

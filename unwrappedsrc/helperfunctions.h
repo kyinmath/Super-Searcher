@@ -9,6 +9,7 @@ inline llvm::Constant* llvm_integer(uint64_t value)
 
 inline llvm::ArrayType* llvm_array(uint64_t size)
 {
+	check(size != 0, "tried to get 0 size llvm array");
 	return llvm::ArrayType::get(int64_type, size);
 }
 
@@ -19,4 +20,21 @@ template<typename... should_be_type_ptr, typename fptr> inline llvm::Function* l
 	llvm::PointerType* function_pointer_type = function_type->getPointerTo();
 	llvm::Constant *function_address = llvm_integer((uint64_t)function);
 	return (llvm::Function*)Builder.CreateIntToPtr(function_address, function_pointer_type, s("convert address to function"));
+}
+
+//we already typechecked and received 3. then, they're the same size, unless one of them is T::nonexistent
+//thus, we check for T::nonexistent
+inline llvm::Value* llvm_create_phi(llvm::IRBuilder<>& Builder, llvm::Value* first, llvm::Value* second, Type* first_t, Type* second_t, llvm::BasicBlock* firstBB, llvm::BasicBlock* secondBB)
+{
+	uint64_t size1 = get_size(first_t);
+	uint64_t size2 = get_size(second_t);
+
+	//these are in case one of them is T::nonexistent
+	if (size2 == 0) return first;
+	if (size1 == 0) return second;
+
+	llvm::PHINode* PN = Builder.CreatePHI(size1 == 1 ? (llvm::Type*)int64_type : llvm_array(size1), 2); //phi with two incoming variables
+	PN->addIncoming(first, firstBB);
+	PN->addIncoming(second, secondBB);
+	return PN;
 }

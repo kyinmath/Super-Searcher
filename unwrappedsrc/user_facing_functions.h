@@ -2,13 +2,16 @@
 #include "types.h"
 #include "cs11.h"
 
-inline uint64_t make_AST_pointer_from_dynamic(uint64_t tag, uint64_t intpointer)
+//return type is actually AST*
+inline uint64_t make_AST_pointer_from_dynamic(uint64_t tag, uint64_t previous_AST, uint64_t intpointer)
 {
+	if (tag == ASTn("null_AST")) return 0;
+
 	uint64_t* pointer = (uint64_t*)intpointer;
 	std::vector<uint64_t> fields{ 0, 0, 0, 0 };
 	for (int x = 0; x < AST_descriptor[tag].pointer_fields + AST_descriptor[tag].additional_special_fields; ++x)
 		fields[x] = pointer[x];
-	return (uint64_t)(new AST(tag, nullptr, fields[0], fields[1], fields[2], fields[3])); //TODO: we set the previous pointer as nullptr.
+	return (uint64_t)(new AST(tag, (AST*)previous_AST, fields[0], fields[1], fields[2], fields[3]));
 }
 
 
@@ -79,6 +82,8 @@ inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_pointer, uint6
 
 uint64_t ASTmaker()
 {
+	return 0; //we don't want any trouble. and the AST maker is a constant source of problems as it diverges from fuzztester().
+	//right now, it's not going to create special parameter fields correctly. and it'll try to create a 0-tag AST, which is bad.
 	unsigned iterations = 4;
 	std::vector<AST*> AST_list{ nullptr }; //start with nullptr as the default referenceable AST
 	while (iterations--)
@@ -110,7 +115,30 @@ uint64_t ASTmaker()
 }
 
 //return value is the address
-uint64_t allocate_memory(uint64_t size)
+inline uint64_t allocate_memory(uint64_t size)
 {
 	return (uint64_t)(new uint64_t[size]);
 }
+
+
+//we construct a model type, then run type_check on it.
+//checks if they match exactly
+inline bool is_AST(uint64_t tag, Type* reference)
+{
+	std::vector<Type*> fields;
+	int number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
+	for (int x = 0; x < number_of_AST_pointers; ++x)
+		fields.push_back(T::AST_pointer);
+	for (int x = 0; x < AST_descriptor[tag].additional_special_fields; ++x)
+		fields.push_back(AST_descriptor[tag].parameter_types[number_of_AST_pointers + x]);
+
+	return type_check(RVO, reference, concatenate_types(fields)) == 3;
+	//this is RVO because we're copying the dynamic object over.
+}
+
+inline bool is_AST_user_facing(uint64_t tag, uint64_t reference)
+{
+	return is_AST(tag, (Type*)reference);
+}
+
+inline void print_uint64_t(uint64_t x) {outstream << x << '\n';}

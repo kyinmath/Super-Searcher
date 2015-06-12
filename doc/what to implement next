@@ -1,10 +1,11 @@
-next: directed AST creation
-
-we want:
+make the fuzzer work again
+	goto limits and finiteness
 variable changing (CreateStore)
-locks
+	ownership of dynamic objects, so we can overwrite the types.
+move the fuzzer into AST format
+
+locks?
 pointer offsets.
-compilation, which requires variable changing, and probably also dynamic types.
 threading, which requires locks
 
 Normally, we'd need locks before we implemented CreateStore.
@@ -32,3 +33,10 @@ we need storage when:
 	no, in this case we can have a big jumble of values. shove them together only when used.
 2. we do do_after, because it might be changed
 3. we put something on the stack, because it might be changed, and temps can't change
+
+
+we need: passthrough AST, since our dynamic objects can't change types.
+does this mean we also need a passthrough Type? but both of these are actually already possible, using concatenate() in Type or AST.
+
+suppose we have a compiled function. it points to an AST. when the function dies, should we really unimmut the old ASTs? is that at all useful?
+	yeah, it's vital. we don't want to create new copies all the time. and we use compilation as error_checking, so we compile a function many times as we create it.

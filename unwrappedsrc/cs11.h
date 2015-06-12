@@ -4,7 +4,6 @@ extern bool VERBOSE_DEBUG;
 extern bool INTERACTIVE;
 extern bool CONSOLE;
 extern bool TIMER;
-extern bool NONINTELLIGENT;
 #include <iostream>
 
 #include <llvm/IR/DerivedTypes.h>
@@ -20,11 +19,12 @@ extern bool NONINTELLIGENT;
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/IR/LLVMContext.h>
 #include "types.h"
-#ifndef _MSC_VER
-thread_local
+#ifdef _MSC_VER
+#define thread_local
 #endif
-extern llvm::LLVMContext& thread_context;
+extern thread_local llvm::LLVMContext& thread_context;
 extern std::mt19937_64 mersenne;
+extern thread_local uint64_t finiteness;
 uint64_t generate_exponential_dist();
 
 
@@ -38,8 +38,10 @@ enum IRgen_status {
 	pointer_to_temporary, //tried to get a pointer to an AST, but it was not placed on the stack.
 	missing_label, //tried to goto a label, but the label was not found
 	label_incorrect_stack, //tried to goto a label, but the stack elements didn't match
+	label_duplication, //a label was pointed to in the tree twice
 };
 
+constexpr uint64_t full_lifetime = -1ll;
 //every time IR is generated, this holds the relevant return info.
 struct Return_Info
 {
@@ -52,7 +54,7 @@ struct Return_Info
 	//in that case, the llvm type is actually a pointer. but the internal type doesn't change.
 
 	//this lifetime information is only used when a cheap pointer is in the type. see pointers.txt
-	//to write a pointer into a pointed-to memory location, we must have upper of pointer < lower of memory location
+	//to write a pointer into a pointed-to memory location, we must have guarantee of pointer >= hit contract of memory location
 	//there's only one pair of target lifetime values per object, which can be a problem for objects which concatenate many cheap pointers.
 	//however, we need concatenation only for heap objects, parameters, function return; in these cases, the memory order doesn't matter
 	uint64_t self_lifetime; //for stack objects, determines when you will fall off the stack. it's a deletion time, not a creation time.
@@ -93,8 +95,15 @@ class compiler_object
 	//these are the labels which are later in the basic block. you can jump to them without checking finiteness, but you must check the type stack
 	//std::stack<AST*> future_labels;
 
+	struct label_info
+	{
+		llvm::BasicBlock* block;
+		uint64_t stack_size;
+		bool is_forward; //set to 1 on creation, then to 0 after you finish the label's interior.
+		label_info(llvm::BasicBlock* l, uint64_t s, bool f) : block(l), stack_size(s), is_forward(f) {}
+	};
 	//these are labels which can be jumped to. the basic block, and the object stack.
-	std::map<AST*, std::pair<llvm::BasicBlock*, std::vector<AST*>>> labels;
+	std::map<AST*, label_info> labels;
 
 	//a memory pool for storing temporary types. will be cleared at the end of compilation.
 	//it must be a deque so that its memory locations stay valid after push_back().
@@ -106,8 +115,10 @@ class compiler_object
 
 	//some objects have expired - this clears them
 	void clear_stack(uint64_t desired_stack_size);
+	//this runs the dtors. it's called by clear_stack, but also called by goto, which jumps stacks.
+	void emit_dtors(uint64_t desired_stack_size);
 
-	llvm::AllocaInst* create_alloca_in_entry_block(uint64_t size);
+	llvm::AllocaInst* create_alloca(uint64_t size);
 
 	Return_Info generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location = nullptr);
 

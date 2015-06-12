@@ -72,7 +72,7 @@ constexpr Type_info Type_descriptor[] =
 	{"concatenate", 2, -1}, //concatenate two types
 	{"integer", 0, 1}, //64-bit integer
 	{"cheap pointer", 1, 1}, //pointer to anything
-	{"dynamic pointer", 0, 2}, //dynamic pointer. first field is the pointer, second field is a pointer to the type
+	{"dynamic pointer", 0, 2}, //dynamic pointer. first field is the pointer, second field is a pointer to the type. cannot change type after created, unless in ownership lock.
 	{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
 	//the actual object has 6: tag, then previous, then 4 fields.
 	{"function in clouds", 2, 2}, //points to: return AST, then parameter AST, then compiled area. we don't embed the AST along with the function signature, in order to keep them separate.
@@ -119,6 +119,7 @@ namespace T
 		static constexpr Type nonexistent("nonexistent");
 		static constexpr Type missing_field("nonexistent");
 		static constexpr Type special("integer");
+		static constexpr Type parameter_no_type_check("integer");
 		static constexpr Type dynamic_pointer("dynamic pointer");
 		static constexpr Type AST_pointer("AST pointer");
 		static constexpr Type conca1("concatenate", const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer));
@@ -129,6 +130,7 @@ namespace T
 	constexpr Type* nonexistent = const_cast<Type* const>(&i::nonexistent); //nothing at all. used for goto. effectively disables type checking for that field.
 	constexpr Type* missing_field = const_cast<Type* const>(&i::missing_field); //used to say that a parameter field is missing
 	constexpr Type* special = const_cast<Type* const>(&i::special); //indicates that a return type is to be handled differently
+	constexpr Type* parameter_no_type_check = const_cast<Type* const>(&i::parameter_no_type_check); //indicates that a parameter type is not to be type checked using the default mechanism
 	constexpr Type* integer = const_cast<Type* const>(&i::int_); //describes an integer type
 	constexpr Type* dynamic_pointer = const_cast<Type* const>(&i::dynamic_pointer);
 	constexpr Type* null = nullptr;
@@ -191,7 +193,7 @@ struct AST_info
 	{
 		AST_info new_copy(*this);
 		new_copy.pointer_fields = x;
-		if (new_copy.pointer_fields <= new_copy.fields_to_compile)
+		if (new_copy.fields_to_compile >= new_copy.pointer_fields)
 			new_copy.fields_to_compile = new_copy.pointer_fields;
 		return new_copy;
 	}
@@ -252,8 +254,10 @@ keep AST names to one word only, because our console input takes a single word f
 */
 constexpr AST_info AST_descriptor[] =
 {
+	{"null_AST", T::null}, //tag is 0. used when you create an AST and want nullptr
 	a("integer", T::integer, T::integer).make_special_fields(1), //first argument is an integer, which is the returned value.
-	{ "hello", T::null },
+	{"hello", T::null},
+	{"print_int", T::null, T::integer},
 	a("if", T::special).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
 	a("scope", T::null).make_fields_to_compile(1), //fulfills the purpose of {} from C++
 	{ "add", T::integer, T::integer, T::integer }, //adds two integers
@@ -266,9 +270,11 @@ constexpr AST_info AST_descriptor[] =
 	a("compile", T::dynamic_pointer, T::AST_pointer), //compiles an AST, returning a dynamic object which is either the error object or the desired info.
 	a("temp_generate_AST", T::AST_pointer), //hacked in, generates a random AST.
 	{ "dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, T::dynamic_pointer }, //concatenate the interiors of two dynamic pointers
-	a("goto", T::nonexistent).make_pointer_fields(1),
-	{ "label", T::null },
-	a("convert_to_AST", T::AST_pointer, T::integer, T::dynamic_pointer, T::nonexistent).make_fields_to_compile(2), //don't compile the nonexistent branch, because it needs to go in a special basic block.
+	a("goto", T::special).make_pointer_fields(1),
+	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
+	a("convert_to_AST", T::AST_pointer, T::integer, T::parameter_no_type_check, T::dynamic_pointer, T::AST_pointer).make_fields_to_compile(3), //don't compile the nonexistent branch, because it needs to go in a special basic block.
+	a("static_object", T::special, T::dynamic_pointer).make_special_fields(1), //loads a static object.
+	a("load_object", T::special, T::dynamic_pointer).make_special_fields(1), //loads a constant. similar to "int x = 40". if the value ends up on the stack, it can still be modified, but any changes are temporary.
 	{ "never reached", T::special }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	{ "dereference pointer", T::special}, //????
 	a("store", T::special), //????
@@ -324,12 +330,14 @@ constexpr uint64_t get_size(AST* target)
 	else if (target->tag == ASTn("pointer")) return 1;
 	else if (target->tag == ASTn("load")) return get_size(target->fields[0].ptr);
 	else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr); //todo: this is slow. takes n^2 time.
-	error(string("couldn't get size of tag in get_size(), target->tag was") + AST_descriptor[target->tag].name);
+	else if (target->tag == ASTn("static_object")) return get_size((Type*)target->fields[1].ptr);
+	else if (target->tag == ASTn("load_object")) return get_size((Type*)target->fields[1].ptr);
+	else if (target->tag == ASTn("goto")) return get_size(target->fields[3].ptr);
+	error(string("couldn't get size of tag in get_size(AST*), target->tag was ") + AST_descriptor[target->tag].name);
 }
 
 
 enum type_status { RVO, reference }; //distinguishes between RVOing an object, or just creating a reference
 
 unsigned type_check(type_status version, Type* existing_reference, Type* new_reference);
-
-extern bool is_AST_user_facing(uint64_t tag, uint64_t reference);
+extern Type* concatenate_types(std::vector<Type*>& components);

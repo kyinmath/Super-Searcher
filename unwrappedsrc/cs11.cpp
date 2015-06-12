@@ -32,7 +32,8 @@ bool VERBOSE_DEBUG = false;
 bool INTERACTIVE = false;
 bool CONSOLE = false;
 bool TIMER = false;
-bool NONINTELLIGENT = false;
+bool OLD_AST_OUTPUT = false;
+const uint64_t FINITENESS_LIMIT = 10;
 
 basic_onullstream<char> null_stream;
 std::ostream& outstream = std::cerr;
@@ -41,16 +42,13 @@ llvm::raw_ostream* llvm_outstream = &llvm::outs();
 
 
 //todo: threading. create non-global contexts
-#ifndef _MSC_VER
-thread_local
-#endif
-llvm::LLVMContext& thread_context = llvm::getGlobalContext();
-
+thread_local llvm::LLVMContext& thread_context = llvm::getGlobalContext();
+thread_local uint64_t finiteness;
 
 #include <chrono>
 #include <random>
 unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-std::mt19937_64 mersenne(seed);
+std::mt19937_64 mersenne(seed); //this should probably be thread_local
 uint64_t generate_random() { return mersenne(); }
 
 //generates an approximately exponential distribution using bit twiddling
@@ -89,9 +87,11 @@ template<size_t array_num> void cout_array(std::array<uint64_t, array_num> objec
 unsigned compiler_object::compile_AST(AST* target)
 {
 
-	if (VERBOSE_DEBUG) outstream << "starting compilation\n";
-	outstream << "target is " << target << '\n'; //necessary in case it crashes here
-
+	if (VERBOSE_DEBUG)
+	{
+		outstream << "starting compilation\n";
+		outstream << "target is " << target << '\n'; //necessary in case it crashes here
+	}
 	if (target == nullptr)
 	{
 		return IRgen_status::null_AST;
@@ -133,6 +133,7 @@ unsigned compiler_object::compile_AST(AST* target)
 		FPM.add(createPromoteMemoryToRegisterPass()); //Promote allocas to registers.
 		FPM.add(createInstructionCombiningPass()); //Do simple "peephole" optimizations and bit-twiddling optzns.
 		FPM.add(createReassociatePass()); //Reassociate expressions.
+		FPM.add(createScalarReplAggregatesPass()); //I added this.
 
 		FPM.doInitialization();
 		FPM.run(*TheModule->begin());
@@ -176,11 +177,12 @@ unsigned compiler_object::compile_AST(AST* target)
 
 
 /** mem-to-reg only works on entry block variables.
-thus, this function builds llvm::Allocas in the entry block.
+thus, this function builds llvm::Allocas in the entry block. it should be preferred over trying to create allocas directly.
 maybe scalarrepl is more useful for us.
 clang likes to allocate everything in the beginning, so we follow their lead
+we call this "create_alloca" instead of "create_alloca_in_entry_block", because it's the general alloca mechanism. if we said, "in_entry_block", then the user would be confused as to when to use this. by not having that, it's clear that this should be the default.
 */
-llvm::AllocaInst* compiler_object::create_alloca_in_entry_block(uint64_t size) {
+llvm::AllocaInst* compiler_object::create_alloca(uint64_t size) {
 	debugcheck(size > 0, "tried to create a 0-size alloca");
 	llvm::BasicBlock& first_block = Builder.GetInsertBlock()->getParent()->getEntryBlock();
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
@@ -190,11 +192,15 @@ llvm::AllocaInst* compiler_object::create_alloca_in_entry_block(uint64_t size) {
 	else return TmpB.CreateAlloca(int64_type);
 }
 
+void compiler_object::emit_dtors(uint64_t desired_stack_size)
+{
+	//todo
+}
+
 void compiler_object::clear_stack(uint64_t desired_stack_size)
 {
 	while (object_stack.size() != desired_stack_size)
 	{
-		//todo: run dtors if necessary, such as for lock elements
 		object_stack.pop_back();
 	}
 }
@@ -207,7 +213,7 @@ ASTs that are directly inside basic blocks should allocate their own stack_memor
 ASTs that should place their return object inside an already-created memory location are given stack_degree = 1, and storage_location.
 	then, they store the return value into storage_location. storage_location is returned.
 ASTs that return SSA objects are given stack_degree = 0.
-	minor note: we use create_alloca_in_entry_block() so that the llvm optimization pass mem2reg can recognize it.
+	minor note: we use create_alloca() so that the llvm optimization pass mem2reg can recognize it.
 
 Steps of generate_IR:
 check if generate_IR will be in an infinite loop, by using loop_catcher to store the previously seen ASTs.
@@ -242,7 +248,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 	if (stack_degree == 2) debugcheck(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
 	if (stack_degree == 1) debugcheck((storage_location != nullptr) || (get_size(target) == 0), "if stack degree is 1, we should have a storage_location");
-	debugcheck(target != nullptr, "generate_IR should never receive a nullptr target");
+
+	//I decided not let generate_IR take nullptr. because if it cannot, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
+	//debugcheck(target != nullptr, "generate_IR should never receive a nullptr target");
+	if (target == nullptr) return Return_Info();
 
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
 	if (this->loop_catcher.find(target) != this->loop_catcher.end()) return_code(infinite_loop, 10);
@@ -295,8 +304,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
 		}
 		//check that the type matches.
-		if (AST_descriptor[target->tag].parameter_types[x] != T::missing_field)
-			if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != 3) return_code(type_mismatch, x);
+		if (AST_descriptor[target->tag].parameter_types[x] != T::parameter_no_type_check)
+			if (AST_descriptor[target->tag].parameter_types[x] != T::missing_field)
+				if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != 3) return_code(type_mismatch, x);
 
 		field_results.push_back(result);
 	}
@@ -308,12 +318,13 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//if move_to_stack == true, it writes into a previously created storage_location
 	auto finish_internal = [&](llvm::Value* return_value, Type* type, uint64_t upper_life, uint64_t lower_life, bool move_to_stack) -> Return_Info
 	{
+		check(type != T::special, "didn't specify return type when necessary");
 		if (stack_degree >= 1 && size_result == -1) size_result = get_size(target); //note that it's -1, not -1ull.
 		if (stack_degree == 2 && size_result != 0 && storage_location == nullptr)
 		{
 			if (storage_location == nullptr)
 			{
-				storage_location = create_alloca_in_entry_block(size_result);
+				storage_location = create_alloca(size_result);
 				Builder.CreateStore(return_value, storage_location);
 				return_value = storage_location;
 			}
@@ -368,48 +379,55 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//_pointer suffix is when target lifetime information is relevant (for pointers).
 	//_stack_handled if your AST has already created a stack alloca whenever necessary. also, size_result must be already known.
 	//for example, concatenate() and if() use previously constructed return objects, and simply pass them through.
+	//remember: pass the value itself if stack_degree == 0, and pass a pointer to the value if stack_degree == 1 or 2.
 
-	//we can't use X directly because that will duplicate any expressions in the argument.
-#define finish_pointer(X, type, u, l) do {return finish_internal(X, type, u, l, true); } while (0)
-#define finish(X, type) do { finish_pointer(X, type, 0, -1ull); } while (0)
-#define finish_stack_handled(X, type) do { return finish_internal(X, type, 0, -1ull, false); } while (0)
-#define finish_stack_handled_pointer(X, type, u, l) do { return finish_internal(X, type, u, l, false); } while (0)
+	//these are for when we need to specify the return type.
+#define finish_special_pointer(X, type, u, l) do {return finish_internal(X, type, u, l, true); } while (0)
+#define finish_special(X, type) do { finish_special_pointer(X, type, 0, -1ull); } while (0)
+#define finish_special_stack_handled(X, type) do { return finish_internal(X, type, 0, -1ull, false); } while (0)
+#define finish_special_stack_handled_pointer(X, type, u, l) do { return finish_internal(X, type, u, l, false); } while (0)
+
+	//make sure not to duplicate X in the expression.
+#define finish_pointer(X, u, l) do {finish_special_pointer(X, AST_descriptor[target->tag].return_object, u, l); } while (0)
+#define finish(X) do { finish_pointer(X, 0, -1ull); } while (0)
+#define finish_stack_handled(X) do { return finish_internal(X, AST_descriptor[target->tag].return_object, 0, -1ull, false); } while (0)
+#define finish_stack_handled_pointer(X, u, l) do { return finish_internal(X, AST_descriptor[target->tag].return_object, u, l, false); } while (0)
+
 
 	//we generate code for the AST, depending on its tag.
 	switch (target->tag)
 	{
 	case ASTn("integer"):
-		{
-			finish(llvm_integer(target->fields[0].num), T::integer);
-		}
+		finish(llvm_integer(target->fields[0].num));
 	case ASTn("add"): //add two integers.
-		finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR, s("add")), T::integer);
+		finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
 	case ASTn("subtract"):
-		finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")), T::integer);
+		finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
 	case ASTn("hello"):
 		{
-			llvm::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!\n");
+			llvm::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!");
 
 			//create the function type
-			std::vector<llvm::Type*> putsArgs{ Builder.getInt8Ty()->getPointerTo() };
+			std::vector<llvm::Type*> putsArgs{Builder.getInt8Ty()->getPointerTo()};
 			llvm::FunctionType *putsType = llvm::FunctionType::get(Builder.getInt32Ty(), putsArgs, false);
 
 			//get the actual function
 			llvm::Constant *putsFunc = TheModule->getOrInsertFunction("puts", putsType);
 
-			finish(Builder.CreateCall(putsFunc, helloWorld, s("hello world")), T::null);
+			finish(Builder.CreateCall(putsFunc, helloWorld, s("hello world")));
+		}
+
+	case ASTn("print_int"):
+		{
+			llvm::Value* printer = llvm_function(Builder, print_uint64_t, llvm::Type::getVoidTy(thread_context), int64_type);
+			finish(Builder.CreateCall(printer, std::vector<llvm::Value*>{field_results[0].IR}));
 		}
 	case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
-		{
-			llvm::Value *twister_function = llvm_function(Builder, generate_random, int64_type);
-			finish(Builder.CreateCall(twister_function), T::integer);
-		}
+		finish(Builder.CreateCall(llvm_function(Builder, generate_random, int64_type)));
 	case ASTn("if"): //todo: you can see the condition's return object in the branches.
 		//we could have another version where the condition's return object is invisible.
 		//this lets us goto the inside of the if statement.
 		{
-
-
 			//the condition statement
 			if (target->fields[0].ptr == nullptr) return_code(null_AST, 0);
 			auto condition = generate_IR(target->fields[0].ptr, 0);
@@ -420,7 +438,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			if (stack_degree == 2)
 			{
 				size_result = get_size(target);
-				if (size_result >= 1) storage_location = create_alloca_in_entry_block(size_result);
+				if (size_result >= 1) storage_location = create_alloca(size_result);
 			}
 
 			//since the fields are conditionally executed, the temporaries generated in each branch are not necessarily referenceable.
@@ -434,18 +452,17 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
 			llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(thread_context, s("then"), TheFunction);
 			llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(thread_context, s("else"));
-			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(thread_context, s("ifcont"));
+			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(thread_context, s("merge"));
 
 			Builder.CreateCondBr(comparison, ThenBB, ElseBB);
 
 			//start inserting code in the "then" block
-			//WATCH OUT: this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty.
-			//if there are already labels inside the "Then" basic block, we could be in big trouble.
+			//this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty.
+			//if there are already commands inside the "Then" basic block, we would be in trouble
 			Builder.SetInsertPoint(ThenBB);
 
 			//calls with stack_degree as 1 in the called function, if it is 2 outside.
-			Return_Info then_IR; //default constructor for null object
-			if (target->fields[1].ptr != nullptr) then_IR = generate_IR(target->fields[1].ptr, stack_degree != 0, storage_location);
+			Return_Info then_IR = generate_IR(target->fields[1].ptr, stack_degree != 0, storage_location);
 			if (then_IR.error_code) return then_IR;
 
 			//get rid of any temporaries
@@ -457,14 +474,17 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			TheFunction->getBasicBlockList().push_back(ElseBB);
 			Builder.SetInsertPoint(ElseBB); //WATCH OUT: same here.
 
-			Return_Info else_IR; //default constructor for null object
-			if (target->fields[2].ptr != nullptr)
-				else_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, storage_location);
+			Return_Info else_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, storage_location);
 			if (else_IR.error_code) return else_IR;
 
+			Type* result_type = then_IR.type; //first, we assume then_IR is the main type.
 			//RVO, because that's what defines the slot.
-			if (type_check(RVO, then_IR.type, else_IR.type) != 3)
-				return_code(type_mismatch, 2);
+			if (type_check(RVO, else_IR.type, then_IR.type) != 3)
+			{
+				result_type = else_IR.type; //if it didn't work, try seeing if else_IR can be the main type.
+				if (type_check(RVO, then_IR.type, else_IR.type) != 3)
+					return_code(type_mismatch, 2);
+			}
 
 			//for the second branch
 			Builder.CreateBr(MergeBB);
@@ -478,23 +498,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			uint64_t result_target_hit_contract = std::min(then_IR.target_hit_contract, else_IR.target_hit_contract);
 			if (stack_degree == 0)
 			{
-				size_result = get_size(target->fields[1].ptr);
-				if (size_result == 0)
-					return_code(no_error, 0);
-
-				llvm::PHINode *PN;
-				if (size_result == 1)
-					PN = Builder.CreatePHI(int64_type, 2, s("if() end phi integer"));
-				else
-				{
-					llvm::Type* array_type = llvm_array(size_result);
-					PN = Builder.CreatePHI(array_type, 2, s("if() end phi array"));
-				}
-				PN->addIncoming(then_IR.IR, ThenBB);
-				PN->addIncoming(else_IR.IR, ElseBB);
-				finish_pointer(PN, then_IR.type, result_target_life_guarantee, result_target_hit_contract);
+				llvm::Value* endPN = llvm_create_phi(Builder, then_IR.IR, else_IR.IR, then_IR.type, else_IR.type, ThenBB, ElseBB);
+				finish_special_pointer(endPN, result_type, result_target_life_guarantee, result_target_hit_contract);
 			}
-			else finish_stack_handled_pointer(storage_location, then_IR.type, result_target_life_guarantee, result_target_hit_contract);
+			else finish_special_stack_handled_pointer(storage_location, then_IR.type, result_target_life_guarantee, result_target_hit_contract);
 			//even though finish_pointer returns, the else makes it clear from first glance that it's not a continued statement.
 		}
 
@@ -504,33 +511,72 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
 			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
-			llvm::BasicBlock *label = llvm::BasicBlock::Create(thread_context, s("label"), TheFunction);
+			llvm::BasicBlock *label = llvm::BasicBlock::Create(thread_context, "", TheFunction);
+			auto label_insertion = labels.insert(std::make_pair(target, label_info(label, final_stack_position, true)));
+			if (label_insertion.second == false) return_code(label_duplication, 0);
+
+			Return_Info scoped = generate_IR(target->fields[0].ptr, 0);
+			if (scoped.error_code) return scoped;
+
+			//this expires the label, so that goto knows that the label is behind. with finiteness, this means the label isn't guaranteed.
+			label_insertion.first->second.is_forward = false;
 
 			Builder.CreateBr(label);
 			Builder.SetInsertPoint(label);
-			labels.insert(std::make_pair(target, std::make_pair(label, object_stack)));
-
-			finish(nullptr, nullptr);
+			finish(nullptr);
 		}
 
 	case ASTn("goto"):
 		{
 			auto labelsearch = labels.find(target->fields[0].ptr);
 			if (labelsearch == labels.end()) return_code(missing_label, 0);
+			auto info = labelsearch->second;
 
-			//check if the stacks match up
-			std::vector<AST*>& stack = labelsearch->second.second;
-			for (int x = 0; x < stack.size(); ++x)
-				if (stack[x] != object_stack[x])
-					return_code(label_incorrect_stack, 0);
+			//unwind destructors such as locks.
+			if (info.is_forward)
+			{
+				emit_dtors(info.stack_size);
+				Builder.CreateBr(labelsearch->second.block);
+				Builder.ClearInsertionPoint();
+				finish_special(nullptr, T::nonexistent);
+			}
 
-			Builder.CreateBr(labelsearch->second.first);
+			//check finiteness
+			llvm::AllocaInst* finiteness_pointer = (llvm::AllocaInst*)Builder.CreateIntToPtr(llvm_integer((uint64_t)&finiteness), int64_type->getPointerTo());
+			llvm::Value* current_finiteness = Builder.CreateLoad(finiteness_pointer);
+			llvm::Value* comparison = Builder.CreateICmpNE(current_finiteness, llvm_integer(0), s("finiteness comparison"));
+
+
+			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+			llvm::BasicBlock *SuccessBB = llvm::BasicBlock::Create(thread_context, s("success"), TheFunction);
+			llvm::BasicBlock *FailureBB = llvm::BasicBlock::Create(thread_context, s("failure"));
+			Builder.CreateCondBr(comparison, SuccessBB, FailureBB);
+
+			//start inserting code in the "then" block
+			//this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty.
+			//if there are already commands inside the "Then" basic block, we would be in trouble
+			Builder.SetInsertPoint(SuccessBB);
+
+			//decrease finiteness.
+			llvm::Value* finiteness_minus_one = Builder.CreateSub(current_finiteness, llvm_integer(1));
+			Builder.CreateStore(finiteness_minus_one, finiteness_pointer);
+
+			emit_dtors(info.stack_size);
+			Builder.CreateBr(labelsearch->second.block);
 			Builder.ClearInsertionPoint();
 
-			finish(nullptr, T::nonexistent);
+
+			TheFunction->getBasicBlockList().push_back(FailureBB);
+			Builder.SetInsertPoint(FailureBB);
+
+			Return_Info Failure_IR = generate_IR(target->fields[1].ptr, stack_degree != 0, storage_location);
+			if (Failure_IR.error_code) return Failure_IR;
+
+			if (stack_degree == 0) finish_special_pointer(Failure_IR.IR, Failure_IR.type, Failure_IR.target_life_guarantee, Failure_IR.target_hit_contract);
+			else finish_special_stack_handled_pointer(storage_location, Failure_IR.type, Failure_IR.target_life_guarantee, Failure_IR.target_hit_contract);
 		}
 	case ASTn("scope"):
-		finish(nullptr, T::null);
+		finish(nullptr);
 	case ASTn("pointer"):
 		{
 			auto found_AST = objects.find(target->fields[0].ptr);
@@ -542,7 +588,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			///we force cast all llvm pointer types to integers. this makes it easy to represent types inside llvm, since they're described by a single number - their size.
 			llvm::Value* final_result = Builder.CreatePtrToInt(found_AST->second.IR, int64_type, s("flattening pointer"));
 
-			finish_pointer(final_result, &type_scratch_space.back(), found_AST->second.self_lifetime, found_AST->second.self_lifetime);
+			finish_special_pointer(final_result, &type_scratch_space.back(), found_AST->second.self_lifetime, found_AST->second.self_lifetime);
 		}
 	case ASTn("load"):
 		{
@@ -550,74 +596,64 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			//if on_stack is false, it's not an alloca so we should copy instead of loading.
 			Return_Info AST_to_load = found_AST->second;
-			if (AST_to_load.on_stack == false) finish_pointer(AST_to_load.IR, AST_to_load.type, AST_to_load.target_life_guarantee, AST_to_load.target_hit_contract);
-			else finish(Builder.CreateLoad(AST_to_load.IR), AST_to_load.type);
+			if (AST_to_load.on_stack == false) finish_special_pointer(AST_to_load.IR, AST_to_load.type, AST_to_load.target_life_guarantee, AST_to_load.target_hit_contract);
+			else finish_special(Builder.CreateLoad(AST_to_load.IR), AST_to_load.type);
 		}
 	case ASTn("concatenate"):
 		{
 			//TODO: if stack_degree == 1, then you've already gotten the size. look it up in a special location.
 
-			uint64_t first_size = get_size(target->fields[0].ptr);
-			uint64_t second_size = get_size(target->fields[1].ptr);
-			size_result = first_size + second_size;
-			if (first_size > 0 && second_size > 0)
+			uint64_t size[2] = {get_size(target->fields[0].ptr), get_size(target->fields[1].ptr)};
+			size_result = size[0] + size[1];
+			if (size[0] > 0 && size[1] > 0)
 			{
 				//we want the return objects to RVO. thus, we create a memory slot.
-				if (stack_degree == 0 || stack_degree == 2) storage_location = create_alloca_in_entry_block(size_result);
+				if (stack_degree == 0 || stack_degree == 2) storage_location = create_alloca(size_result);
 
-				llvm::AllocaInst* first_location;
-				if (first_size == 1) first_location = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 0, s("first half of concatenate as an integer"));
-				else
+				llvm::AllocaInst* location[2];
+				llvm::Value* pointer[2];
+				Return_Info half[2];
+				for (int x : {0, 1})
 				{
-					llvm::Type* pointer_to_array = llvm_array(first_size)->getPointerTo();
-					llvm::Value* first_pointer = Builder.CreateConstInBoundsGEP2_64(storage_location, 0, 0, s("first half of concatenate"));
-					first_location = (llvm::AllocaInst*)Builder.CreatePointerCast(first_pointer, pointer_to_array, s("pointer cast to array"));
+					uint64_t offset = (x == 1) ? size[0] : 0;
+					if (size[x] == 1) location[x] = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(storage_location, 0, offset, s("half of concatenate as an integer") + s(string{(char)x}));
+					else
+					{
+						llvm::Type* pointer_to_array = llvm_array(size[x])->getPointerTo();
+						pointer[x] = Builder.CreateConstInBoundsGEP2_64(storage_location, 0, offset, s("half of concatenate") + s(string{(char)x}));
+						location[x] = (llvm::AllocaInst*)Builder.CreatePointerCast(pointer[x], pointer_to_array, s("pointer cast to array"));
+					}
+
+					half[x] = generate_IR(target->fields[x].ptr, 1, location[x]);
+					if (half[x].error_code) return half[x];
 				}
-
-				if (target->fields[0].ptr == nullptr) return_code(null_AST, 0);
-				Return_Info first_half = generate_IR(target->fields[0].ptr, 1, first_location);
-				if (first_half.error_code) return first_half;
-
-
-				llvm::AllocaInst* second_location;
-				if (second_size == 1) second_location = (llvm::AllocaInst*)Builder.CreateConstInBoundsGEP2_64(storage_location, 0, first_size);
-				else
-				{
-					llvm::Type* pointer_to_array = llvm_array(second_size)->getPointerTo();
-					llvm::Value* second_pointer = Builder.CreateConstInBoundsGEP2_64(storage_location, 0, first_size, s("second half of concatenate")); //pointer to int.
-					second_location = (llvm::AllocaInst*)Builder.CreatePointerCast(second_pointer, pointer_to_array, s("pointer cast to array")); //ptr to array.
-				}
-				if (target->fields[1].ptr == nullptr) return_code(null_AST, 1);
-				Return_Info second_half = generate_IR(target->fields[1].ptr, 1, second_location);
-				if (second_half.error_code) return second_half;
-				type_scratch_space.push_back(Type("concatenate", first_half.type, second_half.type));
+				type_scratch_space.push_back(Type("concatenate", half[0].type, half[1].type));
 
 				llvm::Value* final_value;
 				if (stack_degree == 0) final_value = Builder.CreateLoad(storage_location, s("load concatenated object"));
 				else final_value = storage_location;
 
-				uint64_t result_target_life_guarantee = std::max(first_half.target_life_guarantee, second_half.target_life_guarantee);
-				uint64_t result_target_hit_contract = std::min(first_half.target_hit_contract, second_half.target_hit_contract);
+				uint64_t result_target_life_guarantee = std::max(half[0].target_life_guarantee, half[1].target_life_guarantee);
+				uint64_t result_target_hit_contract = std::min(half[0].target_hit_contract, half[1].target_hit_contract);
 
-				finish_stack_handled_pointer(final_value, &type_scratch_space.back(), result_target_life_guarantee, result_target_hit_contract);
+				finish_special_stack_handled_pointer(final_value, &type_scratch_space.back(), result_target_life_guarantee, result_target_hit_contract);
 			}
 			else //it's convenient having a pass-through special case, because pass-through means we don't need to have special cases for size-1 objects.
 			{
-				if (target->fields[0].ptr == nullptr) return_code(null_AST, 0);
 				//we only have to RVO if stack_degree is 1, because otherwise we can return the result directly.
 				//that means we don't have to create a storage_location here.
-				Return_Info first_half = generate_IR(target->fields[0].ptr, (stack_degree == 1) && (first_size > 0), storage_location);
-				if (first_half.error_code) return first_half;
+				Return_Info half[2];
+				for (int x : {0, 1})
+				{
+					half[x] = generate_IR(target->fields[x].ptr, (stack_degree == 1) && (size[x] > 0), storage_location);
+					if (half[x].error_code) return half[x];
+				}
 
-				if (target->fields[1].ptr == nullptr) return_code(null_AST, 1);
-				Return_Info second_half = generate_IR(target->fields[1].ptr, (stack_degree == 1) && (second_size > 0), storage_location);
-				if (second_half.error_code) return second_half;
-
-				if (first_size > 0)
-					finish_stack_handled_pointer(first_half.IR, first_half.type, first_half.target_life_guarantee, first_half.target_hit_contract);
-				else
-					finish_stack_handled_pointer(second_half.IR, second_half.type, second_half.target_life_guarantee, second_half.target_hit_contract);
-				//even if second_half is 0, we return it anyway. this is actually good, because of T::nonexistent? well, I would have to think about this more.
+				if (half[0].type == T::nonexistent || half[1].type == T::nonexistent)
+					finish_special(nullptr, T::nonexistent);
+				if (size[0] > 0) finish_special_stack_handled_pointer(half[0].IR, half[0].type, half[0].target_life_guarantee, half[0].target_hit_contract);
+				else finish_special_stack_handled_pointer(half[1].IR, half[1].type, half[1].target_life_guarantee, half[1].target_hit_contract);
+				//even if half[1] is 0, we return it anyway.
 			}
 		}
 
@@ -627,7 +663,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			if (size_of_object >= 1)
 			{
 				llvm::Function* allocator = llvm_function(Builder, allocate_memory, int64_type, int64_type);
-				llvm::Value* dynamic_object_address = Builder.CreateCall(allocator, std::vector<llvm::Value*>{llvm_integer(size_of_object)}, s("allocate memory"));
+				llvm::Value* dynamic_object_address = Builder.CreateCall(allocator, std::vector < llvm::Value* > {llvm_integer(size_of_object)}, s("allocate memory"));
 
 				//can't use ?: because the return objects have different types, unless we cast
 				//this represents either an integer or an array of integers.
@@ -646,17 +682,17 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 				//we now serialize both objects to become integers.
 				llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(2));
-				llvm::Value* first_value = Builder.CreateInsertValue(undef_value, dynamic_object_address, std::vector<unsigned>{ 0 });
-				llvm::Value* full_value = Builder.CreateInsertValue(first_value, integer_type_pointer, std::vector<unsigned>{ 1 });
-				finish(full_value, T::dynamic_pointer);
+				llvm::Value* first_value = Builder.CreateInsertValue(undef_value, dynamic_object_address, std::vector < unsigned > { 0 });
+				llvm::Value* full_value = Builder.CreateInsertValue(first_value, integer_type_pointer, std::vector < unsigned > { 1 });
+				finish(full_value);
 			}
 			else
 			{
 				//zero array, for null dynamic object.
 				llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(2));
-				llvm::Value* first_value = Builder.CreateInsertValue(undef_value, llvm_integer(0), std::vector<unsigned>{ 0 });
-				llvm::Value* full_value = Builder.CreateInsertValue(first_value, llvm_integer(0), std::vector<unsigned>{ 1 });
-				finish(full_value, T::dynamic_pointer);
+				llvm::Value* first_value = Builder.CreateInsertValue(undef_value, llvm_integer(0), std::vector < unsigned > { 0 });
+				llvm::Value* full_value = Builder.CreateInsertValue(first_value, llvm_integer(0), std::vector < unsigned > { 1 });
+				finish(full_value);
 			}
 		}
 	case ASTn("dynamic_conc"):
@@ -666,16 +702,16 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			for (int x : {0, 1})
 			{
 				//can't gep because it's not in memory
-				pointer[x] = Builder.CreateExtractValue(field_results[x].IR, std::vector<unsigned> { 0 }, s("object pointer of dynamic"));
-				type[x] = Builder.CreateExtractValue(field_results[x].IR, std::vector<unsigned> { 1 }, s("type pointer of dynamic"));
+				pointer[x] = Builder.CreateExtractValue(field_results[x].IR, std::vector<unsigned>{0}, s("object pointer of dynamic"));
+				type[x] = Builder.CreateExtractValue(field_results[x].IR, std::vector<unsigned>{1}, s("type pointer of dynamic"));
 			}
 
-			std::vector<llvm::Type*> argument_types{ int64_type, int64_type, int64_type, int64_type };
+			std::vector<llvm::Type*> argument_types{int64_type, int64_type, int64_type, int64_type};
 			//llvm::Type* return_type = llvm_array(2);
 
 			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
 			//if ever the optimization changes, we'll be in trouble.
-			std::vector<llvm::Type*> return_types{ int64_type, int64_type };
+			std::vector<llvm::Type*> return_types{int64_type, int64_type};
 			llvm::Type* return_type = llvm::StructType::get(thread_context, return_types);
 			llvm::FunctionType* dynamic_conc_type = llvm::FunctionType::get(return_type, argument_types, false);
 
@@ -683,41 +719,37 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			llvm::Constant *twister_address = llvm_integer((uint64_t)&concatenate_dynamic);
 			llvm::Value* dynamic_conc_function = Builder.CreateIntToPtr(twister_address, dynamic_conc_type_pointer, s("convert integer address to actual function"));
 
-			std::vector<llvm::Value*> arguments{ pointer[0], type[0], pointer[1], type[1] };
+			std::vector<llvm::Value*> arguments{pointer[0], type[0], pointer[1], type[1]};
 			llvm::Value* result_of_compile = Builder.CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
 
 
 
 
 			//this transformation is necessary because array<uint64_t, 2> becomes {i64, i64}
-			//if ever the optimization changes, we'll be in trouble.
-			//we can't use getelementptr because it's not on the stack, so it can't be referred to.
 			llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(2));
 
-			llvm::Value* first_return = Builder.CreateExtractValue(result_of_compile, std::vector<unsigned>{ 0 });
-			llvm::Value* first_value = Builder.CreateInsertValue(undef_value, first_return, std::vector < unsigned > { 0 });
+			llvm::Value* first_return = Builder.CreateExtractValue(result_of_compile, std::vector<unsigned>{0});
+			llvm::Value* first_value = Builder.CreateInsertValue(undef_value, first_return, std::vector<unsigned>{0});
 
-			llvm::Value* second_return = Builder.CreateExtractValue(result_of_compile, std::vector<unsigned>{ 1 });
-			llvm::Value* full_value = Builder.CreateInsertValue(first_value, second_return, std::vector<unsigned>{ 1 });
+			llvm::Value* second_return = Builder.CreateExtractValue(result_of_compile, std::vector<unsigned>{1});
+			llvm::Value* full_value = Builder.CreateInsertValue(first_value, second_return, std::vector<unsigned>{1});
 
-			finish(full_value, T::dynamic_pointer);
+			finish(full_value);
 		}
 	case ASTn("compile"):
 		{
 			//llvm::Type* return_type = llvm_array(2);
-			
+
 
 			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
 			//if ever the optimization changes, we'll be in trouble.
-			std::vector<llvm::Type*> return_type_members{ int64_type, int64_type };
+			std::vector<llvm::Type*> return_type_members{int64_type, int64_type};
 			llvm::Type* return_type = llvm::StructType::get(thread_context, return_type_members);
-			
+
 			llvm::Value* compile_function = llvm_function(Builder, compile_user_facing, return_type, int64_type);
-				//Builder.CreateIntToPtr(twister_address, compile_type_pointer, s("convert integer address to actual function"));
+			//Builder.CreateIntToPtr(twister_address, compile_type_pointer, s("convert integer address to actual function"));
 
-			//llvm::Constant *compile_function = TheModule->getOrInsertFunction("compile_user_facing", compile_type);
-
-			std::vector<llvm::Value*> arguments{ field_results[0].IR };
+			std::vector<llvm::Value*> arguments{field_results[0].IR};
 			llvm::Value* result_of_compile = Builder.CreateCall(compile_function, arguments, s("compile"));
 
 
@@ -725,74 +757,108 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
 			llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(2));
 
-			llvm::Value* first_return = Builder.CreateExtractValue(result_of_compile, std::vector<unsigned>{ 0 });
+			llvm::Value* first_return = Builder.CreateExtractValue(result_of_compile, std::vector < unsigned > { 0 });
 			llvm::Value* first_value = Builder.CreateInsertValue(undef_value, first_return, std::vector < unsigned > { 0 });
 
-			llvm::Value* second_return = Builder.CreateExtractValue(result_of_compile, std::vector<unsigned>{ 1 });
-			llvm::Value* full_value = Builder.CreateInsertValue(first_value, second_return, std::vector<unsigned>{ 1 });
+			llvm::Value* second_return = Builder.CreateExtractValue(result_of_compile, std::vector < unsigned > { 1 });
+			llvm::Value* full_value = Builder.CreateInsertValue(first_value, second_return, std::vector < unsigned > { 1 });
 
-			finish(full_value, T::dynamic_pointer);
+			finish(full_value);
 		}
 	case ASTn("convert_to_AST"):
 		{
 			llvm::IntegerType* boolean = llvm::IntegerType::get(thread_context, 1);
 			llvm::Value* checker_function = llvm_function(Builder, is_AST_user_facing, boolean, int64_type, int64_type);
 
-			llvm::Value* pointer = Builder.CreateExtractValue(field_results[1].IR, std::vector<unsigned>{0}, s("fields of hopeful AST"));
-			llvm::Value* type = Builder.CreateExtractValue(field_results[1].IR, std::vector<unsigned>{1}, s("type of hopeful AST"));
+			llvm::Value* pointer = Builder.CreateExtractValue(field_results[2].IR, std::vector < unsigned > {0}, s("fields of hopeful AST"));
+			llvm::Value* type = Builder.CreateExtractValue(field_results[2].IR, std::vector < unsigned > {1}, s("type of hopeful AST"));
+
+			llvm::Value* previous_AST;
+			if (type_check(RVO, field_results[1].type, nullptr) == 3) //previous AST is nullptr.
+				previous_AST = llvm_integer(0);
+			else if (type_check(RVO, field_results[1].type, T::AST_pointer) == 3) //previous AST actually exists
+				previous_AST = field_results[1].IR;
+			else return_code(type_mismatch, 1);
+
+			std::vector<llvm::Value*> arguments{field_results[0].IR, type};
+			llvm::Value* check_result = Builder.CreateCall(checker_function, arguments, s("checker"));
 
 
-			std::vector<llvm::Value*> arguments{ field_results[0].IR, type };
-			llvm::Value* check_result = Builder.CreateCall(checker_function, arguments, s("converter"));
-
-
-
-
-
-			//NOTE: we are testing if it is NOT True!!!
-			//this is because we want the failure branch to appear first, since finish() fills in the type.
-			//finish() should go at the end.
-			llvm::Value* comparison = Builder.CreateICmpNE(check_result, llvm::ConstantInt::getTrue(thread_context), s("if() condition"));
+			llvm::Value* comparison = Builder.CreateICmpNE(check_result, llvm::ConstantInt::getFalse(thread_context), s("if() condition"));
 			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+			llvm::BasicBlock *SuccessBB = llvm::BasicBlock::Create(thread_context, s("success"), TheFunction);
+			llvm::BasicBlock *FailureBB = llvm::BasicBlock::Create(thread_context, s("failure"));
+			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(thread_context, s("merge"));
+			Builder.CreateCondBr(comparison, SuccessBB, FailureBB);
+			Builder.SetInsertPoint(SuccessBB);
 
-			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
-			llvm::BasicBlock *FailureBB = llvm::BasicBlock::Create(thread_context, s("failure"), TheFunction);
-			llvm::BasicBlock *SuccessBB = llvm::BasicBlock::Create(thread_context, s("else"));
+			llvm::Value* converter_function = llvm_function(Builder, make_AST_pointer_from_dynamic, int64_type, int64_type, int64_type, int64_type);
+			std::vector<llvm::Value*> arguments2{field_results[0].IR, previous_AST, pointer};
+			llvm::Value* success_result = Builder.CreateCall(converter_function, arguments2, s("AST pointer conversion"));
 
-
-			//again, note that we've reversed them!
-			Builder.CreateCondBr(comparison, FailureBB, SuccessBB);
-
-			//start inserting code in the "failure" branch
+			Builder.CreateBr(MergeBB);
+			SuccessBB = Builder.GetInsertBlock();
+			TheFunction->getBasicBlockList().push_back(FailureBB);
 			Builder.SetInsertPoint(FailureBB);
 
 			//calls with stack_degree as 1 in the called function, if it is 2 outside.
-			Return_Info failure_IR; //default constructor for null object
-			if (target->fields[2].ptr != nullptr) failure_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, storage_location);
+			Return_Info failure_IR = generate_IR(target->fields[3].ptr, stack_degree != 0, storage_location);
 			if (failure_IR.error_code) return failure_IR;
+			if (type_check(RVO, failure_IR.type, T::AST_pointer)) return_code(type_mismatch, 3);
 
-			output_type_and_previous(failure_IR.type);
-			if (failure_IR.type != T::nonexistent)
-				return_code(type_mismatch, 2);
+			Builder.CreateBr(MergeBB);
+			FailureBB = Builder.GetInsertBlock();
+			TheFunction->getBasicBlockList().push_back(MergeBB);
+			Builder.SetInsertPoint(MergeBB);
 
-			TheFunction->getBasicBlockList().push_back(SuccessBB);
-			Builder.SetInsertPoint(SuccessBB);
+			if (stack_degree == 0)
+			{
+				llvm::Value* endPN = llvm_create_phi(Builder, success_result, failure_IR.IR, T::AST_pointer, T::AST_pointer, SuccessBB, FailureBB);
+				finish_special(endPN, T::AST_pointer);
+			}
+			else finish_special_stack_handled(storage_location, T::AST_pointer);
 
-
-			llvm::Value* converter_function = llvm_function(Builder, make_AST_pointer_from_dynamic, int64_type, int64_type, int64_type);
-			std::vector<llvm::Value*> arguments2{ field_results[0].IR, pointer };
-			llvm::Value* conversion_result = Builder.CreateCall(converter_function, arguments2, s("convert pointer to full AST pointer"));
-
-			finish(conversion_result, T::AST_pointer); //todo: we should definitely copy them, instead of just copying the pointer
 		}
 	case ASTn("temp_generate_AST"):
 		{
-			llvm::Value* twister_function = llvm_function(Builder, ASTmaker, int64_type);
+			llvm::Value* generator = llvm_function(Builder, ASTmaker, int64_type);
 			//llvm::Constant *twister_function = TheModule->getOrInsertFunction("ASTmaker", AST_maker_type);
+			finish(Builder.CreateCall(generator, s("ASTmaker")));
+		}
+	case ASTn("static_object"):
+		{
+			llvm::Value* address_of_object = llvm_integer(target->fields[0].num);
+			Type* type_of_object = (Type*)target->fields[1].ptr;
+			uint64_t size_of_object = get_size(type_of_object);
+			if (size_of_object)
+			{
+				llvm::Type* pointer_to_array = llvm_array(size_of_object)->getPointerTo();
+				storage_location = (llvm::AllocaInst*)Builder.CreatePointerCast(address_of_object, pointer_to_array, s("pointer cast to array"));
 
-			llvm::Value* result_AST = Builder.CreateCall(twister_function, s("ASTmaker"));
+				llvm::Value* final_value = stack_degree == 0 ? (llvm::Value*)Builder.CreateLoad(storage_location, s("load concatenated object")) : storage_location;
+				finish_special_stack_handled_pointer(final_value, type_of_object, full_lifetime, full_lifetime);
+			}
+			else finish_special(nullptr, nullptr);
+		}
+	case ASTn("load_object"): //bakes in the value into the compiled function. changes by the function are temporary.
+		{
+			//problem: what to do about pointers? especially things like functions and unique pointers. does a simply memory copy really copy the object?
+			uint64_t* array_of_integers = (uint64_t*)(target->fields[0].ptr);
+			Type* type_of_object = (Type*)target->fields[1].ptr;
+			uint64_t size_of_object = get_size(type_of_object);
+			if (size_of_object)
+			{
+				std::vector<llvm::Constant*> values;
+				values.reserve(size_of_object);
+				for (int x = 0; x < size_of_object; ++x)
+				{
+					values.push_back(llvm_integer(array_of_integers[x]));
+				}
 
-			finish(result_AST, T::AST_pointer);
+				llvm::Constant* object = llvm::ConstantArray::get(llvm_array(size_of_object), values);
+				finish_special(object, type_of_object);
+			}
+			else finish_special(nullptr, nullptr);
 		}
 	}
 	error("fell through switches");
@@ -814,36 +880,38 @@ void fuzztester(unsigned iterations)
 	while (iterations--)
 	{
 		//create a random AST
-		unsigned tag = mersenne() % ASTn("never reached");
+		unsigned tag = mersenne() % (ASTn("never reached") - 1) + 1; //we skip 0 because that's a null AST
 		unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
 		unsigned prev_AST = generate_exponential_dist() % AST_list.size(); //todo: prove that exponential_dist is desired.
 		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
 		//but does exponential falloff solve this problem in the way we want?
 
+
 		int_or_ptr<AST> fields[4]{nullptr, nullptr, nullptr, nullptr};
 		int incrementor = 0;
 		for (; incrementor < pointer_fields; ++incrementor)
 			fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous ASTs
-		if (NONINTELLIGENT) //fill every field with rubbish
+		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
 		{
-			for (; incrementor < max_fields_in_AST; ++incrementor)
+			if (AST_descriptor[tag].parameter_types[incrementor] == T::integer)
 				fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields
-		}
-		else //only fill in relevant fields with rubbish
-		{
-			outstream << "number of total fields is " << pointer_fields + AST_descriptor[tag].additional_special_fields << '\n';
-			for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
-				fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields
+			else
+			{
+				outstream << "fuzztester doesn't know how to make this special type, so it's going to be 0's.\n";
+				check(incrementor == pointer_fields + AST_descriptor[tag].additional_special_fields - 1, "egads! I need to build functionality for tracking the current parameter field offset and the current parameter type separately, because there are extra fields after the special field, and the special field may have size different from 1\n");
+			}
 		}
 		AST* test_AST= new AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
-		output_AST_and_previous(test_AST);
+		if (OLD_AST_OUTPUT)
+			output_AST_and_previous(test_AST);
 		output_AST_console_version a(test_AST);
 
+		finiteness = FINITENESS_LIMIT;
 		compiler_object compiler;
 		unsigned error_code = compiler.compile_AST(test_AST);
 		if (error_code)
 		{
-			outstream << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << " " << AST_descriptor[compiler.error_location->tag].name << " field " << compiler.error_field << "\n\n";
+			outstream << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << " " << AST_descriptor[compiler.error_location->tag].name << " field " << compiler.error_field << "\n";
 			delete test_AST;
 		}
 		else
@@ -856,6 +924,7 @@ void fuzztester(unsigned iterations)
 			outstream << "Press enter to continue\n";
 			std::cin.get();
 		}
+		outstream << "\n";
 	}
 }
 
@@ -1001,6 +1070,7 @@ public:
 
 int main(int argc, char* argv[])
 {
+	std::cout << "finiteness address " << (uint64_t)&finiteness << '\n';
 	//tells LLVM the generated code should be for the native platform
 	llvm::InitializeNativeTarget();
 	llvm::InitializeNativeTargetAsmPrinter();
@@ -1025,10 +1095,11 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "optimize") == 0) OPTIMIZE = true;
 		else if (strcmp(argv[x], "console") == 0) CONSOLE = true;
 		else if (strcmp(argv[x], "timer") == 0) TIMER = true;
-		else if (strcmp(argv[x], "nonintelligent") == 0) NONINTELLIGENT = true; //fuzztester generates random numbers in all fields, not just fields that are used
+		else if (strcmp(argv[x], "oldoutput") == 0) OLD_AST_OUTPUT = false;
 		else if (strcmp(argv[x], "quiet") == 0)
 		{
 			outstream.setstate(std::ios_base::failbit);
+			outstream.rdbuf(nullptr);
 			llvm_outstream = &llvm_null_stream;
 		}
 		else error(string("unrecognized flag ") + argv[x]);
@@ -1072,6 +1143,7 @@ int main(int argc, char* argv[])
 				continue;
 			}
 			output_AST_and_previous(end);
+			finiteness = FINITENESS_LIMIT;
 			compiler_object j;
 			unsigned error_code = j.compile_AST(end);
 			if (error_code)
