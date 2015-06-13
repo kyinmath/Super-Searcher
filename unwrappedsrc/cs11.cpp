@@ -123,7 +123,7 @@ unsigned compiler_object::compile_AST(AST* target)
 	{
 		outstream << "optimized code: \n";
 		llvm::legacy::FunctionPassManager FPM(TheModule);
-		TheModule->setDataLayout(engine->getDataLayout());
+		TheModule->setDataLayout(*engine->getDataLayout());
 
 		FPM.add(createBasicAliasAnalysisPass()); //Provide basic AliasAnalysis support for GVN.
 		FPM.add(createInstructionCombiningPass()); //Do simple "peephole" optimizations and bit-twiddling optzns.
@@ -276,9 +276,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	//after compiling the previous elements in the basic block, we find the lifetime of this element
 	uint64_t lifetime_of_return_value = incrementor_for_lifetime++;
 
-	uint64_t size_result = -1; //note: it's only active when stack_degree = 1. otherwise, you must have special cases.
-	//-1 is a debug choice, since having it at 0 led to invisible errors.
-	//note that it's -1, not -1ull.
+	uint64_t size_result = special; //note: it's only active when stack_degree = 1. otherwise, you must have special cases.
+	//-1ll is a debug choice, since having it at 0 led to invisible errors.
 	//whenever you use create_alloca(), make sure size_result is actually set.
 
 	uint64_t final_stack_position = object_stack.size();
@@ -319,7 +318,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	auto finish_internal = [&](llvm::Value* return_value, Type* type, uint64_t upper_life, uint64_t lower_life, bool move_to_stack) -> Return_Info
 	{
 		check(type != T::special, "didn't specify return type when necessary");
-		if (stack_degree >= 1 && size_result == -1) size_result = get_size(target); //note that it's -1, not -1ull.
+		if (stack_degree >= 1 && size_result == special) size_result = get_size(target);
 		if (stack_degree == 2 && size_result != 0 && storage_location == nullptr)
 		{
 			if (storage_location == nullptr)
@@ -383,14 +382,14 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 	//these are for when we need to specify the return type.
 #define finish_special_pointer(X, type, u, l) do {return finish_internal(X, type, u, l, true); } while (0)
-#define finish_special(X, type) do { finish_special_pointer(X, type, 0, -1ull); } while (0)
-#define finish_special_stack_handled(X, type) do { return finish_internal(X, type, 0, -1ull, false); } while (0)
+#define finish_special(X, type) do { finish_special_pointer(X, type, 0, -1ll); } while (0)
+#define finish_special_stack_handled(X, type) do { return finish_internal(X, type, 0, -1ll, false); } while (0)
 #define finish_special_stack_handled_pointer(X, type, u, l) do { return finish_internal(X, type, u, l, false); } while (0)
 
 	//make sure not to duplicate X in the expression.
 #define finish_pointer(X, u, l) do {finish_special_pointer(X, AST_descriptor[target->tag].return_object, u, l); } while (0)
-#define finish(X) do { finish_pointer(X, 0, -1ull); } while (0)
-#define finish_stack_handled(X) do { return finish_internal(X, AST_descriptor[target->tag].return_object, 0, -1ull, false); } while (0)
+#define finish(X) do { finish_pointer(X, 0, -1ll); } while (0)
+#define finish_stack_handled(X) do { return finish_internal(X, AST_descriptor[target->tag].return_object, 0, -1ll, false); } while (0)
 #define finish_stack_handled_pointer(X, u, l) do { return finish_internal(X, AST_descriptor[target->tag].return_object, u, l, false); } while (0)
 
 
@@ -423,7 +422,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			finish(Builder.CreateCall(printer, std::vector<llvm::Value*>{field_results[0].IR}));
 		}
 	case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
-		finish(Builder.CreateCall(llvm_function(Builder, generate_random, int64_type)));
+		finish(Builder.CreateCall(llvm_function(Builder, generate_random, int64_type), std::vector<llvm::Value*>{}));
 	case ASTn("if"): //todo: you can see the condition's return object in the branches.
 		//we could have another version where the condition's return object is invisible.
 		//this lets us goto the inside of the if statement.
@@ -828,7 +827,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		{
 			llvm::Value* generator = llvm_function(Builder, ASTmaker, int64_type);
 			//llvm::Constant *twister_function = TheModule->getOrInsertFunction("ASTmaker", AST_maker_type);
-			finish(Builder.CreateCall(generator, s("ASTmaker")));
+			finish(Builder.CreateCall(generator, std::vector<llvm::Value*>{}, s("ASTmaker")));
 		}
 	case ASTn("static_object"):
 		{
@@ -990,7 +989,7 @@ class source_reader
 	AST* read_single_AST(AST* previous_AST, string continued_string = "")
 	{
 		string first = continued_string == "" ? get_token() : continued_string;
-		AST* new_type = new AST(-1); //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
+		AST* new_type = new AST(special); //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
 
 		if (first != string(1, '[')) //it's a name reference.
 		{

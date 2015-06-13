@@ -40,8 +40,10 @@ type_check_result type_check(type_status version, Type* existing_reference, Type
 		output_type(existing_reference);
 		output_type(new_reference);
 	}
-	if (existing_reference->tag == Typen("nonexistent"))
-		return type_check_result::perfect_fit; //nonexistent means that the code path is never seen.
+	if (existing_reference != nullptr)
+		if (existing_reference->tag == Typen("nonexistent"))
+			return type_check_result::perfect_fit; //nonexistent means that the code path is never seen.
+	//todo: if we actually just check against the const T::nonexistent, it seems to test false. why isn't it uniqued properly?
 
 	//this stack enables two-part recursion using both type objects, which isn't possible otherwise.
 	//fully_immut must always be exactly the same for both types, so we technically don't need to store it twice. but we do anyway, for now.

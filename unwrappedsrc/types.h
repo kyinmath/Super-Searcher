@@ -58,18 +58,20 @@ struct Type_info
 	const char* name;
 	const unsigned pointer_fields; //how many field elements of the type object must be pointers
 
-	//size of the actual object. -1 if special
-	const int size;
+	//size of the actual object. -1ll if special
+	const uint64_t size;
 
-	constexpr Type_info(const char a[], unsigned n, int s) : name(a), pointer_fields(n), size(s) {}
+	constexpr Type_info(const char a[], unsigned n, uint64_t s) : name(a), pointer_fields(n), size(s) {}
 };
+
+constexpr uint64_t special = -1ll; //note that a -1 literal, without specifying ll, can either be int32 or int64, so we could be in great trouble.
 
 /* Guidelines for new Types:
 you must create an entry in type_check.
 */
 constexpr Type_info Type_descriptor[] =
 {
-	{"concatenate", 2, -1}, //concatenate two types
+	{"concatenate", 2, special}, //concatenate two types
 	{"integer", 0, 1}, //64-bit integer
 	{"cheap pointer", 1, 1}, //pointer to anything
 	{"dynamic pointer", 0, 2}, //dynamic pointer. first field is the pointer, second field is a pointer to the type. cannot change type after created, unless in ownership lock.
@@ -149,7 +151,7 @@ constexpr uint64_t get_size(Type* target)
 {
 	if (target == nullptr)
 		return 0;
-	if (Type_descriptor[target->tag].size != -1) return Type_descriptor[target->tag].size;
+	if (Type_descriptor[target->tag].size != special) return Type_descriptor[target->tag].size;
 	else if (target->tag == Typen("concatenate"))
 	{
 		return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
@@ -168,7 +170,7 @@ struct AST_info
 {
 	const char* name;
 
-	//in ASTs, this is the size of the return object. -1 if it must be handled in a special way.
+	//in ASTs, this is the size of the return object. it's special (= -1ll) if it must be handled in a special way.
 	//in the case of types, the size of the actual object.
 	const int size_of_return;
 
@@ -315,7 +317,7 @@ struct AST
 	std::array<iop, max_fields_in_AST> fields;
 	AST(const char name[], AST* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
 		: tag(ASTn(name)), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {} //VS complains about aggregate initialization, but it is wrong.
-	AST(unsigned direct_tag, AST* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
+	AST(uint64_t direct_tag, AST* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
 		: tag(direct_tag), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {}
 	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };
