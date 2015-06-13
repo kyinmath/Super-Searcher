@@ -1,6 +1,7 @@
 #include <stack>
 #include "types.h"
 #include "debugoutput.h"
+#include "cs11.h"
 
 /*
 the docs in this file are incomplete.
@@ -27,15 +28,20 @@ with RVO, first must be smaller than fields[0]. with reference, it's the opposit
 so: 0 = different. 1 = new reference is too large. 2 = existing reference is too large. 3 = perfect match.
 */
 
-
-unsigned type_check(type_status version, Type* existing_reference, Type* new_reference)
+type_check_result type_check(type_status version, Type* existing_reference, Type* new_reference)
 {
 	std::array<Type*, 2> iter = { existing_reference, new_reference };
 	if (iter[0] == iter[1])// && (lock[0] == lock[1] || version == RVO))
-		return 3; //easy way out, if lucky. we can't do this later, because our stack might have extra things to look at.
+		return type_check_result::perfect_fit; //easy way out, if lucky. we can't do this later, because our stack might have extra things to look at.
 
-	if (existing_reference == T::nonexistent)
-		return 3; //nonexistent means that the code path is never seen.
+	if (VERBOSE_DEBUG)
+	{
+		outstream << "type_checking these types: ";
+		output_type(existing_reference);
+		output_type(new_reference);
+	}
+	if (existing_reference->tag == Typen("nonexistent"))
+		return type_check_result::perfect_fit; //nonexistent means that the code path is never seen.
 
 	//this stack enables two-part recursion using both type objects, which isn't possible otherwise.
 	//fully_immut must always be exactly the same for both types, so we technically don't need to store it twice. but we do anyway, for now.
@@ -83,10 +89,10 @@ check_next_token:
 		if (found_no_further_things_to_do)
 		{
 			if (iter[0] == nullptr && iter[1] == nullptr)
-				return 3; //success!
+				return type_check_result::perfect_fit; //success!
 			else if (iter[1] == nullptr)
-				return 2; //existing ref is too large.
-			else return 1; //new ref is too large
+				return type_check_result::existing_reference_too_large;
+			else return type_check_result::new_reference_too_large;
 		}
 		else goto check_next_token;
 	}
@@ -108,9 +114,12 @@ check_next_token:
 		{
 		case Typen("cheap pointer"):
 			if (iter[0]->tag == iter[1]->tag)
-					if (type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr) > 1)
-						goto finished_checking;
-			return 0; //else
+			{
+				auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
+				if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
+					goto finished_checking;
+			}
+			return type_check_result::different; //else
 			/*
 		case Typen("fixed integer"): //no need for lock check.
 			if (iter[0]->tag == iter[1]->tag)
@@ -122,13 +131,13 @@ check_next_token:
 					goto finished_checking;
 			//maybe we should also allow two uints in a row to take a dynamic pointer?
 				//we'd have to think about that. the current system allows for large types in the new reference to accept pieces, but I don't know if that's the best.
-			return 0;
+				return type_check_result::different;
 
 		case Typen("dynamic pointer"):
 		case Typen("AST pointer"):
 			if (iter[0]->tag == iter[1]->tag)
 				goto finished_checking;
-			return 0;
+			return type_check_result::different;
 		default:
 			error("default switch in fully immut/RVO branch");
 		}
@@ -142,15 +151,17 @@ check_next_token:
 		//for pointers, we cannot pass in fully_immut. because the old reference must be valid too, and we can't point to anything more general than the old reference.
 
 		//first type field must be the same
-		if (iter[1]->tag != iter[0]->tag) return 0;
+		if (iter[1]->tag != iter[0]->tag) return type_check_result::different;
 
 		switch (iter[1]->tag)
 		{
 		case Typen("cheap pointer"):
-
-			if (type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr) > 1)
-				goto finished_checking;
-			return 0;
+			{
+				auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
+				if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
+					goto finished_checking;
+				return type_check_result::different;
+			}
 		/*
 		case Typen("fixed integer"): //no need for lock check.
 			if (iter[1]->fields[0].num == iter[0]->fields[0].num)

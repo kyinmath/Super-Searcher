@@ -339,5 +339,16 @@ constexpr uint64_t get_size(AST* target)
 
 enum type_status { RVO, reference }; //distinguishes between RVOing an object, or just creating a reference
 
-unsigned type_check(type_status version, Type* existing_reference, Type* new_reference);
+
+//from experience, we can't have the return value automatically work as a bool, because that causes errors.
+//note that if it's a perfect fit, the sizes may still be different, because of T::nonexistent.
+enum class type_check_result
+{
+	different,
+	new_reference_too_large,
+	existing_reference_too_large,
+	perfect_fit
+};
+
+type_check_result type_check(type_status version, Type* existing_reference, Type* new_reference);
 extern Type* concatenate_types(std::vector<Type*>& components);

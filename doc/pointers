@@ -26,7 +26,6 @@ thus, the return object cannot contain objects from the parameter list.
 
 we still can't get pointers to temporary objects. in llvm, modifying a temporary object would require creating an alloca, and then copying it into the correct slot.
 	in C++, you also can't get pointers to temporary objects, since they're not lvalues.
-but even so, we should be able to copy them.
 
 when stack degree >= 1, the type should be a pointer
 and just like in LLVM, we don't need an "address-of" pointer.

@@ -1,7 +1,6 @@
-make the fuzzer work again
-	goto limits and finiteness
 variable changing (CreateStore)
 	ownership of dynamic objects, so we can overwrite the types.
+	type slicing
 move the fuzzer into AST format
 
 locks?

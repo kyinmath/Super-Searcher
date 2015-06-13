@@ -133,7 +133,7 @@ inline bool is_AST(uint64_t tag, Type* reference)
 	for (int x = 0; x < AST_descriptor[tag].additional_special_fields; ++x)
 		fields.push_back(AST_descriptor[tag].parameter_types[number_of_AST_pointers + x]);
 
-	return type_check(RVO, reference, concatenate_types(fields)) == 3;
+	return type_check(RVO, reference, concatenate_types(fields)) == type_check_result::perfect_fit;
 	//this is RVO because we're copying the dynamic object over.
 }
 

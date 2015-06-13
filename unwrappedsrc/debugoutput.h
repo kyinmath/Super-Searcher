@@ -42,6 +42,11 @@ private:
 //only call on a non-nullptr target. outputs a single Type.
 inline void output_type(Type* target)
 {
+	if (target == nullptr)
+	{
+		outstream << "null type\n";
+		return;
+	}
 	if (target == T::special) { outstream << "special\n"; return; }
 	outstream << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), addr " << target << ", ";
 	outstream << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
@@ -66,6 +71,11 @@ inline void output_type_and_previous(Type* target)
 //only call on a non-nullptr target. outputs a single AST.
 inline void output_AST(AST* target)
 {
+	if (target == nullptr)
+	{
+		outstream << "null AST\n";
+		return;
+	}
 	outstream << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), addr " << target <<
 		", prev " << target->preceding_BB_element << ", ";
 	outstream << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';

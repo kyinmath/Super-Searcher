@@ -118,7 +118,7 @@ unsigned compiler_object::compile_AST(AST* target)
 	else Builder.CreateRetVoid();
 
 	TheModule->print(*llvm_outstream, nullptr);
-	debugcheck(!llvm::verifyFunction(*F, llvm_outstream), "verification failed");
+	check(!llvm::verifyFunction(*F, llvm_outstream), "verification failed");
 	if (OPTIMIZE)
 	{
 		outstream << "optimized code: \n";
@@ -183,7 +183,7 @@ clang likes to allocate everything in the beginning, so we follow their lead
 we call this "create_alloca" instead of "create_alloca_in_entry_block", because it's the general alloca mechanism. if we said, "in_entry_block", then the user would be confused as to when to use this. by not having that, it's clear that this should be the default.
 */
 llvm::AllocaInst* compiler_object::create_alloca(uint64_t size) {
-	debugcheck(size > 0, "tried to create a 0-size alloca");
+	check(size > 0, "tried to create a 0-size alloca");
 	llvm::BasicBlock& first_block = Builder.GetInsertBlock()->getParent()->getEntryBlock();
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
 
@@ -246,11 +246,11 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		else outstream << "null\n";
 	}
 
-	if (stack_degree == 2) debugcheck(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
-	if (stack_degree == 1) debugcheck((storage_location != nullptr) || (get_size(target) == 0), "if stack degree is 1, we should have a storage_location");
+	if (stack_degree == 2) check(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
+	if (stack_degree == 1) check((storage_location != nullptr) || (get_size(target) == 0), "if stack degree is 1, we should have a storage_location");
 
 	//I decided to let generate_IR take nullptr. because if it cannot, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
-	//debugcheck(target != nullptr, "generate_IR should never receive a nullptr target");
+	//check(target != nullptr, "generate_IR should never receive a nullptr target");
 	if (target == nullptr) return Return_Info();
 
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
@@ -306,7 +306,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 		//check that the type matches.
 		if (AST_descriptor[target->tag].parameter_types[x] != T::parameter_no_type_check)
 			if (AST_descriptor[target->tag].parameter_types[x] != T::missing_field)
-				if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != 3) return_code(type_mismatch, x);
+				if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != type_check_result::perfect_fit) return_code(type_mismatch, x);
 
 		field_results.push_back(result);
 	}
@@ -328,7 +328,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 				Builder.CreateStore(return_value, storage_location);
 				return_value = storage_location;
 			}
-			else debugcheck(move_to_stack == false, "if move_to_stack is true, then we shouldn't have already created the storage_location");
+			else check(move_to_stack == false, "if move_to_stack is true, then we shouldn't have already created the storage_location");
 		}
 		if (stack_degree == 1 && move_to_stack)
 		{
@@ -433,7 +433,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			auto condition = generate_IR(target->fields[0].ptr, 0);
 			if (condition.error_code) return condition;
 
-			if (type_check(RVO, condition.type, T::integer) != 3) return_code(type_mismatch, 0);
+			if (type_check(RVO, condition.type, T::integer) != type_check_result::perfect_fit) return_code(type_mismatch, 0);
 
 			if (stack_degree == 2)
 			{
@@ -479,10 +479,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 			Type* result_type = then_IR.type; //first, we assume then_IR is the main type.
 			//RVO, because that's what defines the slot.
-			if (type_check(RVO, else_IR.type, then_IR.type) != 3)
+			if (type_check(RVO, else_IR.type, then_IR.type) != type_check_result::perfect_fit)
 			{
 				result_type = else_IR.type; //if it didn't work, try seeing if else_IR can be the main type.
-				if (type_check(RVO, then_IR.type, else_IR.type) != 3)
+				if (type_check(RVO, then_IR.type, else_IR.type) != type_check_result::perfect_fit)
 					return_code(type_mismatch, 2);
 			}
 
@@ -697,10 +697,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			else
 			{
 				//zero array, for null dynamic object.
-				llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(2));
-				llvm::Value* first_value = Builder.CreateInsertValue(undef_value, llvm_integer(0), std::vector < unsigned > { 0 });
-				llvm::Value* full_value = Builder.CreateInsertValue(first_value, llvm_integer(0), std::vector < unsigned > { 1 });
-				finish(full_value);
+				finish(llvm::ConstantArray::get(llvm_array(2), std::vector<llvm::Constant*>{llvm_integer(0), llvm_integer(0)}));
 			}
 		}
 	case ASTn("dynamic_conc"):
@@ -782,9 +779,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			llvm::Value* type = Builder.CreateExtractValue(field_results[2].IR, std::vector < unsigned > {1}, s("type of hopeful AST"));
 
 			llvm::Value* previous_AST;
-			if (type_check(RVO, field_results[1].type, nullptr) == 3) //previous AST is nullptr.
+			if (type_check(RVO, field_results[1].type, nullptr) == type_check_result::perfect_fit) //previous AST is nullptr.
 				previous_AST = llvm_integer(0);
-			else if (type_check(RVO, field_results[1].type, T::AST_pointer) == 3) //previous AST actually exists
+			else if (type_check(RVO, field_results[1].type, T::AST_pointer) == type_check_result::perfect_fit) //previous AST actually exists
 				previous_AST = field_results[1].IR;
 			else return_code(type_mismatch, 1);
 
@@ -812,7 +809,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			//calls with stack_degree as 1 in the called function, if it is 2 outside.
 			Return_Info failure_IR = generate_IR(target->fields[3].ptr, stack_degree != 0, storage_location);
 			if (failure_IR.error_code) return failure_IR;
-			if (type_check(RVO, failure_IR.type, T::AST_pointer)) return_code(type_mismatch, 3);
+			if (type_check(RVO, failure_IR.type, T::AST_pointer) != type_check_result::perfect_fit) return_code(type_mismatch, 3);
 
 			Builder.CreateBr(MergeBB);
 			FailureBB = Builder.GetInsertBlock();
@@ -821,7 +818,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 
 			if (stack_degree == 0)
 			{
-				llvm::Value* endPN = llvm_create_phi(Builder, success_result, failure_IR.IR, T::AST_pointer, T::AST_pointer, SuccessBB, FailureBB);
+				llvm::Value* endPN = llvm_create_phi(Builder, success_result, failure_IR.IR, T::AST_pointer, failure_IR.type, SuccessBB, FailureBB);
 				finish_special(endPN, T::AST_pointer);
 			}
 			else finish_special_stack_handled(storage_location, T::AST_pointer);

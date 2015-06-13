@@ -6,5 +6,3 @@ using std::string;
 
 //the condition is true when the program behaves normally.
 inline void check(bool condition, const string& Str) { if (!condition) error(Str); }
-
-inline void debugcheck(bool condition, const string& Str) { if (!condition) error(Str); }
