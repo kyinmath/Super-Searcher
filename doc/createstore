@@ -1,0 +1,10 @@
+how does dynamic_conc produce the AST fields we want, if we can't overwrite a dynamic object's type?
+	normally, we just want a loop that'll concatenate until we're done. which requires changng the dynamic object's type.
+	this means that overwriting the type of a dynamic object is a crucial ability.
+	that means that we ought to keep track of when we can and can't overwrite the dynamic object's type, automatically. (basically, if any references to the insude exist)
+
+problem: what happens to pointer lifetimes when we use createstore? the old one will have to change...
+
+
+createstore(pointer, value)
+	first value can be either cheap or full pointer.

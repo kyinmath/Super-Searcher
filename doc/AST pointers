@@ -1,0 +1,28 @@
+with an AST, the first number must be fixed.
+	if we don't let the user set the first integer, that's fine too though.
+
+problem with pointer_to_AST: is that we can't exactly have ownership.
+for example, if we want to create an AST, we pass in a dynamic type. but can we really create a reference to that type as an AST?
+	generally, no. so we'd have to make a new copy.
+
+benefit of pointer_to_AST: the compilation function knows it can just immute the AST. otherwise, it would need to create a copy
+AST pointers do need to be pointers when used. we can only compile full objects. so we'd have to make full objects eventually; it's good to bake the fullness into the type.
+
+
+
+if we get an element from an AST. we should receive a pointer_to_AST, for example if we request previous_AST, and should not receive a dynamic object.
+	because if we don't, we'll have to return a dynamic object. and that will be even worse than testing if our AST is nullptr.
+thus, any time we have a pointer_to_AST, we have to remember to check if it's nullptr.
+
+when creating ASTs, we better be able to create null ASTs.
+	for example, the previous pointer should be null.
+we want to create an AST, which needs to create a previous_AST, which needs to create an AST, etc. infinite turtles.
+	and we can't let 0 override the type system, because the type system is compile time and 0 is run time.
+	thus: the previous_AST field can take a null object. it's special. this lets us build the nullptr AST using the 0 tag.
+	for the others, if you want null ASTs, you have to build them using 0.
+the problem is that this will force the AST creation into two paths: one with an object and one without. the turtles will have to eventually stop somewhere. that's probably fine: we have a branch statement, with one of the branches creating nullptr AST (the end turtle), and the other branch creating a legit AST.
+
+
+the AST pointer is not actually a pointer, because it owns the AST. no free copies; you need a deep copy.
+	the reason for this is to allow for immut ASTs. if the pointer is immut, then the AST is immut.
+	but then you won't even be able to look at the AST because you can't get a pointer to it.

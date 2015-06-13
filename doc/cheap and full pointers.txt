@@ -1,0 +1,10 @@
+
+there is no need for cheap_pointer_full_target.
+	it can only exist on the stack. if it's inside a function, you can optimize out a full_pointer.
+	if it's a function parameter, then you can pass in a fully immut full_pointer instead. the compiler will simply optimize it out, since the caller owns the object.
+	a cheap_pointer_full_target can be changed...but not by the called function. since it must depend on an immuted full pointer, which can't last longer than the parameter object.
+
+what is the point of full pointers vs cheap pointers? I seem to remember it was for function interfaces.
+	but perhaps we can deal with these anyway, without using cheap vs full pointers?
+	if a pointer points to another pointer, then...	well, you could always write a full pointer to the interior pointer. and never a cheap pointer to the interior pointer.
+	but what about when the function receives the pointer...it doesn't know whether it's a full pointer or not, and thus, it cannot know whether it can copy that pointer into an existing slot.

@@ -1,0 +1,48 @@
+bug: hello returns i32 as llvm type
+
+
+when are you allowed to create_store into a temporary?
+	and if you can (for example, when concatenating), we should endeavor to be consistent. since we're hiding information from the user anyway, whether an object updates after a change or doesn't update matters greatly.
+for example, let's suppose we construct a concatenated object, then move it to the heap. then the branches of the concatenate will survive. but the object may not be modified in the heap.
+
+
+document that describes finished total progress
+
+
+"distance to type" AST. base type, interior type. then, find how many elements you must skip to get to the interior type.
+what's the disadvantage of implementing things in user code? the admin can't change them anymore. and what's more, it's less efficient, since the admin can change atomic immut ASTs. but the user can't.
+
+Problem: how to handle pointers inside dynamic types? You'd have to match the pointer exactly...
+	solution: "depointerize interior pointer". basically, grabs the pointer inside the dynamic pointer, and moves the pointed-to-type to the top.
+
+
+before we can compile ASTs, we must be able to create them.
+
+
+a function usually grabs values by loading from an AST. we'll do the same, with a special "parameter" AST.
+	the AST should specify its type? it returns an object. and the lifetime of the object is special, or not?
+	I think it doesn't even have to be special, because the parameters of the AST are guaranteed to last as long as the function. so it's automatically at the bottom of the stack?
+the thing is that it shouldn't belong necessarily to the AST container, because the ASTs refer to it. it should belong to the tree of ASTs themselves.
+
+big problem: how do generic function parameters work? so, if I get the 3rd argument, and then the parameter changes, then I'm fucked?
+actually, I think it would be huge if I can have multiple parameters.
+	and in fact, that's exactly what I'm going to do. there's a "load parameter" AST.
+so, then how do I order these ASTs in the function parameter list? this is an implementation detail.
+	and, how do I call this AST?
+
+fine. so:
+parameter AST specifies a type
+compilation does NOT specify a type.
+type conversion specifies a type.
+
+call(): takes, AST, parameter.
+	the return type is determined by the AST.
+
+should ASTs be allowed to be dynamic?
+	I think the answer is that: every object which contains a pointed-to-type should be possibly dynamic?
+	what about vectors? it makes no sense for them to be dynamic.
+
+NOTE: there's a user fuzztester also. that's why my intelligent AST creation isn't working.
+
+convert() should be allowed to fail, and in that case it can't return anything intelligently.
+the natural way to handle is exception handling, which we have goto for.
