@@ -71,14 +71,25 @@ inline void output_AST(AST* target)
 	outstream << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
 }
 
+#include <set>
 //for debugging. outputs an AST and everything it can see, recursively.
 inline void output_AST_and_previous(AST* target)
 {
 	if (target == nullptr)
 	{
-		outstream << "AST is null\n";
+		outstream << "null AST\n";
 		return;
 	}
+
+	//this makes you not output any AST that has been output before. it prevents infinite loops
+	static thread_local std::set<AST*> AST_list;
+	if (AST_list.find(target) != AST_list.end())
+	{
+		outstream << target << '\n';
+		return;
+	}
+	AST_list.insert(target);
+
 	output_AST(target);
 	if (target->preceding_BB_element != nullptr)
 		output_AST_and_previous(target->preceding_BB_element);

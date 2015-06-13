@@ -239,7 +239,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	if (VERBOSE_DEBUG)
 	{
 		outstream << "generate_IR single AST start ^^^^^^^^^\n";
-		output_AST(target);
+		if (target) output_AST(target);
 		outstream << "stack degree " << stack_degree;
 		outstream << ", storage location is ";
 		if (storage_location) storage_location->print(*llvm_outstream);
@@ -249,7 +249,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 	if (stack_degree == 2) debugcheck(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
 	if (stack_degree == 1) debugcheck((storage_location != nullptr) || (get_size(target) == 0), "if stack degree is 1, we should have a storage_location");
 
-	//I decided not let generate_IR take nullptr. because if it cannot, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
+	//I decided to let generate_IR take nullptr. because if it cannot, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
 	//debugcheck(target != nullptr, "generate_IR should never receive a nullptr target");
 	if (target == nullptr) return Return_Info();
 
@@ -511,7 +511,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			llvm::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
 			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
-			llvm::BasicBlock *label = llvm::BasicBlock::Create(thread_context, "", TheFunction);
+			llvm::BasicBlock *label = llvm::BasicBlock::Create(thread_context, "");
 			auto label_insertion = labels.insert(std::make_pair(target, label_info(label, final_stack_position, true)));
 			if (label_insertion.second == false) return_code(label_duplication, 0);
 
@@ -522,6 +522,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			label_insertion.first->second.is_forward = false;
 
 			Builder.CreateBr(label);
+			TheFunction->getBasicBlockList().push_back(label);
 			Builder.SetInsertPoint(label);
 			finish(nullptr);
 		}
@@ -537,7 +538,14 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, llv
 			{
 				emit_dtors(info.stack_size);
 				Builder.CreateBr(labelsearch->second.block);
-				Builder.ClearInsertionPoint();
+				//Builder.ClearInsertionPoint();
+				//this is bugged. try [label [goto a]]a. note that the label has two predecessors, one which is a null operand
+				//so when you emit the branch for the label, even though the insertion point is clear, it still adds a predecessor to the block.
+				//instead, we have to emit a junk block
+
+				llvm::BasicBlock *JunkBB = llvm::BasicBlock::Create(thread_context, s("never going to be reached"), Builder.GetInsertBlock()->getParent());
+				Builder.SetInsertPoint(JunkBB);
+
 				finish_special(nullptr, T::nonexistent);
 			}
 
@@ -873,6 +881,8 @@ it chooses a random AST tag.
 then, it chooses pointers randomly from the vector of working ASTs, which go in the first few fields.
 each remaining field is chosen randomly according to an exponential distribution
 finally, if the created AST successfully compiles, it is added to the vector of working ASTs.
+
+todo: this scheme can't produce forward references, which are necessary for goto. that is, a goto points to an AST that's created after it.
 */
 void fuzztester(unsigned iterations)
 {
@@ -941,7 +951,10 @@ using std::string; //why can't this go inside source_reader?
 class source_reader
 {
 
-	std::unordered_map<string, AST*> ASTmap = { { "0", nullptr } }; //from name to location. starts with 0 = nullptr.
+	std::unordered_map<string, AST*> ASTmap = {{"0", nullptr}}; //from name to location. starts with 0 = nullptr.
+	std::unordered_map<AST**, string> goto_delay; //deferred binding of addresses, for goto. we can only see the labels at the end.
+	AST* delayed_binding_special_value = new AST(1); //memleak
+	string delayed_binding_name; //a backdoor return value.
 	std::istream& input;
 
 	//grabs a token. characters like [, ], {, } count as tokens by themselves.
@@ -980,12 +993,18 @@ class source_reader
 	AST* read_single_AST(AST* previous_AST, string continued_string = "")
 	{
 		string first = continued_string == "" ? get_token() : continued_string;
+		AST* new_type = new AST(-1); //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
 
 		if (first != string(1, '[')) //it's a name reference.
 		{
 			//outstream << "first was " << first << '\n';
 			auto AST_search = ASTmap.find(first);
-			check(AST_search != ASTmap.end(), string("variable name not found: ") + first);
+			//check(AST_search != ASTmap.end(), string("variable name not found: ") + first);
+			if (AST_search == ASTmap.end())
+			{
+				delayed_binding_name = first;
+				return delayed_binding_special_value;
+			}
 			return AST_search->second;
 		}
 
@@ -1006,6 +1025,10 @@ class source_reader
 			{
 				if (next_token == "{") fields[field_num] = create_single_basic_block(true);
 				else fields[field_num] = read_single_AST(nullptr, next_token);
+				if (fields[field_num].ptr == delayed_binding_special_value)
+				{
+					goto_delay.insert(make_pair(&new_type->fields[field_num].ptr, delayed_binding_name));
+				}
 			}
 			else //it's an integer
 			{
@@ -1018,7 +1041,7 @@ class source_reader
 			}
 		}
 		//check(next_token == "]", "failed to have ]");
-		AST* new_type = new AST(AST_type, previous_AST, fields[0], fields[1], fields[2], fields[3]);
+		*new_type = AST(AST_type, previous_AST, fields[0], fields[1], fields[2], fields[3]);
 
 		if (VERBOSE_DEBUG)
 			output_AST_console_version a(new_type);
@@ -1045,9 +1068,6 @@ class source_reader
 
 	}
 
-
-public:
-	source_reader(std::istream& stream, char end) : input(stream) {}
 	AST* create_single_basic_block(bool create_brace_at_end = false)
 	{
 		AST* current_previous = nullptr;
@@ -1055,22 +1075,43 @@ public:
 		{
 			if (std::cin.peek() == '\n') std::cin.ignore(1);
 			for (string next_word = get_token(); next_word != ""; next_word = get_token())
+			{
 				current_previous = read_single_AST(current_previous, next_word);
+				check(current_previous != delayed_binding_special_value, "failed to resolve reference. note that forward references in basic blocks are not allowed");
+			}
 			return current_previous; //which is the very last.
 		}
 		else
 		{
 			for (string next_word = get_token(); next_word != "}"; next_word = get_token())
+			{
 				current_previous = read_single_AST(current_previous, next_word);
+				check(current_previous != delayed_binding_special_value, "failed to resolve reference. note that forward references in basic blocks are not allowed");
+			}
 			return current_previous; //which is the very last
 		}
+	}
+
+public:
+	source_reader(std::istream& stream, char end) : input(stream) {}
+	AST* read()
+	{
+		AST* end = create_single_basic_block();
+
+		//resolve all the forward references from goto()
+		for (auto& x : goto_delay)
+		{
+			auto AST_search = ASTmap.find(x.second);
+			check(AST_search != ASTmap.end(), string("variable name not found: ") + x.second);
+			*(x.first) = AST_search->second;
+		}
+		return end;
 	}
 };
 
 
 int main(int argc, char* argv[])
 {
-	std::cout << "finiteness address " << (uint64_t)&finiteness << '\n';
 	//tells LLVM the generated code should be for the native platform
 	llvm::InitializeNativeTarget();
 	llvm::InitializeNativeTargetAsmPrinter();
@@ -1134,7 +1175,7 @@ int main(int argc, char* argv[])
 		{
 			source_reader k(std::cin, '\n'); //have to reinitialize to clear the ASTmap
 			outstream << "Input AST:\n";
-			AST* end = k.create_single_basic_block();
+			AST* end = k.read();
 			outstream << "Done reading.\n";
 			if (end == nullptr)
 			{

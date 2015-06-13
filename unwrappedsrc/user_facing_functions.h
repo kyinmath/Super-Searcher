@@ -126,6 +126,7 @@ inline uint64_t allocate_memory(uint64_t size)
 inline bool is_AST(uint64_t tag, Type* reference)
 {
 	std::vector<Type*> fields;
+	if (tag >= ASTn("never reached")) return false;
 	int number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
 	for (int x = 0; x < number_of_AST_pointers; ++x)
 		fields.push_back(T::AST_pointer);
