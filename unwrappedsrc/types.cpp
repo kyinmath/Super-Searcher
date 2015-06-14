@@ -3,6 +3,19 @@
 #include "debugoutput.h"
 #include "cs11.h"
 
+namespace T
+{
+	constexpr Type	internal::int_;
+	constexpr Type	internal::nonexistent;
+	constexpr Type	internal::missing_field;
+	constexpr Type	internal::special;
+	constexpr Type	internal::parameter_no_type_check;
+	constexpr Type	internal::dynamic_pointer;
+	constexpr Type	internal::AST_pointer;
+	constexpr Type	internal::conca1;
+	constexpr Type	internal::error_object;
+};
+
 /*
 the docs in this file are incomplete.
 this checks if types are equivalent, but with many special cases depensing on the nature of the two types.
@@ -28,6 +41,19 @@ with RVO, first must be smaller than fields[0]. with reference, it's the opposit
 so: 0 = different. 1 = new reference is too large. 2 = existing reference is too large. 3 = perfect match.
 */
 
+//this ensures that the static variable address is the same across translation units.
+//call it with T::nonexistent from a different translation unit
+void debugtypecheck(Type* test)
+{
+	if (test != T::nonexistent)
+	{
+		outstream << "T::nonexistent error.\n";
+		output_type(T::nonexistent);
+		output_type(test);
+		abort();
+	}
+}
+
 type_check_result type_check(type_status version, Type* existing_reference, Type* new_reference)
 {
 	std::array<Type*, 2> iter = { existing_reference, new_reference };
@@ -40,10 +66,8 @@ type_check_result type_check(type_status version, Type* existing_reference, Type
 		output_type(existing_reference);
 		output_type(new_reference);
 	}
-	if (existing_reference != nullptr)
-		if (existing_reference->tag == Typen("nonexistent"))
-			return type_check_result::perfect_fit; //nonexistent means that the code path is never seen.
-	//todo: if we actually just check against the const T::nonexistent, it seems to test false. why isn't it uniqued properly?
+	if (existing_reference == T::nonexistent)
+		return type_check_result::perfect_fit; //nonexistent means that the code path is never seen.
 
 	//this stack enables two-part recursion using both type objects, which isn't possible otherwise.
 	//fully_immut must always be exactly the same for both types, so we technically don't need to store it twice. but we do anyway, for now.

@@ -113,22 +113,25 @@ struct Type
 //should accomodate the largest possible AST
 struct AST;
 
+//when creating a new element here, remember to instantiate it in types.cpp.
+//the reason these are static members of struct internal is so that the address is the same across translation units.
+//otherwise, it's not. see https://stackoverflow.com/questions/7368330/static-members-and-the-default-constructor-c
 namespace T
 {
-	namespace internal
+	struct internal
 	{
-		static constexpr Type int_("integer");
-		static constexpr Type nonexistent("nonexistent");
-		static constexpr Type missing_field("nonexistent");
-		static constexpr Type special("integer");
-		static constexpr Type parameter_no_type_check("integer");
-		static constexpr Type dynamic_pointer("dynamic pointer");
-		static constexpr Type AST_pointer("AST pointer");
-		static constexpr Type conca1("concatenate", const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer));
-		static constexpr Type error_object("concatenate", const_cast<Type* const>(&conca1), const_cast<Type* const>(&int_));
+		static constexpr Type int_{("integer")};
+		static constexpr Type nonexistent{("nonexistent")};
+		static constexpr Type missing_field{("nonexistent")};
+		static constexpr Type special{("integer")};
+		static constexpr Type parameter_no_type_check{("integer")};
+		static constexpr Type dynamic_pointer{("dynamic pointer")};
+		static constexpr Type AST_pointer{("AST pointer")};
+		static constexpr Type conca1{Type("concatenate", const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer))};
+		static constexpr Type error_object{Type("concatenate", const_cast<Type* const>(&conca1), const_cast<Type* const>(&int_))};
 		//error_object is int, pointer to AST, int. it's what is returned when compilation fails: the error code, then the AST, then the field.
-	}
-	namespace i = internal;
+	};
+	typedef internal i;
 	constexpr Type* nonexistent = const_cast<Type* const>(&i::nonexistent); //nothing at all. used for goto. effectively disables type checking for that field.
 	constexpr Type* missing_field = const_cast<Type* const>(&i::missing_field); //used to say that a parameter field is missing
 	constexpr Type* special = const_cast<Type* const>(&i::special); //indicates that a return type is to be handled differently
@@ -138,7 +141,6 @@ namespace T
 	constexpr Type* null = nullptr;
 	constexpr Type* error_object = const_cast<Type* const>(&i::error_object);
 	constexpr Type* AST_pointer = const_cast<Type* const>(&i::AST_pointer);
-	//later: noreturn. for goto.
 };
 
 
@@ -352,5 +354,6 @@ enum class type_check_result
 	perfect_fit
 };
 
+void debugtypecheck(Type* test);
 type_check_result type_check(type_status version, Type* existing_reference, Type* new_reference);
 extern Type* concatenate_types(std::vector<Type*>& components);

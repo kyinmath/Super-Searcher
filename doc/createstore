@@ -1,10 +1,21 @@
 how does dynamic_conc produce the AST fields we want, if we can't overwrite a dynamic object's type?
 	normally, we just want a loop that'll concatenate until we're done. which requires changng the dynamic object's type.
 	this means that overwriting the type of a dynamic object is a crucial ability.
-	that means that we ought to keep track of when we can and can't overwrite the dynamic object's type, automatically. (basically, if any references to the insude exist)
+	that means that we ought to keep track of when we can and can't overwrite the dynamic object's type, automatically. (basically, if any references to the inside exist)
 
 problem: what happens to pointer lifetimes when we use createstore? the old one will have to change...
 
 
 createstore(pointer, value)
 	first value can be either cheap or full pointer.
+
+we don't care too much about pointer lifetimes, since normally you can just pass them around as broken-up pointers. since lifetime only matters locally, and is only used for createstore.
+	thus, we can afford to lose some power, such as not being able to concatenate.
+
+and what happens when you load a pointer from a memory slot?
+	we know the life guarantee is longer than the pointer itself.
+	we have no idea what the hit contract will be.
+	thus, you can take that pointer and store it somewhere. but you can't store a value into the memory location referenced by that pointer.
+and when using createstore (pointer, value), we must have that (guarantee of value) > (hit contract of pointer)
+	what is the life guarantee actually good for?
+		the "true" lifetime of the pointer itself, which is the lifetime for which the pointer value is valid, is equal to the target guarantee.
