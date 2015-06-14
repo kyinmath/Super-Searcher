@@ -73,7 +73,7 @@ constexpr Type_info Type_descriptor[] =
 {
 	{"concatenate", 2, special}, //concatenate two types
 	{"integer", 0, 1}, //64-bit integer
-	{"cheap pointer", 1, 1}, //pointer to anything
+	{"pointer", 1, 1}, //pointer to anything
 	{"dynamic pointer", 0, 2}, //dynamic pointer. first field is the pointer, second field is a pointer to the type. cannot change type after created, unless in ownership lock.
 	{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
 	//the actual object has 6: tag, then previous, then 4 fields.
@@ -92,7 +92,7 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
 	{
 		if (static_strequal(vector_name[k].name, name)) return k;
 		if (static_strequal(vector_name[k].name, "never reached")) //this isn't recursive, because the previous if statement returns.
-			error(string("tried to get a nonexistent name") + name);
+			error(string("tried to get a nonexistent name: ") + name);
 		//llvm_unreachable doesn't give proper errors for run time mistakes, only when it's compile time.
 
 	}
@@ -277,11 +277,11 @@ constexpr AST_info AST_descriptor[] =
 	a("goto", T::special).make_pointer_fields(1),
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
 	a("convert_to_AST", T::AST_pointer, T::integer, T::parameter_no_type_check, T::dynamic_pointer, T::AST_pointer).make_fields_to_compile(3), //don't compile the nonexistent branch, because it needs to go in a special basic block.
+	a("store", T::null, T::special, T::special), //pointer, then value.
 	a("static_object", T::special, T::dynamic_pointer).make_special_fields(1), //loads a static object.
 	a("load_object", T::special, T::dynamic_pointer).make_special_fields(1), //loads a constant. similar to "int x = 40". if the value ends up on the stack, it can still be modified, but any changes are temporary.
 	{ "never reached", T::special }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	{ "dereference pointer", T::special}, //????
-	a("store", T::special), //????
 	/*	
 	{ "no op", 0, 0 },
 	{ "sub", 2 },

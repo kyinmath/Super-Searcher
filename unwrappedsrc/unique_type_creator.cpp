@@ -118,13 +118,13 @@ void test_unique_types()
 	Type* unique_one = get_unique_type(&one, false);
 	check(unique_zero != unique_one, "zero and one uniqued to same element");
 
-	Type pointer_zero("cheap pointer", &zero);
-	Type pointer_zero_second("cheap pointer", &zero);
+	Type pointer_zero("pointer", &zero);
+	Type pointer_zero_second("pointer", &zero);
 	Type* unique_pointer_zero = get_unique_type(&pointer_zero, false);
 	Type* unique_pointer_zero_second = get_unique_type(&pointer_zero, false);
 	check(unique_pointer_zero == unique_pointer_zero_second, "pointers don't unique");
 
-	Type pointer_one("cheap pointer", &one);
+	Type pointer_one("pointer", &one);
 	Type* unique_pointer_one = get_unique_type(&pointer_one, false);
 	check(unique_pointer_zero != unique_pointer_one, "different pointers unique");
 }

@@ -138,12 +138,15 @@ check_next_token:
 	{
 		switch (iter[1]->tag)
 		{
-		case Typen("cheap pointer"):
+		case Typen("pointer"):
 			if (iter[0]->tag == iter[1]->tag)
 			{
-				auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
-				if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
-					goto finished_checking;
+				if (iter[0]->fields[1].num >= iter[1]->fields[1].num) //full pointers can RVO into cheap pointers.
+				{
+					auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
+					if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
+						goto finished_checking;
+				}
 			}
 			return type_check_result::different; //else
 			/*
@@ -153,7 +156,7 @@ check_next_token:
 					goto finished_checking;
 			return 0;*/
 		case Typen("integer"):
-				if (iter[0]->tag == iter[1]->tag /*|| iter[0]->tag == Typen("fixed integer") */|| iter[0]->tag == Typen("cheap pointer")) //also full pointer
+				if (iter[0]->tag == iter[1]->tag /*|| iter[0]->tag == Typen("fixed integer") */|| iter[0]->tag == Typen("pointer"))
 					goto finished_checking;
 			//maybe we should also allow two uints in a row to take a dynamic pointer?
 				//we'd have to think about that. the current system allows for large types in the new reference to accept pieces, but I don't know if that's the best.
@@ -181,11 +184,14 @@ check_next_token:
 
 		switch (iter[1]->tag)
 		{
-		case Typen("cheap pointer"):
+		case Typen("pointer"):
 			{
-				auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
-				if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
-					goto finished_checking;
+				if (iter[0]->fields[1].num >= iter[1]->fields[1].num) //full pointers can be thought of as cheap pointers.
+				{
+					auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
+					if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
+						goto finished_checking;
+				}
 				return type_check_result::different;
 			}
 		/*

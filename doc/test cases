@@ -1,7 +1,8 @@
 [add [integer 1] [random]]
 
-[label]a [hello] [goto a]
-	should print hello and then stop when finiteness is exhausted
+stack storage.
+[integer 0]b [label]a [print_int [load b]] [store [pointer b] [add [load b] [integer 1]]] [goto a]
+	should print an increasing integer, and then stop when finiteness is exhausted
 
 [label {[hello] [compile [convert_to_AST [integer 2] [scope] [dynamic] [goto a]]]}]a
 	should succeed. prints hello
@@ -10,3 +11,4 @@
 [integer 30]a [print_int [load a]]
 
 [label [goto a]]a
+

@@ -66,15 +66,14 @@ uint64_t generate_exponential_dist()
 
 
 
-compiler_object::compiler_object() : error_location(nullptr), Builder(thread_context),
-
+compiler_object::compiler_object() : error_location(nullptr), Builder(thread_context)
 {
 	if (VERBOSE_DEBUG) outstream << "creating compiler object\n";
 
 	std::string ErrStr;
 	
-	//todo: memleak with our memory manager
-	engine = l::EngineBuilder()
+	//todo: memleak with our memory 
+	engine = l::EngineBuilder(std::unique_ptr<l::Module>{new l::Module("useless engine module", thread_context)})
 		.setErrorStr(&ErrStr)
 		.setMCJITMemoryManager(std::unique_ptr<l::SectionMemoryManager>(new l::SectionMemoryManager))
 		.create();
@@ -110,7 +109,7 @@ unsigned compiler_object::compile_AST(AST* target)
 	auto size_of_return = get_size(target);
 	if (size_of_return == 0) FT = FunctionType::get(l::Type::getVoidTy(thread_context), false);
 	else if (size_of_return == 1) FT = FunctionType::get(int64_type, false);
-	else FT = FunctionType::get(llvm_array(size_of_return), false);
+	else FT = FunctionType::get(llvm_type(size_of_return), false);
 	if (VERBOSE_DEBUG) outstream << "Size of return is " << size_of_return << '\n';
 
 	Function *F = Function::Create(FT, Function::ExternalLinkage, "temp function", TheModule);
@@ -196,8 +195,7 @@ l::AllocaInst* compiler_object::create_alloca(uint64_t size) {
 	l::IRBuilder<> TmpB(&first_block, first_block.begin());
 
 	//we explicitly create the array type instead of allocating multiples, because that's what clang does for C++ arrays.
-	if (size > 1) return TmpB.CreateAlloca(llvm_array(size));
-	else return TmpB.CreateAlloca(int64_type);
+	return TmpB.CreateAlloca(llvm_type(size));
 }
 
 void compiler_object::emit_dtors(uint64_t desired_stack_size)
@@ -323,7 +321,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 	//clears dead objects off the stack, and makes your result visible to other ASTs
 	//if it's necessary to create and write to storage_location, we do so.
 	//if move_to_stack == true, it writes into a previously created storage_location
-	auto finish_internal = [&](l::Value* return_value, Type* type, uint64_t upper_life, uint64_t lower_life, bool move_to_stack) -> Return_Info
+	auto finish_internal = [&](l::Value* return_value, Type* type, uint64_t self_validity_guarantee, uint64_t target_hit_contract, bool move_to_stack) -> Return_Info
 	{
 		check(type != T::special, "didn't specify return type when necessary");
 
@@ -372,14 +370,14 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			if (size_result >= 1)
 			{
 				object_stack.push_back(target);
-				auto insert_result = objects.insert({ target, Return_Info(IRgen_status::no_error, return_value, type, true, lifetime_of_return_value, upper_life, lower_life) });
+				auto insert_result = objects.insert({target, Return_Info(IRgen_status::no_error, return_value, type, true, lifetime_of_return_value, self_validity_guarantee, target_hit_contract)});
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication, 10);
 			}
-			//type_scratch_space.push_back(Type("cheap pointer", type)); //stack objects are always pointers, just like in llvm.
+			//type_scratch_space.push_back(Type("pointer", type)); //stack objects are always pointers, just like in llvm.
 			//type = &type_scratch_space.back();
 		}
-		return Return_Info(IRgen_status::no_error, return_value, type, false, lifetime_of_return_value, upper_life, lower_life);
+		return Return_Info(IRgen_status::no_error, return_value, type, false, lifetime_of_return_value, self_validity_guarantee, target_hit_contract);
 	};
 
 	//call the finish macros when you've constructed something.
@@ -501,14 +499,14 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			TheFunction->getBasicBlockList().push_back(MergeBB);
 			Builder.SetInsertPoint(MergeBB);
 
-			uint64_t result_target_life_guarantee = std::max(then_IR.target_life_guarantee, else_IR.target_life_guarantee);
+			uint64_t result_self_validity_guarantee = std::max(then_IR.self_validity_guarantee, else_IR.self_validity_guarantee);
 			uint64_t result_target_hit_contract = std::min(then_IR.target_hit_contract, else_IR.target_hit_contract);
 			if (stack_degree == 0)
 			{
 				l::Value* endPN = llvm_create_phi(Builder, then_IR.IR, else_IR.IR, then_IR.type, else_IR.type, ThenBB, ElseBB);
-				finish_special_pointer(endPN, result_type, result_target_life_guarantee, result_target_hit_contract);
+				finish_special_pointer(endPN, result_type, result_self_validity_guarantee, result_target_hit_contract);
 			}
-			else finish_special_stack_handled_pointer(storage_location, then_IR.type, result_target_life_guarantee, result_target_hit_contract);
+			else finish_special_stack_handled_pointer(storage_location, then_IR.type, result_self_validity_guarantee, result_target_hit_contract);
 			//even though finish_pointer returns, the else makes it clear from first glance that it's not a continued statement.
 		}
 
@@ -587,8 +585,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			Return_Info Failure_IR = generate_IR(target->fields[1].ptr, stack_degree != 0, storage_location);
 			if (Failure_IR.error_code) return Failure_IR;
 
-			if (stack_degree == 0) finish_special_pointer(Failure_IR.IR, Failure_IR.type, Failure_IR.target_life_guarantee, Failure_IR.target_hit_contract);
-			else finish_special_stack_handled_pointer(storage_location, Failure_IR.type, Failure_IR.target_life_guarantee, Failure_IR.target_hit_contract);
+			if (stack_degree == 0) finish_special_pointer(Failure_IR.IR, Failure_IR.type, Failure_IR.self_validity_guarantee, Failure_IR.target_hit_contract);
+			else finish_special_stack_handled_pointer(storage_location, Failure_IR.type, Failure_IR.self_validity_guarantee, Failure_IR.target_hit_contract);
 		}
 	case ASTn("scope"):
 		finish(nullptr);
@@ -598,7 +596,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			if (found_AST->second.on_stack == false) return_code(pointer_to_temporary, 0);
 			//our new pointer type
-			type_scratch_space.push_back(Type("cheap pointer", found_AST->second.type));
+			type_scratch_space.push_back(Type("pointer", found_AST->second.type, (uint64_t)0)); //we make a cheap pointer. todo: if the object is full, we should make a full pointer instead
 
 			///we force cast all llvm pointer types to integers. this makes it easy to represent types inside llvm, since they're described by a single number - their size.
 			l::Value* final_result = Builder.CreatePtrToInt(found_AST->second.IR, int64_type, s("flattening pointer"));
@@ -611,8 +609,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			//if on_stack is false, it's not an alloca so we should copy instead of loading.
 			Return_Info AST_to_load = found_AST->second;
-			if (AST_to_load.on_stack == false) finish_special_pointer(AST_to_load.IR, AST_to_load.type, AST_to_load.target_life_guarantee, AST_to_load.target_hit_contract);
-			else finish_special(Builder.CreateLoad(AST_to_load.IR), AST_to_load.type);
+			if (AST_to_load.on_stack == false) finish_special_pointer(AST_to_load.IR, AST_to_load.type, AST_to_load.self_validity_guarantee, AST_to_load.target_hit_contract);
+			else finish_special_pointer(Builder.CreateLoad(AST_to_load.IR), AST_to_load.type, AST_to_load.self_lifetime, 0);
 		}
 	case ASTn("concatenate"):
 		{
@@ -648,7 +646,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 				if (stack_degree == 0) final_value = Builder.CreateLoad(storage_location, s("load concatenated object"));
 				else final_value = storage_location;
 
-				uint64_t result_target_life_guarantee = std::max(half[0].target_life_guarantee, half[1].target_life_guarantee);
+				uint64_t result_target_life_guarantee = std::max(half[0].self_validity_guarantee, half[1].self_validity_guarantee);
 				uint64_t result_target_hit_contract = std::min(half[0].target_hit_contract, half[1].target_hit_contract);
 
 				finish_special_stack_handled_pointer(final_value, &type_scratch_space.back(), result_target_life_guarantee, result_target_hit_contract);
@@ -666,12 +664,21 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 
 				if (half[0].type == T::nonexistent || half[1].type == T::nonexistent)
 					finish_special(nullptr, T::nonexistent);
-				if (size[0] > 0) finish_special_stack_handled_pointer(half[0].IR, half[0].type, half[0].target_life_guarantee, half[0].target_hit_contract);
-				else finish_special_stack_handled_pointer(half[1].IR, half[1].type, half[1].target_life_guarantee, half[1].target_hit_contract);
+				if (size[0] > 0) finish_special_stack_handled_pointer(half[0].IR, half[0].type, half[0].self_validity_guarantee, half[0].target_hit_contract);
+				else finish_special_stack_handled_pointer(half[1].IR, half[1].type, half[1].self_validity_guarantee, half[1].target_hit_contract);
 				//even if half[1] is 0, we return it anyway.
 			}
 		}
 
+	case ASTn("store"):
+		{
+			if (field_results[0].type->tag != Typen("pointer")) return_code(type_mismatch, 0);
+			if (type_check(RVO, field_results[1].type, field_results[0].type->fields[0].ptr) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
+			if (field_results[0].target_hit_contract < field_results[1].self_validity_guarantee) return_code(store_pointer_lifetime_mismatch, 0);
+			llvm::Value* memory_location = Builder.CreateIntToPtr(field_results[0].IR, llvm_type(get_size(field_results[1].type))->getPointerTo());
+			Builder.CreateStore(field_results[1].IR, memory_location); //todo: atomicity for full objects
+			finish(0);
+		}
 	case ASTn("dynamic"):
 		{
 			uint64_t size_of_object = get_size(target->fields[0].ptr);
@@ -682,8 +689,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 
 				//can't use ?: because the return objects have different types, unless we cast
 				//this represents either an integer or an array of integers.
-				l::Type* target_type = int64_type;
-				if (size_of_object > 1) target_type = llvm_array(size_of_object);
+				l::Type* target_type = llvm_type(size_of_object);
 				l::Type* target_pointer_type = target_type->getPointerTo();
 
 				//store the returned value into the acquired address
@@ -845,7 +851,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			uint64_t size_of_object = get_size(type_of_object);
 			if (size_of_object)
 			{
-				l::Type* pointer_to_array = llvm_array(size_of_object)->getPointerTo();
+				l::Type* pointer_to_array = llvm_type(size_of_object)->getPointerTo();
 				storage_location = l::cast<l::AllocaInst>(Builder.CreatePointerCast(address_of_object, pointer_to_array, s("pointer cast to array")));
 
 				l::Value* final_value = stack_degree == 0 ? (l::Value*)Builder.CreateLoad(storage_location, s("load concatenated object")) : storage_location;
@@ -867,8 +873,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 				{
 					values.push_back(llvm_integer(array_of_integers[x]));
 				}
-
-				l::Constant* object = l::ConstantArray::get(llvm_array(size_of_object), values);
+				
+				l::Constant* object;
+				if (size_of_object > 1) object = l::ConstantArray::get(llvm_array(size_of_object), values);
+				else object = values[0];
 				finish_special(object, type_of_object);
 			}
 			else finish_special(nullptr, nullptr);

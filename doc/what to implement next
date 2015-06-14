@@ -1,6 +1,7 @@
 variable changing (CreateStore)
 	ownership of dynamic objects, so we can overwrite the types.
 	type slicing
+	figure out what happens when writing pointers to the stack! with lifetimes
 move the fuzzer into AST format
 
 locks?

@@ -19,3 +19,6 @@ and what happens when you load a pointer from a memory slot?
 and when using createstore (pointer, value), we must have that (guarantee of value) > (hit contract of pointer)
 	what is the life guarantee actually good for?
 		the "true" lifetime of the pointer itself, which is the lifetime for which the pointer value is valid, is equal to the target guarantee.
+
+what life guarantee is good for is a self validity. when yourself no longer makes sense. so for integers, it's infinifty.
+	this determines when it's possible to store.

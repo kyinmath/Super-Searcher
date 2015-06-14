@@ -8,3 +8,12 @@ what is the point of full pointers vs cheap pointers? I seem to remember it was 
 	but perhaps we can deal with these anyway, without using cheap vs full pointers?
 	if a pointer points to another pointer, then...	well, you could always write a full pointer to the interior pointer. and never a cheap pointer to the interior pointer.
 	but what about when the function receives the pointer...it doesn't know whether it's a full pointer or not, and thus, it cannot know whether it can copy that pointer into an existing slot.
+
+but moreover, suppose we don't want to care about pointer lifetimes. then everything is automatically on the heap, and then is optimized to the stack when possible.
+	the problem is that we can't always optimize things to the stack. because if we pass the pointer to a function, we won't know if the function stores the pointer somewhere.
+this is what Java does. https://programmers.stackexchange.com/questions/65281/stack-and-heap-memory-in-java
+
+
+since pointers and full pointers are pretty similar, now I am going to put them both in a single type.
+0 = cheap, 1 = full, in the second field.
+maybe later I'll add in nullable cheap = 2, nullable full = 3.

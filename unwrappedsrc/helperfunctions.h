@@ -13,6 +13,14 @@ inline llvm::ArrayType* llvm_array(uint64_t size)
 	return llvm::ArrayType::get(int64_type, size);
 }
 
+inline llvm::Type* llvm_type(uint64_t size)
+{
+	check(size != 0, "tried to get 0 size llvm type");
+	if (size > 1) return llvm_array(size);
+	else return int64_type;
+
+}
+
 //return type is not a llvm::Function*, because it's a pointer to a function.
 template<typename... should_be_type_ptr, typename fptr> inline llvm::Value* llvm_function(llvm::IRBuilder<>& Builder, fptr* function, llvm::Type* return_type, should_be_type_ptr... argument_types)
 {

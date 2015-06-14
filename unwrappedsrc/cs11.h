@@ -37,6 +37,7 @@ enum IRgen_status {
 	missing_label, //tried to goto a label, but the label was not found
 	label_incorrect_stack, //tried to goto a label, but the stack elements didn't match
 	label_duplication, //a label was pointed to in the tree twice
+	store_pointer_lifetime_mismatch, //tried to store a short-lasting object in a long-lasting memory location
 };
 
 constexpr uint64_t full_lifetime = -1ll;
@@ -51,26 +52,26 @@ struct Return_Info
 	bool on_stack; //if the return value refers to an alloca.
 	//in that case, the llvm type is actually a pointer. but the internal type doesn't change.
 
-	//this lifetime information is only used when a cheap pointer is in the type. see pointers.txt
-	//to write a pointer into a pointed-to memory location, we must have guarantee of pointer >= hit contract of memory location
-	//there's only one pair of target lifetime values per object, which can be a problem for objects which concatenate many cheap pointers.
+	//to write an object into a pointed-to memory location, we must have guarantee of object <= hit contract of memory location
+	//there's only one hit contract value per object, which can be a problem for concatenations of many cheap pointers.
 	//however, we need concatenation only for heap objects, parameters, function return; in these cases, the memory order doesn't matter
 	uint64_t self_lifetime; //for stack objects, determines when you will fall off the stack. it's a deletion time, not a creation time.
 	//it's important that it is a deletion time, because deletion and creation are not in perfect stack configuration.
 	//because temporaries are created before the base object, and die just after.
 
-	uint64_t target_life_guarantee; //higher is stricter. the target must last longer than this.
-	//measures the pointer's target's lifetime, for when the pointer wants to be written into a memory location
+	//low number = longer life.
+	uint64_t self_validity_guarantee; //higher is less lenient (validity is shorter). the object's values must be valid for at least this time.
+	//for when an object wants to be written into a memory location
 
-	uint64_t target_hit_contract; //lower is stricter. the target must die faster than this.
+	uint64_t target_hit_contract; //lower is less lenient. the reference will disappear after this time. used for pointers
 	//measures the pointer's target's lifetime, for when the pointed-to memory location wants something to be written into it.
 
 	Return_Info(IRgen_status err, llvm::Value* b, Type* t, bool o, uint64_t s, uint64_t u, uint64_t l)
-		: error_code(err), IR(b), type(t), on_stack(o), self_lifetime(s), target_life_guarantee(u), target_hit_contract(l) {}
+		: error_code(err), IR(b), type(t), on_stack(o), self_lifetime(s), self_validity_guarantee(u), target_hit_contract(l) {}
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
-	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T::null), on_stack(false), self_lifetime(0), target_life_guarantee(0), target_hit_contract(-1ll) {}
+	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T::null), on_stack(false), self_lifetime(0), self_validity_guarantee(0), target_hit_contract(full_lifetime) {}
 };
 
 class compiler_object

@@ -36,3 +36,5 @@ the problem is now that an AST's type depends on whether it's in a first-pointer
 &copy() operates differently on temps and stack objects. for stack objects, it must transparently create a CreateLoad, and then copy the loaded object.
 	the type of the stack object is a pointer
 &meanwhile, pointer() simply grabs the stack object directly, because it is already a pointer.
+
+full pointers are strictly more powerful than stack pointers. so any time you want a stack pointer, a full pointer will suffice.
