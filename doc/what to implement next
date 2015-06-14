@@ -1,7 +1,6 @@
 variable changing (CreateStore)
 	ownership of dynamic objects, so we can overwrite the types.
 	type slicing
-	figure out what happens when writing pointers to the stack! with lifetimes
 move the fuzzer into AST format
 
 locks?
@@ -13,7 +12,7 @@ Normally, we'd need locks before we implemented CreateStore.
 
 createstore probably takes a pointer as its first argument, and the object itself as its second argument.
 
-if we have a pointer, how do we extract information from it?
+if we have a dynamic pointer, how do we extract information from it?
 
 
 I want a console-friendly AST output function, which will require some state tracking so that we don't duplicate ASTs.
@@ -35,8 +34,6 @@ we need storage when:
 3. we put something on the stack, because it might be changed, and temps can't change
 
 
-we need: passthrough AST, since our dynamic objects can't change types.
-does this mean we also need a passthrough Type? but both of these are actually already possible, using concatenate() in Type or AST.
 
 suppose we have a compiled function. it points to an AST. when the function dies, should we really unimmut the old ASTs? is that at all useful?
 	yeah, it's vital. we don't want to create new copies all the time. and we use compilation as error_checking, so we compile a function many times as we create it.

@@ -102,11 +102,6 @@ class compiler_object
 	//these are labels which can be jumped to. the basic block, and the object stack.
 	std::map<AST*, label_info> labels;
 
-	//a memory pool for storing temporary types. will be cleared at the end of compilation.
-	//it must be a deque so that its memory locations stay valid after push_back().
-	//even though the constant impact of deque (memory) is bad for small compilations.
-	std::deque<Type> type_scratch_space;
-
 	//increases by 1 every time an object is created. imposes an ordering on stack object lifetimes.
 	uint64_t incrementor_for_lifetime = 0;
 

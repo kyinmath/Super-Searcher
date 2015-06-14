@@ -26,3 +26,7 @@ the problem is that this will force the AST creation into two paths: one with an
 the AST pointer is not actually a pointer, because it owns the AST. no free copies; you need a deep copy.
 	the reason for this is to allow for immut ASTs. if the pointer is immut, then the AST is immut.
 	but then you won't even be able to look at the AST because you can't get a pointer to it.
+
+
+we need: passthrough AST, since our dynamic objects can't change types.
+does this mean we also need a passthrough Type? but both of these are actually already possible, using concatenate() in Type or AST.

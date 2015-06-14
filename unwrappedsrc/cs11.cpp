@@ -374,8 +374,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication, 10);
 			}
-			//type_scratch_space.push_back(Type("pointer", type)); //stack objects are always pointers, just like in llvm.
-			//type = &type_scratch_space.back();
 		}
 		return Return_Info(IRgen_status::no_error, return_value, type, false, lifetime_of_return_value, self_validity_guarantee, target_hit_contract);
 	};
@@ -595,13 +593,13 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			auto found_AST = objects.find(target->fields[0].ptr);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			if (found_AST->second.on_stack == false) return_code(pointer_to_temporary, 0);
-			//our new pointer type
-			type_scratch_space.push_back(Type("pointer", found_AST->second.type, (uint64_t)0)); //we make a cheap pointer. todo: if the object is full, we should make a full pointer instead
+			//we make a cheap pointer. todo: if the object is full, we should make a full pointer instead
+			Type* new_pointer_type = get_unique_type(Type("pointer", found_AST->second.type, (uint64_t)0));
 
 			///we force cast all llvm pointer types to integers. this makes it easy to represent types inside llvm, since they're described by a single number - their size.
 			l::Value* final_result = Builder.CreatePtrToInt(found_AST->second.IR, int64_type, s("flattening pointer"));
 
-			finish_special_pointer(final_result, &type_scratch_space.back(), found_AST->second.self_lifetime, found_AST->second.self_lifetime);
+			finish_special_pointer(final_result, new_pointer_type, found_AST->second.self_lifetime, found_AST->second.self_lifetime);
 		}
 	case ASTn("load"):
 		{
@@ -640,7 +638,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 					half[x] = generate_IR(target->fields[x].ptr, 1, location[x]);
 					if (half[x].error_code) return half[x];
 				}
-				type_scratch_space.push_back(Type("concatenate", half[0].type, half[1].type));
 
 				l::Value* final_value;
 				if (stack_degree == 0) final_value = Builder.CreateLoad(storage_location, s("load concatenated object"));
@@ -649,7 +646,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 				uint64_t result_target_life_guarantee = std::max(half[0].self_validity_guarantee, half[1].self_validity_guarantee);
 				uint64_t result_target_hit_contract = std::min(half[0].target_hit_contract, half[1].target_hit_contract);
 
-				finish_special_stack_handled_pointer(final_value, &type_scratch_space.back(), result_target_life_guarantee, result_target_hit_contract);
+				finish_special_stack_handled_pointer(final_value, get_unique_type(Type("concatenate", half[0].type, half[1].type)), result_target_life_guarantee, result_target_hit_contract);
 			}
 			else //it's convenient having a pass-through special case, because pass-through means we don't need to have special cases for size-1 objects.
 			{
