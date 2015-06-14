@@ -14,9 +14,8 @@ extern bool TIMER;
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
-#include <llvm/ExecutionEngine/ExecutionEngine.h>
-#include <llvm/ExecutionEngine/MCJIT.h>
-#include <llvm/ExecutionEngine/SectionMemoryManager.h>
+#include "llvm/ExecutionEngine/OrcMCJITReplacement.h"
+#include "llvm/ExecutionEngine/MCJIT.h"
 #include "types.h"
 #ifdef _MSC_VER
 #define thread_local
@@ -73,27 +72,9 @@ struct Return_Info
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
 	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T::null), on_stack(false), self_lifetime(0), target_life_guarantee(0), target_hit_contract(-1ll) {}
 };
-/*
-#include "llvm/ExecutionEngine/Orc/CompileUtils.h"
-#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
-#include "llvm/ExecutionEngine/Orc/LazyEmittingLayer.h"
-#include "llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"
-class SessionContext {
-public:
-	SessionContext(llvm::LLVMContext &C)
-		: Context(C), TM(llvm::EngineBuilder().selectTarget()) {}
-	llvm::LLVMContext& getLLVMContext() const { return Context; }
-	llvm::TargetMachine& getTarget() { return *TM; }
-private:
 
-	llvm::LLVMContext &Context;
-	std::unique_ptr<llvm::TargetMachine> TM;
-};
-*/
 class compiler_object
 {
-	llvm::Module *TheModule;
 	llvm::IRBuilder<> Builder;
 	llvm::ExecutionEngine* engine;
 

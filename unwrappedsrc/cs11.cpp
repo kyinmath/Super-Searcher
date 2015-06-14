@@ -20,6 +20,8 @@ generate_IR() is the main AST conversion tool. it turns ASTs into l::Values, rec
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Analysis/Passes.h>
 #include <llvm/Support/raw_ostream.h> 
+#include "llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "types.h"
 #include "debugoutput.h"
 #include "helperfunctions.h"
@@ -65,14 +67,14 @@ uint64_t generate_exponential_dist()
 
 
 compiler_object::compiler_object() : error_location(nullptr), Builder(thread_context),
-TheModule(new l::Module("temp module", thread_context))
+
 {
 	if (VERBOSE_DEBUG) outstream << "creating compiler object\n";
 
 	std::string ErrStr;
 	
 	//todo: memleak with our memory manager
-	engine = l::EngineBuilder(std::unique_ptr<l::Module>(TheModule))
+	engine = l::EngineBuilder()
 		.setErrorStr(&ErrStr)
 		.setMCJITMemoryManager(std::unique_ptr<l::SectionMemoryManager>(new l::SectionMemoryManager))
 		.create();
@@ -89,6 +91,9 @@ template<size_t array_num> void cout_array(std::array<uint64_t, array_num> objec
 //return value is the error code, which is 0 if successful
 unsigned compiler_object::compile_AST(AST* target)
 {
+
+	llvm::Module *TheModule(new l::Module("temp module", thread_context));
+	engine->addModule(std::unique_ptr<l::Module>(TheModule));
 
 	if (VERBOSE_DEBUG)
 	{
@@ -355,7 +360,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 		else if (VERBOSE_DEBUG) outstream << "finish() in generate_IR, null value\n";
 		if (VERBOSE_DEBUG)
 		{
-			TheModule->print(*llvm_outstream, nullptr);
+			Builder.GetInsertBlock()->getModule()->print(*llvm_outstream, nullptr);
 			outstream << "generate_IR single AST " << target << " " << AST_descriptor[target->tag].name << " vvvvvvvvv\n";
 		}
 
@@ -414,7 +419,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			l::FunctionType *putsType = l::FunctionType::get(Builder.getInt32Ty(), putsArgs, false);
 
 			//get the actual function
-			l::Constant *putsFunc = TheModule->getOrInsertFunction("puts", putsType);
+			l::Constant *putsFunc = Builder.GetInsertBlock()->getModule()->getOrInsertFunction("puts", putsType);
 
 			finish(Builder.CreateCall(putsFunc, helloWorld, s("hello world")));
 		}
