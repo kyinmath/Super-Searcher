@@ -38,7 +38,6 @@ bool INTERACTIVE = false;
 bool CONSOLE = false;
 bool TIMER = false;
 bool OLD_AST_OUTPUT = false;
-const uint64_t FINITENESS_LIMIT = 10;
 
 basic_onullstream<char> null_stream;
 std::ostream& outstream = std::cerr;
@@ -46,7 +45,7 @@ l::raw_null_ostream llvm_null_stream;
 l::raw_ostream* llvm_outstream = &l::outs();
 
 
-//todo: threading. create non-global contexts
+//later: threading. create non-global contexts
 thread_local l::LLVMContext& thread_context = l::getGlobalContext();
 thread_local uint64_t finiteness;
 
@@ -72,7 +71,7 @@ compiler_object::compiler_object() : error_location(nullptr), Builder(thread_con
 
 	std::string ErrStr;
 	
-	//todo: memleak with our memory 
+	//later: memleak with our memory 
 	engine = l::EngineBuilder(std::unique_ptr<l::Module>{new l::Module("useless engine module", thread_context)})
 		.setErrorStr(&ErrStr)
 		.setMCJITMemoryManager(std::unique_ptr<l::SectionMemoryManager>(new l::SectionMemoryManager))
@@ -94,21 +93,13 @@ unsigned compiler_object::compile_AST(AST* target)
 	llvm::Module *TheModule(new l::Module("temp module", thread_context));
 	engine->addModule(std::unique_ptr<l::Module>(TheModule));
 
-	if (VERBOSE_DEBUG)
-	{
-		outstream << "starting compilation\n";
-		outstream << "target is " << target << '\n'; //necessary in case it crashes here
-	}
-	if (target == nullptr)
-	{
-		return IRgen_status::null_AST;
-	}
+	if (VERBOSE_DEBUG) outstream << "starting compilation\ntarget is " << target << '\n'; //necessary in case it crashes here
+	if (target == nullptr) return IRgen_status::null_AST;
 	using namespace llvm;
 	FunctionType *FT;
 
 	auto size_of_return = get_size(target);
 	if (size_of_return == 0) FT = FunctionType::get(l::Type::getVoidTy(thread_context), false);
-	else if (size_of_return == 1) FT = FunctionType::get(int64_type, false);
 	else FT = FunctionType::get(llvm_type(size_of_return), false);
 	if (VERBOSE_DEBUG) outstream << "Size of return is " << size_of_return << '\n';
 
@@ -171,7 +162,6 @@ unsigned compiler_object::compile_AST(AST* target)
 		case 8: cout_array(((array<uint64_t, 8>(*)())(intptr_t)fptr)()); break;
 		case 9: cout_array(((array<uint64_t, 9>(*)())(intptr_t)fptr)()); break;
 		default: outstream << "function return size is " << size_of_return << " and C++ seems to only take static return types\n"; break;
-
 		}
 	}
 	else
@@ -207,7 +197,13 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 {
 	while (object_stack.size() != desired_stack_size)
 	{
-		object_stack.pop_back();
+		auto to_be_removed = object_stack.top();
+		object_stack.pop();
+		if (to_be_removed.second) //it's on the stack
+		{
+			uint64_t number_of_erased = objects.erase(to_be_removed.first);
+			check(number_of_erased == 1, "erased too many or too few elements"); //we shouldn't put the erase operation in the check, because check() might be no-op'd, and erase has side effects
+		}
 	}
 }
 
@@ -239,7 +235,7 @@ currently, the finish() macro takes in the array itself, not the pointer-to-arra
 Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::AllocaInst* storage_location)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
-#define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, T::null, false, 0, 0, 0); } while (0)
+#define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, T::null, stack_state::temp, 0, 0, 0); } while (0)
 
 
 	if (VERBOSE_DEBUG)
@@ -255,7 +251,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 	if (stack_degree == 2) check(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
 	if (stack_degree == 1) check((storage_location != nullptr) || (get_size(target) == 0), "if stack degree is 1, we should have a storage_location");
 
-	//I decided to let generate_IR take nullptr. because if it cannot, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
+	stack_state final_stack_state = stack_state::temp;
+	if (stack_degree != 0) final_stack_state = stack_state::cheap_alloca; //the default. unless any further information appears.
+
+	//generate_IR is allowed to take nullptr. otherwise, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
 	//check(target != nullptr, "generate_IR should never receive a nullptr target");
 	if (target == nullptr) return Return_Info();
 
@@ -323,7 +322,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 	//if move_to_stack == true, it writes into a previously created storage_location
 	auto finish_internal = [&](l::Value* return_value, Type* type, uint64_t self_validity_guarantee, uint64_t target_hit_contract, bool move_to_stack) -> Return_Info
 	{
-		check(type != T::special, "didn't specify return type when necessary");
+		check(type != T::special_return, "didn't specify return type when necessary");
 
 		if (stack_degree >= 1 && size_result == special) size_result = get_size(target);
 		if (stack_degree == 2 && size_result != 0 && storage_location == nullptr)
@@ -340,6 +339,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 		{
 			if (size_result >= 1) //we don't do it for stack_degree = 2, because if storage_location =/= nullptr, we shouldn't write
 			{
+				//RVO must happen here, before returning. because of do_after. when you call do_after, the existing things must already be put in place. you can't put them in place after returning.
+
 				Builder.CreateStore(return_value, storage_location);
 				return_value = storage_location;
 			}
@@ -365,17 +366,19 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 		//we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for justification.
 		if (stack_degree == 2) clear_stack(final_stack_position);
 
-		if (stack_degree >= 1)
+		if (size_result >= 1)
 		{
-			if (size_result >= 1)
+			if (stack_degree >= 1)
 			{
-				object_stack.push_back(target);
-				auto insert_result = objects.insert({target, Return_Info(IRgen_status::no_error, return_value, type, true, lifetime_of_return_value, self_validity_guarantee, target_hit_contract)});
+				object_stack.push({target, true});
+				auto insert_result = objects.insert({target, Return_Info(IRgen_status::no_error, return_value, type, final_stack_state, lifetime_of_return_value, self_validity_guarantee, target_hit_contract)});
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication, 10);
 			}
+			else //stack_degree == 0
+				object_stack.push(std::make_pair(target, false));
 		}
-		return Return_Info(IRgen_status::no_error, return_value, type, false, lifetime_of_return_value, self_validity_guarantee, target_hit_contract);
+		return Return_Info(IRgen_status::no_error, return_value, type, final_stack_state, lifetime_of_return_value, self_validity_guarantee, target_hit_contract);
 	};
 
 	//call the finish macros when you've constructed something.
@@ -406,6 +409,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 		finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
 	case ASTn("subtract"):
 		finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
+	case ASTn("increment"):
+		finish(Builder.CreateAdd(field_results[0].IR, llvm_integer(1), s("increment")));
 	case ASTn("hello"):
 		{
 			l::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!");
@@ -427,7 +432,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 		}
 	case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
 		finish(Builder.CreateCall(llvm_function(Builder, generate_random, int64_type), std::vector<l::Value*>{}));
-	case ASTn("if"): //todo: you can see the condition's return object in the branches.
+	case ASTn("if"): //later: you can see the condition's return object in the branches.
 		//we could have another version where the condition's return object is invisible.
 		//this lets us goto the inside of the if statement.
 		{
@@ -541,12 +546,11 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			{
 				emit_dtors(info.stack_size);
 				Builder.CreateBr(labelsearch->second.block);
-				//Builder.ClearInsertionPoint();
-				//this is bugged. try [label [goto a]]a. note that the label has two predecessors, one which is a null operand
+				//Builder.ClearInsertionPoint() is bugged. try [label [goto a]]a. note that the label has two predecessors, one which is a null operand
 				//so when you emit the branch for the label, even though the insertion point is clear, it still adds a predecessor to the block.
 				//instead, we have to emit a junk block
 
-				l::BasicBlock *JunkBB = l::BasicBlock::Create(thread_context, s("never going to be reached"), Builder.GetInsertBlock()->getParent());
+				l::BasicBlock *JunkBB = l::BasicBlock::Create(thread_context, s("never reached"), Builder.GetInsertBlock()->getParent());
 				Builder.SetInsertPoint(JunkBB);
 
 				finish_special(nullptr, T::nonexistent);
@@ -592,11 +596,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 		{
 			auto found_AST = objects.find(target->fields[0].ptr);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
-			if (found_AST->second.on_stack == false) return_code(pointer_to_temporary, 0);
-			//we make a cheap pointer. todo: if the object is full, we should make a full pointer instead
-			Type* new_pointer_type = get_unique_type(Type("pointer", found_AST->second.type, (uint64_t)0));
+			if (found_AST->second.on_stack == stack_state::temp) return_code(pointer_to_temporary, 0);
+			Type* new_pointer_type = get_unique_type(Type("pointer", found_AST->second.type, is_full(found_AST->second.on_stack)));
 
-			///we force cast all llvm pointer types to integers. this makes it easy to represent types inside llvm, since they're described by a single number - their size.
 			l::Value* final_result = Builder.CreatePtrToInt(found_AST->second.IR, int64_type, s("flattening pointer"));
 
 			finish_special_pointer(final_result, new_pointer_type, found_AST->second.self_lifetime, found_AST->second.self_lifetime);
@@ -605,14 +607,14 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 		{
 			auto found_AST = objects.find(target->fields[0].ptr);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
-			//if on_stack is false, it's not an alloca so we should copy instead of loading.
+			//if on_stack is temp, it's not an alloca so we should copy instead of loading.
 			Return_Info AST_to_load = found_AST->second;
-			if (AST_to_load.on_stack == false) finish_special_pointer(AST_to_load.IR, AST_to_load.type, AST_to_load.self_validity_guarantee, AST_to_load.target_hit_contract);
-			else finish_special_pointer(Builder.CreateLoad(AST_to_load.IR), AST_to_load.type, AST_to_load.self_lifetime, 0);
+			if (AST_to_load.on_stack == stack_state::temp) finish_special_pointer(AST_to_load.IR, AST_to_load.type, AST_to_load.self_validity_guarantee, AST_to_load.target_hit_contract);
+			else finish_special_pointer(Builder.CreateLoad(AST_to_load.IR), AST_to_load.type, AST_to_load.self_lifetime, 0); //todo: atomic load? maybe it's automatic.
 		}
 	case ASTn("concatenate"):
 		{
-			//TODO: if stack_degree == 1, then you've already gotten the size. look it up in a special location.
+			//optimization: if stack_degree == 1, then you've already gotten the size. look it up in a special location.
 
 			uint64_t size[2] = {get_size(target->fields[0].ptr), get_size(target->fields[1].ptr)};
 			size_result = size[0] + size[1];
@@ -669,11 +671,14 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 
 	case ASTn("store"):
 		{
+			if (field_results[0].type == nullptr) return_code(type_mismatch, 0);
 			if (field_results[0].type->tag != Typen("pointer")) return_code(type_mismatch, 0);
 			if (type_check(RVO, field_results[1].type, field_results[0].type->fields[0].ptr) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
 			if (field_results[0].target_hit_contract < field_results[1].self_validity_guarantee) return_code(store_pointer_lifetime_mismatch, 0);
 			llvm::Value* memory_location = Builder.CreateIntToPtr(field_results[0].IR, llvm_type(get_size(field_results[1].type))->getPointerTo());
-			Builder.CreateStore(field_results[1].IR, memory_location); //todo: atomicity for full objects
+			if (requires_atomic(field_results[0].on_stack))
+				Builder.CreateAtomicRMW(llvm::AtomicRMWInst::Xchg, memory_location, field_results[1].IR, llvm::AtomicOrdering::Release); //todo: I don't think this works for large objects; memory location must match exactly. in any case, all we want is piecewise atomic.
+			else Builder.CreateStore(field_results[1].IR, memory_location);
 			finish(0);
 		}
 	case ASTn("dynamic"):
@@ -682,12 +687,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			if (size_of_object >= 1)
 			{
 				l::Value* allocator = llvm_function(Builder, allocate_memory, int64_type, int64_type);
-				l::Value* dynamic_object_address = Builder.CreateCall(allocator, std::vector < l::Value* > {llvm_integer(size_of_object)}, s("allocate memory"));
+				l::Value* dynamic_object_address = Builder.CreateCall(allocator, std::vector<l::Value*>{llvm_integer(size_of_object)}, s("allocate memory"));
 
-				//can't use ?: because the return objects have different types, unless we cast
 				//this represents either an integer or an array of integers.
-				l::Type* target_type = llvm_type(size_of_object);
-				l::Type* target_pointer_type = target_type->getPointerTo();
+				l::Type* target_pointer_type = llvm_type(size_of_object)->getPointerTo();
 
 				//store the returned value into the acquired address
 				l::Value* dynamic_object = Builder.CreateIntToPtr(dynamic_object_address, target_pointer_type);
@@ -850,6 +853,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			{
 				l::Type* pointer_to_array = llvm_type(size_of_object)->getPointerTo();
 				storage_location = l::cast<l::AllocaInst>(Builder.CreatePointerCast(address_of_object, pointer_to_array, s("pointer cast to array")));
+				final_stack_state = stack_state::full_might_be_visible;
+				//whenever storage_location is set, we start to worry about on_stack.
 
 				l::Value* final_value = stack_degree == 0 ? (l::Value*)Builder.CreateLoad(storage_location, s("load concatenated object")) : storage_location;
 				finish_special_stack_handled_pointer(final_value, type_of_object, full_lifetime, full_lifetime);
@@ -902,7 +907,7 @@ void fuzztester(unsigned iterations)
 		//create a random AST
 		unsigned tag = mersenne() % (ASTn("never reached") - 1) + 1; //we skip 0 because that's a null AST
 		unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
-		unsigned prev_AST = generate_exponential_dist() % AST_list.size(); //todo: prove that exponential_dist is desired.
+		unsigned prev_AST = generate_exponential_dist() % AST_list.size(); //perhaps: prove that exponential_dist is desired.
 		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
 		//but does exponential falloff solve this problem in the way we want?
 
@@ -922,23 +927,16 @@ void fuzztester(unsigned iterations)
 			}
 		}
 		AST* test_AST= new AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
-		if (OLD_AST_OUTPUT)
-			output_AST_and_previous(test_AST);
+		if (OLD_AST_OUTPUT) output_AST_and_previous(test_AST);
 		output_AST_console_version a(test_AST);
 
-		finiteness = FINITENESS_LIMIT;
-		compiler_object compiler;
-		unsigned error_code = compiler.compile_AST(test_AST);
-		if (error_code)
-		{
-			outstream << "Malformed AST: code " << error_code << " at AST " << compiler.error_location << " " << AST_descriptor[compiler.error_location->tag].name << " field " << compiler.error_field << "\n";
-			delete test_AST;
-		}
-		else
+		bool result = compile_and_run(test_AST);
+		if (result)
 		{
 			AST_list.push_back(test_AST);
 			outstream << "Successful compile " << AST_list.size() - 1 << "\n";
 		}
+		else delete test_AST;
 		if (INTERACTIVE)
 		{
 			outstream << "Press enter to continue\n";
@@ -1196,12 +1194,7 @@ int main(int argc, char* argv[])
 				continue;
 			}
 			output_AST_and_previous(end);
-			finiteness = FINITENESS_LIMIT;
-			compiler_object j;
-			unsigned error_code = j.compile_AST(end);
-			if (error_code)
-				outstream << "Malformed AST: code " << error_code << " at AST " << j.error_location << " " << AST_descriptor[j.error_location->tag].name << " field " << j.error_field << "\n\n";
-			else outstream << "Successful compile\n\n";
+			compile_and_run(end);
 			}
 	}
 

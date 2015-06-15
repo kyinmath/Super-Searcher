@@ -12,3 +12,5 @@ stack storage.
 
 [label [goto a]]a
 
+[scope {[integer]a [scope]}] [scope {a [scope]}]
+	should compile. tests clearing old unused stack allocas

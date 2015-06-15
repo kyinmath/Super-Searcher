@@ -8,7 +8,7 @@ namespace T
 	constexpr Type	internal::int_;
 	constexpr Type	internal::nonexistent;
 	constexpr Type	internal::missing_field;
-	constexpr Type	internal::special;
+	constexpr Type	internal::special_return;
 	constexpr Type	internal::parameter_no_type_check;
 	constexpr Type	internal::dynamic_pointer;
 	constexpr Type	internal::AST_pointer;
@@ -16,9 +16,7 @@ namespace T
 	constexpr Type	internal::error_object;
 };
 
-/*
-the docs in this file are incomplete.
-this checks if types are equivalent, but with many special cases depensing on the nature of the two types.
+/* this checks if a new reference can be bound to an old reference.
 
 
 we can only convert things that are FULLY IMMUT. just immut is not enough, because it might change anyway (perhaps it's inside a lock, or TU).
@@ -47,7 +45,7 @@ void debugtypecheck(Type* test)
 {
 	if (test != T::nonexistent)
 	{
-		outstream << "T::nonexistent error.\n";
+		outstream << "constexpr address error.\n";
 		output_type(T::nonexistent);
 		output_type(test);
 		abort();
@@ -148,15 +146,9 @@ check_next_token:
 						goto finished_checking;
 				}
 			}
-			return type_check_result::different; //else
-			/*
-		case Typen("fixed integer"): //no need for lock check.
-			if (iter[0]->tag == iter[1]->tag)
-				if (iter[1]->fields[0].num == iter[0]->fields[0].num)
-					goto finished_checking;
-			return 0;*/
+			else return type_check_result::different;
 		case Typen("integer"):
-				if (iter[0]->tag == iter[1]->tag /*|| iter[0]->tag == Typen("fixed integer") */|| iter[0]->tag == Typen("pointer"))
+				if (iter[0]->tag == iter[1]->tag || iter[0]->tag == Typen("pointer"))
 					goto finished_checking;
 			//maybe we should also allow two uints in a row to take a dynamic pointer?
 				//we'd have to think about that. the current system allows for large types in the new reference to accept pieces, but I don't know if that's the best.
@@ -172,7 +164,7 @@ check_next_token:
 		}
 	}
 
-	//TODO: else, it's not fully immut. remember: some things are naturally immut, like fixed uint64. in that case, check fully_immut, but the lock state doesn't matter
+	//else, it's not fully immut. remember: some things are naturally immut, like fixed uint64. in that case, check fully_immut, but the lock state doesn't matter
 
 
 	else
@@ -194,11 +186,6 @@ check_next_token:
 				}
 				return type_check_result::different;
 			}
-		/*
-		case Typen("fixed integer"): //no need for lock check.
-			if (iter[1]->fields[0].num == iter[0]->fields[0].num)
-				goto finished_checking;
-			return 0; */
 		case Typen("integer"):
 		case Typen("AST pointer"):
 			goto finished_checking;

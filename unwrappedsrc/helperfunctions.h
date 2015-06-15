@@ -1,6 +1,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
 #include "debugoutput.h"
+#include "cs11.h"
 extern llvm::IntegerType* int64_type;
 inline llvm::Constant* llvm_integer(uint64_t value)
 {
@@ -46,4 +47,19 @@ inline llvm::Value* llvm_create_phi(llvm::IRBuilder<>& Builder, llvm::Value* fir
 	PN->addIncoming(first, firstBB);
 	PN->addIncoming(second, secondBB);
 	return PN;
+}
+
+//return true on success
+inline bool compile_and_run(AST* ast)
+{
+	finiteness = FINITENESS_LIMIT;
+	compiler_object j;
+	unsigned error_code = j.compile_AST(ast);
+	if (error_code)
+	{
+		outstream << "Malformed AST: code " << error_code << " at AST " << j.error_location << " " << AST_descriptor[j.error_location->tag].name << " field " << j.error_field << "\n\n";
+		return 0;
+	}
+	else outstream << "Successful compile\n\n";
+	return true;
 }

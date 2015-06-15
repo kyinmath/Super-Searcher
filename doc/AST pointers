@@ -30,3 +30,8 @@ the AST pointer is not actually a pointer, because it owns the AST. no free copi
 
 we need: passthrough AST, since our dynamic objects can't change types.
 does this mean we also need a passthrough Type? but both of these are actually already possible, using concatenate() in Type or AST.
+
+
+problem: user probably wants locks on AST pointers, so he can mess with them and prevent anyone else from looking at them.
+	atomic operations on AST pointers is not enough.
+	but since AST pointers are baked in, this isn't possible.

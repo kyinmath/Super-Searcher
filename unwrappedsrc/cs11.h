@@ -23,6 +23,7 @@ extern bool TIMER;
 extern thread_local llvm::LLVMContext& thread_context;
 extern std::mt19937_64 mersenne;
 extern thread_local uint64_t finiteness;
+constexpr uint64_t FINITENESS_LIMIT = 10;
 uint64_t generate_exponential_dist();
 
 
@@ -40,6 +41,28 @@ enum IRgen_status {
 	store_pointer_lifetime_mismatch, //tried to store a short-lasting object in a long-lasting memory location
 };
 
+enum class stack_state
+{
+	temp,
+	cheap_alloca,
+	might_be_visible, //to other threads. better use atomic operations
+	full_might_be_visible, //when you load, you get a full_pointer
+	full_isolated, //it's a full pointer. but no need for atomic operations
+};
+inline bool requires_atomic(stack_state x)
+{
+	if (x == stack_state::full_might_be_visible || x == stack_state::might_be_visible)
+		return true;
+	else return false;
+}
+
+inline bool is_full(stack_state x)
+{
+	if (x == stack_state::full_might_be_visible || x == stack_state::full_isolated)
+		return true;
+	else return false;
+}
+
 constexpr uint64_t full_lifetime = -1ll;
 //every time IR is generated, this holds the relevant return info.
 struct Return_Info
@@ -49,8 +72,7 @@ struct Return_Info
 	llvm::Value* IR;
 
 	Type* type;
-	bool on_stack; //if the return value refers to an alloca.
-	//in that case, the llvm type is actually a pointer. but the internal type doesn't change.
+	stack_state on_stack; //if on_stack =/= temp, the llvm type is actually a pointer. but the internal type doesn't change.
 
 	//to write an object into a pointed-to memory location, we must have guarantee of object <= hit contract of memory location
 	//there's only one hit contract value per object, which can be a problem for concatenations of many cheap pointers.
@@ -66,12 +88,12 @@ struct Return_Info
 	uint64_t target_hit_contract; //lower is less lenient. the reference will disappear after this time. used for pointers
 	//measures the pointer's target's lifetime, for when the pointed-to memory location wants something to be written into it.
 
-	Return_Info(IRgen_status err, llvm::Value* b, Type* t, bool o, uint64_t s, uint64_t u, uint64_t l)
+	Return_Info(IRgen_status err, llvm::Value* b, Type* t, stack_state o, uint64_t s, uint64_t u, uint64_t l)
 		: error_code(err), IR(b), type(t), on_stack(o), self_lifetime(s), self_validity_guarantee(u), target_hit_contract(l) {}
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
-	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T::null), on_stack(false), self_lifetime(0), self_validity_guarantee(0), target_hit_contract(full_lifetime) {}
+	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T::null), on_stack(stack_state::temp), self_lifetime(0), self_validity_guarantee(0), target_hit_contract(full_lifetime) {}
 };
 
 class compiler_object
@@ -83,8 +105,8 @@ class compiler_object
 	std::unordered_set<AST*> loop_catcher;
 
 	//a stack for bookkeeping lifetimes; keeps track of when objects are alive.
-	//it's only a vector because we have to go through it during "goto()" while checking if the stacks match up
-	std::vector<AST*> object_stack;
+	//bool is true if the object is on the stack.
+	std::stack<std::pair<AST*, bool>> object_stack;
 
 	//maps ASTs to their generated IR and return type.
 	std::unordered_map<AST*, Return_Info> objects;
@@ -102,7 +124,8 @@ class compiler_object
 	//these are labels which can be jumped to. the basic block, and the object stack.
 	std::map<AST*, label_info> labels;
 
-	//increases by 1 every time an object is created. imposes an ordering on stack object lifetimes.
+	//increases by 1 every time an object is created. imposes an ordering on stack object lifetimes, such that if two objects exist simultaneously, the lower one will survive longer.
+	//but two objects don't necessarily exist simultaneously. for example, two temporary objects that live separately. then this number is useless in that case.
 	uint64_t incrementor_for_lifetime = 0;
 
 	//some objects have expired - this clears them

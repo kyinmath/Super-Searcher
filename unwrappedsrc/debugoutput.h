@@ -47,7 +47,7 @@ inline void output_type(Type* target)
 		outstream << "null type\n";
 		return;
 	}
-	if (target == T::special) { outstream << "special\n"; return; }
+	if (target == T::special_return) { outstream << "special\n"; return; }
 	outstream << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), addr " << target << ", ";
 	outstream << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
 }
