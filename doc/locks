@@ -12,8 +12,8 @@ everything is atomic.
 		note that right now, our dynamic object -> AST pointer breaks the information on pointer lifetimes.
 	well, we can specify that you're not allowed to overwrite things like dynamic objects or functions, unless they're on the stack locally. but this will be very bad, because eventually we're going to need a big tree (filesystem) full of everything.
 		but, I think this can be solved using an extra indirection. pointer-to-dynamic. then you can create a new dynamic object, and then change the old pointer to point to the new dynamic object. that's how you change its type.
-but then: what about functions? a function will need to have its ASTs immutable.
-	then, you can only have an "attempt to modify AST".
+	a function will need to have its ASTs immutable.
+		then, you can only have an "attempt to modify AST". but that's true of any system, since ASTs will flip between immut and mutable.
 rich, complicated type system.
 	used by ponylang. have barriers on readable objects, writable objects, objects that can't be seen by multiple objects, etc.
 locks - the brute force way.
@@ -23,5 +23,24 @@ locks - the brute force way.
 		you have to have failure situations
 
 
-but ASTs must be modifiable in-place.
-for example, changing a guaranteed-call to a try-call. you must change the tag.
+
+ASTs need to be immut on compilation.
+currently, variable modification is two steps: loading and storage.
+storage must be prohibited for ASTs. maybe you can't get a pointer? at least, you can't get a normal pointer.
+	this isn't particularly hard: we can simply toggle a bit on the pointer to mark it as immut. this is far less general than being able to mark anything immut, but that's entirely fine.
+	what's more, with immediate values (bake dynamic object into function), the dynamic pointer should be marked immut as well. same for AST pointers. anything baked into the function must be so.
+the problem is that you might have old references lying around, and then you would be able to use these to modify the immut AST. that means createstore would have to be special.
+	so perhaps: you can't get references to AST and type interiors, at all. you can only get copies.
+
+types...also require locks. uniqued types must be lockable.
+
+should we have locks? the user can have his own user-defined locking system, although random modification might go trampling over this. locks are like a guarantee. but if the user is going to fuck things up, probably this formal check won't help much.
+
+should we have generalized immut types? this would allow for...more embedding of static objects into functions?
+	is that even true? the only thing that isn't embedded in an immediate variable would be things that are pointed to by the immediate variable. but then, you could just load them and then copy them.
+	so the answer is probably no.
+
+PROBLEM: what about static objects? our current dynamic scheme may either immut the type, or immut both the type and the contents. we don't have a good way to represent both.
+	I just changed all the dynamic objects to be atomic, but now it's working against me because I don't want the type to change.
+	idea: just store the type, and a pointer. it's special? sure, why not. then createstore against the AST won't be able to change the type, since you can't get a reference to the dynamic pointer itself?
+well then, how do we propose to change the dynamic static object AST then? we should pass in a dynamic object, and then the type is checked, and then...

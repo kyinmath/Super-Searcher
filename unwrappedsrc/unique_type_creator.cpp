@@ -39,7 +39,7 @@ namespace std {
 		{
 			if (VERBOSE_DEBUG)
 			{
-				outstream << "testing equal.";
+				console << "testing equal.";
 				output_type(l.ptr);
 				output_type(r.ptr);
 			}
@@ -77,7 +77,7 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 	}
 	if (VERBOSE_DEBUG)
 	{
-		outstream << "type of temporary model ";
+		console << "type of temporary model ";
 		output_type(&temporary_model);
 	}
 

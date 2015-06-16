@@ -1,7 +1,8 @@
 variable changing (CreateStore)
 	ownership of dynamic objects, so we can overwrite the types.
 	type slicing
-note that our createstore is not properly atomic, for items like dynamic pointers.
+note that our createstore is not properly atomic, for items like dynamic pointers. we'll probably do double indirection for dynamic pointers.
+immuting of ASTs.
 move the fuzzer into AST format
 
 locks?
@@ -11,16 +12,7 @@ threading, which requires locks
 Normally, we'd need locks before we implemented CreateStore.
 	but right now, things are ok since all CreateStores are roughly atomic.
 
-createstore probably takes a pointer as its first argument, and the object itself as its second argument.
-
 if we have a dynamic pointer, how do we extract information from it?
-
-
-we need storage when:
-1. we concatenate (?)
-	no, in this case we can have a big jumble of values. shove them together only when used.
-2. we do do_after, because it might be changed
-3. we put something on the stack, because it might be changed, and temps can't change
 
 
 
@@ -34,4 +26,4 @@ then, dynamic pointers, AST pointers, type pointers: can be double indirection.
 	this lets us overwrite multiple-field objects atomically, by creating a whole new copy.
 but any old references are going to be left behind forever. for example, if you get a dynamic pointer to the various fields.
 	for both ASTs and Types, we can require passthrough using their concatenate() operations.
-for dynamic pointers, 
+for dynamic pointers, 128bit atomic is nice, but there are worries about alignment.

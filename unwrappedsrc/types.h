@@ -68,13 +68,14 @@ constexpr uint64_t special = -1ll; //note that a -1 literal, without specifying 
 
 /* Guidelines for new Types:
 you must create an entry in type_check.
+full_validity.
 */
 constexpr Type_info Type_descriptor[] =
 {
 	{"concatenate", 2, special}, //concatenate two types
 	{"integer", 0, 1}, //64-bit integer
 	{"pointer", 1, 1}, //pointer to anything
-	{"dynamic pointer", 0, 2}, //dynamic pointer. first field is the pointer, second field is a pointer to the type. cannot change type after created, unless in ownership lock.
+	{"dynamic pointer", 0, 1}, //dynamic pointer. a double-indirection. points to two elements: first field is the pointer, second field is a pointer to the type. the purpose of double indirection is lock safety
 	{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
 	//the actual object has 6: tag, then previous, then 4 fields.
 	{"function in clouds", 2, 2}, //points to: return AST, then parameter AST, then compiled area. we don't embed the AST along with the function signature, in order to keep them separate.
@@ -125,7 +126,8 @@ namespace T
 		static constexpr Type missing_field{("nonexistent")};
 		static constexpr Type special_return{("integer")};
 		static constexpr Type parameter_no_type_check{("integer")};
-		static constexpr Type dynamic_pointer{("dynamic pointer")};
+		static constexpr Type cheap_dynamic_pointer{("dynamic pointer")};
+		static constexpr Type full_dynamic_pointer{"dynamic pointer", 1};
 		static constexpr Type AST_pointer{("AST pointer")};
 		static constexpr Type conca1{Type("concatenate", const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer))};
 		static constexpr Type error_object{Type("concatenate", const_cast<Type* const>(&conca1), const_cast<Type* const>(&int_))};
@@ -137,7 +139,8 @@ namespace T
 	constexpr Type* special_return = const_cast<Type* const>(&i::special_return); //indicates that a return type is to be handled differently
 	constexpr Type* parameter_no_type_check = const_cast<Type* const>(&i::parameter_no_type_check); //indicates that a parameter type is not to be type checked using the default mechanism
 	constexpr Type* integer = const_cast<Type* const>(&i::int_); //describes an integer type
-	constexpr Type* dynamic_pointer = const_cast<Type* const>(&i::dynamic_pointer);
+	constexpr Type* cheap_dynamic_pointer = const_cast<Type* const>(&i::cheap_dynamic_pointer);
+	constexpr Type* full_dynamic_pointer = const_cast<Type* const>(&i::full_dynamic_pointer);
 	constexpr Type* null = nullptr;
 	constexpr Type* error_object = const_cast<Type* const>(&i::error_object);
 	constexpr Type* AST_pointer = const_cast<Type* const>(&i::AST_pointer);
@@ -162,7 +165,7 @@ constexpr uint64_t get_size(Type* target)
 }
 
 /**
-this is a cool C++ hack to attach information to enums.
+this attaches information to enums.
 first, we construct a vector, where each element has a string and some information attached (in the form of integers)
 then, get_enum_from_name() associates numbers to the strings.
 this lets us switch-case on the strings that are the first element of each enum. since the information is attached to the string, we are guaranteed not to forget to implement it, which reduces the potential for careless errors.
@@ -265,17 +268,17 @@ constexpr AST_info AST_descriptor[] =
 	a("pointer", T::special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
 	a("load", T::special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
 	a("concatenate", T::special_return).make_pointer_fields(2),
-	a("dynamic", T::dynamic_pointer).make_fields_to_compile(1), //creates dynamic storage for any kind of object. moves it to the heap.
-	a("compile", T::dynamic_pointer, T::AST_pointer), //compiles an AST, returning a dynamic object which is either the error object or the desired info.
+	a("dynamic", T::full_dynamic_pointer).make_fields_to_compile(1), //creates dynamic storage for any kind of object. moves it to the heap.
+	a("compile", T::full_dynamic_pointer, T::AST_pointer), //compiles an AST, returning a dynamic object which is either the error object or the desired info.
 	a("temp_generate_AST", T::AST_pointer), //hacked in, generates a random AST.
-	{ "dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, T::dynamic_pointer }, //concatenate the interiors of two dynamic pointers
+	{"dynamic_conc", T::special_return, T::cheap_dynamic_pointer, T::cheap_dynamic_pointer}, //concatenate the interiors of two dynamic pointers
 	a("goto", T::special_return).make_pointer_fields(1),
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
-	a("convert_to_AST", T::AST_pointer, T::integer, T::parameter_no_type_check, T::dynamic_pointer, T::AST_pointer).make_fields_to_compile(3), //don't compile the nonexistent branch, because it needs to go in a special basic block.
+	a("convert_to_AST", T::AST_pointer, T::integer, T::parameter_no_type_check, T::cheap_dynamic_pointer, T::AST_pointer).make_fields_to_compile(3), //don't compile the nonexistent branch, because it needs to go in a special basic block.
 	a("store", T::null, T::parameter_no_type_check, T::parameter_no_type_check), //pointer, then value.
 	//todo: I had these parameter_no_type_check as "T::special_return" before. yet my testcase still passed. why?
-	a("static_object", T::special_return, T::dynamic_pointer).make_special_fields(1), //loads a static object.
-	a("load_object", T::special_return, T::dynamic_pointer).make_special_fields(1), //loads a constant. similar to "int x = 40". if the value ends up on the stack, it can still be modified, but any changes are temporary.
+	a("static_object", T::special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a static object.
+	a("load_object", T::special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a constant. similar to "int x = 40". if the value ends up on the stack, it can still be modified, but any changes are temporary.
 	{ "never reached", T::special_return }, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	{ "dereference pointer", T::special_return}, //????
 	/*	
@@ -333,6 +336,7 @@ constexpr uint64_t get_size(AST* target)
 	else if (target->tag == ASTn("static_object")) return get_size((Type*)target->fields[1].ptr);
 	else if (target->tag == ASTn("load_object")) return get_size((Type*)target->fields[1].ptr);
 	else if (target->tag == ASTn("goto")) return get_size(target->fields[3].ptr);
+	else if (target->tag == ASTn("dynamic_conc")) return get_size(T::cheap_dynamic_pointer); //todo: maybe we'll want cheap and full dynamic pointers to be separate? no double indirection?
 	error(string("couldn't get size of tag in get_size(AST*), target->tag was ") + AST_descriptor[target->tag].name);
 }
 
@@ -353,3 +357,4 @@ enum class type_check_result
 void debugtypecheck(Type* test);
 type_check_result type_check(type_status version, Type* existing_reference, Type* new_reference);
 extern Type* concatenate_types(std::vector<Type*>& components);
+bool is_full(Type* t);

@@ -1,7 +1,7 @@
 /*
 output_AST_and_previous() shows an AST and everything it depends on.
 output_Type_and_previous() is similar.
-Module->print(*llvm_outstream, nullptr) prints the generated llvm code.
+Module->print(*llvm_console, nullptr) prints the generated llvm code.
 */
 #pragma once
 #include "types.h"
@@ -44,12 +44,12 @@ inline void output_type(Type* target)
 {
 	if (target == nullptr)
 	{
-		outstream << "null type\n";
+		console << "null type\n";
 		return;
 	}
-	if (target == T::special_return) { outstream << "special\n"; return; }
-	outstream << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), addr " << target << ", ";
-	outstream << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
+	if (target == T::special_return) { console << "special\n"; return; }
+	console << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), addr " << target << ", ";
+	console << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
 }
 
 //for debugging. outputs a Type and everything it points to, recursively.
@@ -57,7 +57,7 @@ inline void output_type_and_previous(Type* target)
 {
 	if (target == nullptr)
 	{
-		outstream << "type is null\n";
+		console << "type is null\n";
 		return;
 	}
 	output_type(target);
@@ -73,12 +73,12 @@ inline void output_AST(AST* target)
 {
 	if (target == nullptr)
 	{
-		outstream << "null AST\n";
+		console << "null AST\n";
 		return;
 	}
-	outstream << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), addr " << target <<
+	console << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), addr " << target <<
 		", prev " << target->preceding_BB_element << ", ";
-	outstream << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
+	console << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
 }
 
 #include <set>
@@ -87,7 +87,7 @@ inline void output_AST_and_previous(AST* target)
 {
 	if (target == nullptr)
 	{
-		outstream << "null AST\n";
+		console << "null AST\n";
 		return;
 	}
 
@@ -95,7 +95,7 @@ inline void output_AST_and_previous(AST* target)
 	static thread_local std::set<AST*> AST_list;
 	if (AST_list.find(target) != AST_list.end())
 	{
-		outstream << target << '\n';
+		console << target << '\n';
 		return;
 	}
 	AST_list.insert(target);
@@ -126,7 +126,7 @@ struct output_AST_console_version
 		AST_list = { nullptr }; //determine_references changes this, so we must reset it
 		output_console(target, false); //we call it with "false", because the overall function has no braces.
 
-		outstream << '\n';
+		console << '\n';
 	}
 
 	void determine_references(AST* target)
@@ -148,7 +148,7 @@ struct output_AST_console_version
 	{
 		if (AST_list.find(target) != AST_list.end())
 		{
-			outstream << target;
+			console << target;
 			return;
 		}
 		else AST_list.insert(target);
@@ -159,39 +159,39 @@ struct output_AST_console_version
 			if (might_be_end_in_BB)
 			{
 				output_braces = true;
-				outstream << "{";
+				console << "{";
 			}
 			output_console(target->preceding_BB_element, false);
-			outstream << ' ';
+			console << ' ';
 		}
-		outstream << "[" << AST_descriptor[target->tag].name;
+		console << "[" << AST_descriptor[target->tag].name;
 		int x = 0;
 		for (; x < AST_descriptor[target->tag].pointer_fields; ++x)
 		{
-			outstream << ' ';
+			console << ' ';
 			output_console(target->fields[x].ptr, true);
 		}
 
 		//any additional fields that aren't pointers
 		for (; x < AST_descriptor[target->tag].pointer_fields + AST_descriptor[target->tag].additional_special_fields; ++x)
 		{
-			outstream << ' ' << target->fields[x].ptr;
+			console << ' ' << target->fields[x].num;
 		}
 		unsigned first_zero_field = x;
 		for (unsigned check_further_nonzero_fields = x + 1; check_further_nonzero_fields < max_fields_in_AST; ++check_further_nonzero_fields)
 			if (target->fields[check_further_nonzero_fields].num) first_zero_field = check_further_nonzero_fields;
 		for (; x < first_zero_field; ++x)
 		{
-			outstream << ' ';
-			outstream << target->fields[x].num;
+			console << ' ';
+			console << target->fields[x].num;
 		}
-		//outstream << "final x is " << x << '\n';
-		//outstream << "final nonzero is " << first_zero_field << '\n';
-		outstream << ']';
+		//console << "final x is " << x << '\n';
+		//console << "final nonzero is " << first_zero_field << '\n';
+		console << ']';
 
-		if (reference_necessary.find(target) != reference_necessary.end()) outstream << target;
+		if (reference_necessary.find(target) != reference_necessary.end()) console << target;
 
 		if (output_braces)
-			outstream << "}";
+			console << "}";
 	}
 };

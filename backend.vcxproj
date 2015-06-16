@@ -13,6 +13,7 @@
   <ItemGroup>
     <ClCompile Include="unwrappedsrc\cs11.cpp" />
     <ClCompile Include="unwrappedsrc\helperfunctions.cpp" />
+    <ClCompile Include="unwrappedsrc\OrcMCJITReplacement.cpp" />
     <ClCompile Include="unwrappedsrc\testdriver.cpp" />
     <ClCompile Include="unwrappedsrc\types.cpp" />
     <ClCompile Include="unwrappedsrc\unique_type_creator.cpp" />
@@ -22,8 +23,10 @@
     <ClInclude Include="unwrappedsrc\debugoutput.h" />
     <ClInclude Include="unwrappedsrc\errorhandling.h" />
     <ClInclude Include="unwrappedsrc\helperfunctions.h" />
+    <ClInclude Include="unwrappedsrc\OrcMCJITReplacement.h" />
     <ClInclude Include="unwrappedsrc\types.h" />
     <ClInclude Include="unwrappedsrc\unique_type_creator.h" />
+    <ClInclude Include="unwrappedsrc\user_facing_functions.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A3908F65-10ED-4CB5-AC9B-B1D10CDAB936}</ProjectGuid>

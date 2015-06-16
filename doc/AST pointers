@@ -1,3 +1,14 @@
+1. no getting normal references to the insides of an AST, ever. because if the AST is suddenly immuted and you're left holding a non-immut reference, you are boned
+2. immut references are ok? in that case, we might as well just load the values out, instead of bothering with immutness.
+3. there's a lock over the AST, so that we know when it can't be changed.
+3. we can always load from an AST.
+4. we can't always store into an AST.
+5. when we try to store into an AST, and we don't change the tag, it would be good if the AST could be kept the same way.
+	if we do change the tag, we know that we must have a lock. since we have a lock anyway, why not embed the dynamic pointer directly, as its pair of values, so it's a single indirection?
+		since we can only copy anyways. does this result in funky mechanics?
+	also, we can keep ASTs in place, and change them in place.
+	this is fine for ASTs, but not for dynamic pointers, because it prevents references to the interior
+
 with an AST, the first number must be fixed.
 	if we don't let the user set the first integer, that's fine too though.
 

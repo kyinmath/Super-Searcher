@@ -40,9 +40,9 @@ bool TIMER = false;
 bool OLD_AST_OUTPUT = false;
 
 basic_onullstream<char> null_stream;
-std::ostream& outstream = std::cerr;
+std::ostream& console = std::cerr;
 l::raw_null_ostream llvm_null_stream;
-l::raw_ostream* llvm_outstream = &l::outs();
+l::raw_ostream* llvm_console = &l::outs();
 
 
 //later: threading. create non-global contexts
@@ -67,7 +67,7 @@ uint64_t generate_exponential_dist()
 
 compiler_object::compiler_object() : error_location(nullptr), Builder(thread_context)
 {
-	if (VERBOSE_DEBUG) outstream << "creating compiler object\n";
+	if (VERBOSE_DEBUG) console << "creating compiler object\n";
 
 	std::string ErrStr;
 	
@@ -81,9 +81,9 @@ compiler_object::compiler_object() : error_location(nullptr), Builder(thread_con
 
 template<size_t array_num> void cout_array(std::array<uint64_t, array_num> object)
 {
-	outstream << "Evaluated to";
-	for (int x = 0; x < array_num; ++x) outstream << ' ' << object[x];
-	outstream << '\n';
+	console << "Evaluated to";
+	for (int x = 0; x < array_num; ++x) console << ' ' << object[x];
+	console << '\n';
 }
 
 //return value is the error code, which is 0 if successful
@@ -93,7 +93,7 @@ unsigned compiler_object::compile_AST(AST* target)
 	llvm::Module *TheModule(new l::Module("temp module", thread_context));
 	engine->addModule(std::unique_ptr<l::Module>(TheModule));
 
-	if (VERBOSE_DEBUG) outstream << "starting compilation\ntarget is " << target << '\n'; //necessary in case it crashes here
+	if (VERBOSE_DEBUG) console << "starting compilation\ntarget is " << target << '\n'; //necessary in case it crashes here
 	if (target == nullptr) return IRgen_status::null_AST;
 	using namespace llvm;
 	FunctionType *FT;
@@ -101,7 +101,7 @@ unsigned compiler_object::compile_AST(AST* target)
 	auto size_of_return = get_size(target);
 	if (size_of_return == 0) FT = FunctionType::get(l::Type::getVoidTy(thread_context), false);
 	else FT = FunctionType::get(llvm_type(size_of_return), false);
-	if (VERBOSE_DEBUG) outstream << "Size of return is " << size_of_return << '\n';
+	if (VERBOSE_DEBUG) console << "Size of return is " << size_of_return << '\n';
 
 	Function *F = Function::Create(FT, Function::ExternalLinkage, "temp function", TheModule);
 
@@ -115,11 +115,11 @@ unsigned compiler_object::compile_AST(AST* target)
 	if (size_of_return) Builder.CreateRet(return_object.IR);
 	else Builder.CreateRetVoid();
 
-	TheModule->print(*llvm_outstream, nullptr);
-	check(!l::verifyFunction(*F, llvm_outstream), "verification failed");
+	TheModule->print(*llvm_console, nullptr);
+	check(!l::verifyFunction(*F, llvm_console), "verification failed");
 	if (OPTIMIZE)
 	{
-		outstream << "optimized code: \n";
+		console << "optimized code: \n";
 		l::legacy::FunctionPassManager FPM(TheModule);
 		TheModule->setDataLayout(*engine->getDataLayout());
 
@@ -136,17 +136,17 @@ unsigned compiler_object::compile_AST(AST* target)
 		FPM.doInitialization();
 		FPM.run(*TheModule->begin());
 
-		TheModule->print(*llvm_outstream, nullptr);
+		TheModule->print(*llvm_console, nullptr);
 	}
 
-	if (VERBOSE_DEBUG) outstream << "finalizing object...\n";
+	if (VERBOSE_DEBUG) console << "finalizing object...\n";
 	engine->finalizeObject();
 	void* fptr = engine->getPointerToFunction(F);
-	if (VERBOSE_DEBUG) outstream << "running function:\n";
+	if (VERBOSE_DEBUG) console << "running function:\n";
 	if (size_of_return == 1)
 	{
 		uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
-		outstream <<  "Evaluated to " << FP() << '\n';
+		console <<  "Evaluated to " << FP() << '\n';
 	}
 	else if (size_of_return > 1)
 	{
@@ -161,7 +161,7 @@ unsigned compiler_object::compile_AST(AST* target)
 		case 7: cout_array(((array<uint64_t, 7>(*)())(intptr_t)fptr)()); break;
 		case 8: cout_array(((array<uint64_t, 8>(*)())(intptr_t)fptr)()); break;
 		case 9: cout_array(((array<uint64_t, 9>(*)())(intptr_t)fptr)()); break;
-		default: outstream << "function return size is " << size_of_return << " and C++ seems to only take static return types\n"; break;
+		default: console << "function return size is " << size_of_return << " and C++ seems to only take static return types\n"; break;
 		}
 	}
 	else
@@ -240,19 +240,16 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 
 	if (VERBOSE_DEBUG)
 	{
-		outstream << "generate_IR single AST start ^^^^^^^^^\n";
+		console << "generate_IR single AST start ^^^^^^^^^\n";
 		if (target) output_AST(target);
-		outstream << "stack degree " << stack_degree;
-		outstream << ", storage location is ";
-		if (storage_location) storage_location->print(*llvm_outstream);
-		else outstream << "null\n";
+		console << "stack degree " << stack_degree;
+		console << ", storage location is ";
+		if (storage_location) storage_location->print(*llvm_console);
+		else console << "null\n";
 	}
 
 	if (stack_degree == 2) check(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
 	if (stack_degree == 1) check((storage_location != nullptr) || (get_size(target) == 0), "if stack degree is 1, we should have a storage_location");
-
-	stack_state final_stack_state = stack_state::temp;
-	if (stack_degree != 0) final_stack_state = stack_state::cheap_alloca; //the default. unless any further information appears.
 
 	//generate_IR is allowed to take nullptr. otherwise, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
 	//check(target != nullptr, "generate_IR should never receive a nullptr target");
@@ -278,6 +275,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 		if (previous_elements.error_code) return previous_elements;
 	}
 
+	//NOTE: these are the set of default values.
+
 	//after compiling the previous elements in the basic block, we find the lifetime of this element
 	uint64_t lifetime_of_return_value = incrementor_for_lifetime++;
 
@@ -287,6 +286,10 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 
 	uint64_t final_stack_position = object_stack.size();
 
+	stack_state final_stack_state = stack_state::temp;
+	if (stack_degree != 0) final_stack_state = stack_state::cheap_alloca; //the default. unless any further information appears.
+
+	bool full_validity = true;
 
 	//generated IR of the fields of the AST
 	std::vector<Return_Info> field_results; //we don't actually need the return code, but we leave it anyway.
@@ -302,9 +305,9 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 
 		if (VERBOSE_DEBUG)
 		{
-			outstream << "type checking. result type is \n";
+			console << "type checking. result type is \n";
 			output_type_and_previous(result.type);
-			outstream << "desired type is \n";
+			console << "desired type is \n";
 			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
 		}
 		//check that the type matches.
@@ -348,19 +351,19 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 
 		if (VERBOSE_DEBUG && return_value != nullptr)
 		{
-			outstream << "finish() in generate_IR, called value is ";
-			return_value->print(*llvm_outstream);
-			outstream << "\nand the llvm type is ";
-			return_value->getType()->print(*llvm_outstream);
-			outstream << "\nand the internal type is ";
+			console << "finish() in generate_IR, called value is ";
+			return_value->print(*llvm_console);
+			console << "\nand the llvm type is ";
+			return_value->getType()->print(*llvm_console);
+			console << "\nand the internal type is ";
 			output_type_and_previous(type);
-			outstream << '\n';
+			console << '\n';
 		}
-		else if (VERBOSE_DEBUG) outstream << "finish() in generate_IR, null value\n";
+		else if (VERBOSE_DEBUG) console << "finish() in generate_IR, null value\n";
 		if (VERBOSE_DEBUG)
 		{
-			Builder.GetInsertBlock()->getModule()->print(*llvm_outstream, nullptr);
-			outstream << "generate_IR single AST " << target << " " << AST_descriptor[target->tag].name << " vvvvvvvvv\n";
+			Builder.GetInsertBlock()->getModule()->print(*llvm_console, nullptr);
+			console << "generate_IR single AST " << target << " " << AST_descriptor[target->tag].name << " vvvvvvvvv\n";
 		}
 
 		//we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for justification.
@@ -398,7 +401,6 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 #define finish(X) do { finish_pointer(X, 0, -1ll); } while (0)
 #define finish_stack_handled(X) do { return finish_internal(X, AST_descriptor[target->tag].return_object, 0, -1ll, false); } while (0)
 #define finish_stack_handled_pointer(X, u, l) do { return finish_internal(X, AST_descriptor[target->tag].return_object, u, l, false); } while (0)
-
 
 	//we generate code for the AST, depending on its tag.
 	switch (target->tag)
@@ -597,7 +599,8 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			auto found_AST = objects.find(target->fields[0].ptr);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			if (found_AST->second.on_stack == stack_state::temp) return_code(pointer_to_temporary, 0);
-			Type* new_pointer_type = get_unique_type(Type("pointer", found_AST->second.type, is_full(found_AST->second.on_stack)));
+			bool is_full_pointer = is_full(found_AST->second.on_stack);
+			Type* new_pointer_type = get_unique_type(Type("pointer", found_AST->second.type, is_full_pointer));
 
 			l::Value* final_result = Builder.CreatePtrToInt(found_AST->second.IR, int64_type, s("flattening pointer"));
 
@@ -609,8 +612,14 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			//if on_stack is temp, it's not an alloca so we should copy instead of loading.
 			Return_Info AST_to_load = found_AST->second;
+			//todo: atomic load? maybe it's automatic.
 			if (AST_to_load.on_stack == stack_state::temp) finish_special_pointer(AST_to_load.IR, AST_to_load.type, AST_to_load.self_validity_guarantee, AST_to_load.target_hit_contract);
-			else finish_special_pointer(Builder.CreateLoad(AST_to_load.IR), AST_to_load.type, AST_to_load.self_lifetime, 0); //todo: atomic load? maybe it's automatic.
+			else
+			{
+				if (is_full(AST_to_load.type)) //the object has full lifetime
+					finish_special_pointer(Builder.CreateLoad(AST_to_load.IR), AST_to_load.type, 0, 0);
+				else finish_special_pointer(Builder.CreateLoad(AST_to_load.IR), AST_to_load.type, AST_to_load.self_lifetime, 0); //todo: atomic load? maybe it's automatic.
+			}
 		}
 	case ASTn("concatenate"):
 		{
@@ -700,97 +709,50 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 				Type* type_of_dynamic_object = get_unique_type(field_results[0].type, false);
 				l::Constant* integer_type_pointer = llvm_integer((uint64_t)type_of_dynamic_object);
 
-
-				//we now serialize both objects to become integers.
-				l::Value* undef_value = l::UndefValue::get(llvm_array(2));
-				l::Value* first_value = Builder.CreateInsertValue(undef_value, dynamic_object_address, std::vector < unsigned > { 0 });
-				l::Value* full_value = Builder.CreateInsertValue(first_value, integer_type_pointer, std::vector < unsigned > { 1 });
-				finish(full_value);
+				l::Value* indirect_object = llvm_function(Builder, make_dynamic, int64_type, int64_type, int64_type);
+				l::Value* final_dynamic = Builder.CreateCall(indirect_object, std::vector<l::Value*>{dynamic_object_address, integer_type_pointer});
+				finish(final_dynamic);
 			}
 			else
 			{
 				//zero array, for null dynamic object.
-				finish(l::ConstantArray::get(llvm_array(2), std::vector<l::Constant*>{llvm_integer(0), llvm_integer(0)}));
+				finish(llvm_integer(make_dynamic(0, 0)));
 			}
 		}
 	case ASTn("dynamic_conc"):
 		{
-			l::Value* pointer[2];
-			l::Value* type[2];
-			for (int x : {0, 1})
-			{
-				//can't gep because it's not in memory
-				pointer[x] = Builder.CreateExtractValue(field_results[x].IR, std::vector<unsigned>{0}, s("object pointer of dynamic"));
-				type[x] = Builder.CreateExtractValue(field_results[x].IR, std::vector<unsigned>{1}, s("type pointer of dynamic"));
-			}
-
-			std::vector<l::Type*> argument_types{int64_type, int64_type, int64_type, int64_type};
-			//l::Type* return_type = llvm_array(2);
-
-			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
-			//if ever the optimization changes, we might be in trouble.
-			std::vector<l::Type*> return_types{int64_type, int64_type};
-			l::Type* return_type = l::StructType::get(thread_context, return_types);
-			l::FunctionType* dynamic_conc_type = l::FunctionType::get(return_type, argument_types, false);
+			std::vector<l::Type*> argument_types{int64_type, int64_type};
+			l::FunctionType* dynamic_conc_type = l::FunctionType::get(int64_type, argument_types, false);
 
 			l::PointerType* dynamic_conc_type_pointer = dynamic_conc_type->getPointerTo();
 			l::Constant *twister_address = llvm_integer((uint64_t)&concatenate_dynamic);
 			l::Value* dynamic_conc_function = Builder.CreateIntToPtr(twister_address, dynamic_conc_type_pointer, s("convert integer address to actual function"));
 
-			std::vector<l::Value*> arguments{pointer[0], type[0], pointer[1], type[1]};
+			std::vector<l::Value*> arguments{field_results[0].IR, field_results[1].IR};
 			l::Value* result_of_compile = Builder.CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
 
+			//we're creating it in heap memory, but if we're copying pointers, we're in trouble.
+			bool is_full_dynamic = is_full(field_results[0].type->fields[0].ptr) && is_full(field_results[1].type->fields[0].ptr);
+			Type* dynamic_type = get_unique_type(Type(Typen("dynamic"), is_full_dynamic));
 
-
-
-			//this transformation is necessary because array<uint64_t, 2> becomes {i64, i64}
-			//using our current set of optimization passes, this operation isn't optimized to anything better.
-			l::Value* undef_value = l::UndefValue::get(llvm_array(2));
-
-			l::Value* first_return = Builder.CreateExtractValue(result_of_compile, std::vector<unsigned>{0});
-			l::Value* first_value = Builder.CreateInsertValue(undef_value, first_return, std::vector<unsigned>{0});
-
-			l::Value* second_return = Builder.CreateExtractValue(result_of_compile, std::vector<unsigned>{1});
-			l::Value* full_value = Builder.CreateInsertValue(first_value, second_return, std::vector<unsigned>{1});
-
-			finish(full_value);
+			finish_special(result_of_compile, dynamic_type);
 		}
 	case ASTn("compile"):
 		{
-			//l::Type* return_type = llvm_array(2);
-
-
-			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
-			//if ever the optimization changes, we'll be in trouble.
-			std::vector<l::Type*> return_type_members{int64_type, int64_type};
-			l::Type* return_type = l::StructType::get(thread_context, return_type_members);
-
-			l::Value* compile_function = llvm_function(Builder, compile_user_facing, return_type, int64_type);
-			//Builder.CreateIntToPtr(twister_address, compile_type_pointer, s("convert integer address to actual function"));
-
-			std::vector<l::Value*> arguments{field_results[0].IR};
-			l::Value* result_of_compile = Builder.CreateCall(compile_function, arguments, s("compile"));
-
-
-
-			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
-			l::Value* undef_value = l::UndefValue::get(llvm_array(2));
-
-			l::Value* first_return = Builder.CreateExtractValue(result_of_compile, std::vector < unsigned > { 0 });
-			l::Value* first_value = Builder.CreateInsertValue(undef_value, first_return, std::vector < unsigned > { 0 });
-
-			l::Value* second_return = Builder.CreateExtractValue(result_of_compile, std::vector < unsigned > { 1 });
-			l::Value* full_value = Builder.CreateInsertValue(first_value, second_return, std::vector < unsigned > { 1 });
-
-			finish(full_value);
+			l::Value* compile_function = llvm_function(Builder, compile_user_facing, int64_type, int64_type);
+			l::Value* result_of_compile = Builder.CreateCall(compile_function, std::vector<l::Value*>{field_results[0].IR}, s("compile"));
+			finish(result_of_compile);
 		}
 	case ASTn("convert_to_AST"):
 		{
 			l::IntegerType* boolean = l::IntegerType::get(thread_context, 1);
 			l::Value* checker_function = llvm_function(Builder, is_AST_user_facing, boolean, int64_type, int64_type);
 
-			l::Value* pointer = Builder.CreateExtractValue(field_results[2].IR, std::vector < unsigned > {0}, s("fields of hopeful AST"));
-			l::Value* type = Builder.CreateExtractValue(field_results[2].IR, std::vector < unsigned > {1}, s("type of hopeful AST"));
+			l::AllocaInst* pointer_reconstitution = l::cast<l::AllocaInst>(Builder.CreateIntToPtr(field_results[2].IR, llvm_array(2)->getPointerTo()));
+			l::Value* pair_value = Builder.CreateLoad(pointer_reconstitution);
+
+			l::Value* pointer = Builder.CreateExtractValue(pair_value, std::vector < unsigned > {0}, s("fields of hopeful AST"));
+			l::Value* type = Builder.CreateExtractValue(pair_value, std::vector < unsigned > {1}, s("type of hopeful AST"));
 
 			l::Value* previous_AST;
 			if (type_check(RVO, field_results[1].type, nullptr) == type_check_result::perfect_fit) //previous AST is nullptr.
@@ -820,7 +782,7 @@ Return_Info compiler_object::generate_IR(AST* target, unsigned stack_degree, l::
 			TheFunction->getBasicBlockList().push_back(FailureBB);
 			Builder.SetInsertPoint(FailureBB);
 
-			//calls with stack_degree as 1 in the called function, if it is 2 outside.
+		//todo: expose the error object
 			Return_Info failure_IR = generate_IR(target->fields[3].ptr, stack_degree != 0, storage_location);
 			if (failure_IR.error_code) return failure_IR;
 			if (type_check(RVO, failure_IR.type, T::AST_pointer) != type_check_result::perfect_fit) return_code(type_mismatch, 3);
@@ -922,7 +884,7 @@ void fuzztester(unsigned iterations)
 				fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields
 			else
 			{
-				outstream << "fuzztester doesn't know how to make this special type, so it's going to be 0's.\n";
+				console << "fuzztester doesn't know how to make this special type, so it's going to be 0's.\n";
 				check(incrementor == pointer_fields + AST_descriptor[tag].additional_special_fields - 1, "egads! I need to build functionality for tracking the current parameter field offset and the current parameter type separately, because there are extra fields after the special field, and the special field may have size different from 1\n");
 			}
 		}
@@ -934,15 +896,15 @@ void fuzztester(unsigned iterations)
 		if (result)
 		{
 			AST_list.push_back(test_AST);
-			outstream << "Successful compile " << AST_list.size() - 1 << "\n";
+			console << "Successful compile " << AST_list.size() - 1 << "\n";
 		}
 		else delete test_AST;
 		if (INTERACTIVE)
 		{
-			outstream << "Press enter to continue\n";
+			console << "Press enter to continue\n";
 			std::cin.get();
 		}
-		outstream << "\n";
+		console << "\n";
 	}
 }
 
@@ -992,7 +954,7 @@ class source_reader
 				input.ignore(1);
 				next_char = input.peek();
 			}
-			//outstream << "word is " << word << "|||\n";
+			//console << "word is " << word << "|||\n";
 			return word;
 		}
 	}
@@ -1005,7 +967,7 @@ class source_reader
 
 		if (first != string(1, '[')) //it's a name reference.
 		{
-			//outstream << "first was " << first << '\n';
+			//console << "first was " << first << '\n';
 			auto AST_search = ASTmap.find(first);
 			//check(AST_search != ASTmap.end(), string("variable name not found: ") + first);
 			if (AST_search == ASTmap.end())
@@ -1019,7 +981,7 @@ class source_reader
 		string tag = get_token();
 
 		uint64_t AST_type = ASTn(tag.c_str());
-		if (VERBOSE_DEBUG) outstream << "AST tag was " << AST_type << "\n";
+		if (VERBOSE_DEBUG) console << "AST tag was " << AST_type << "\n";
 		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
 
 		int_or_ptr<AST> fields[max_fields_in_AST] = { nullptr, nullptr, nullptr, nullptr };
@@ -1068,8 +1030,8 @@ class source_reader
 
 		if (VERBOSE_DEBUG)
 		{
-			outstream << "next char is" << (char)input.peek() << input.peek();
-			outstream << '\n';
+			console << "next char is" << (char)input.peek() << input.peek();
+			console << '\n';
 		}
 		return new_type;
 
@@ -1149,9 +1111,9 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "oldoutput") == 0) OLD_AST_OUTPUT = false;
 		else if (strcmp(argv[x], "quiet") == 0)
 		{
-			outstream.setstate(std::ios_base::failbit);
-			outstream.rdbuf(nullptr);
-			llvm_outstream = &llvm_null_stream;
+			console.setstate(std::ios_base::failbit);
+			console.rdbuf(nullptr);
+			llvm_console = &llvm_null_stream;
 		}
 		else error(string("unrecognized flag ") + argv[x]);
 	}
@@ -1184,12 +1146,12 @@ int main(int argc, char* argv[])
 		while (1)
 		{
 			source_reader k(std::cin, '\n'); //have to reinitialize to clear the ASTmap
-			outstream << "Input AST:\n";
+			console << "Input AST:\n";
 			AST* end = k.read();
-			if (VERBOSE_DEBUG) outstream << "Done reading.\n";
+			if (VERBOSE_DEBUG) console << "Done reading.\n";
 			if (end == nullptr)
 			{
-				outstream << "it's nullptr\n";
+				console << "it's nullptr\n";
 				std::cin.get();
 				continue;
 			}

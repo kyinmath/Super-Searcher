@@ -10,7 +10,8 @@ namespace T
 	constexpr Type	internal::missing_field;
 	constexpr Type	internal::special_return;
 	constexpr Type	internal::parameter_no_type_check;
-	constexpr Type	internal::dynamic_pointer;
+	constexpr Type	internal::cheap_dynamic_pointer;
+	constexpr Type	internal::full_dynamic_pointer;
 	constexpr Type	internal::AST_pointer;
 	constexpr Type	internal::conca1;
 	constexpr Type	internal::error_object;
@@ -45,7 +46,7 @@ void debugtypecheck(Type* test)
 {
 	if (test != T::nonexistent)
 	{
-		outstream << "constexpr address error.\n";
+		console << "constexpr address error.\n";
 		output_type(T::nonexistent);
 		output_type(test);
 		abort();
@@ -60,7 +61,7 @@ type_check_result type_check(type_status version, Type* existing_reference, Type
 
 	if (VERBOSE_DEBUG)
 	{
-		outstream << "type_checking these types: ";
+		console << "type_checking these types: ";
 		output_type(existing_reference);
 		output_type(new_reference);
 	}
@@ -124,6 +125,8 @@ check_next_token:
 	check(iter[0] != T::nonexistent, "can't handle nonexistent types in type_check()");
 	check(iter[1] != T::nonexistent, "can't handle nonexistent types in type_check()");
 
+	//problem: I think RVO pointers might not work the way we think they do?
+	//or maybe we don't need the "reference" case.
 
 	/*if fully immut + immut, the new reference can't change the object
 	if RVO, there's no old reference to interfere with changes
@@ -155,6 +158,14 @@ check_next_token:
 				return type_check_result::different;
 
 		case Typen("dynamic pointer"):
+
+			if (iter[0]->fields[0].num >= iter[1]->fields[0].num) //full pointers can RVO into cheap pointers.
+			{
+				if (iter[0]->tag == iter[1]->tag)
+					goto finished_checking;
+			}
+			return type_check_result::different;
+
 		case Typen("AST pointer"):
 			if (iter[0]->tag == iter[1]->tag)
 				goto finished_checking;
@@ -191,7 +202,9 @@ check_next_token:
 			goto finished_checking;
 
 		case Typen("dynamic pointer"):
-			goto finished_checking;
+			if (iter[0]->fields[0].num >= iter[1]->fields[0].num) //full pointers can be thought of as cheap pointers
+				goto finished_checking;
+			else return type_check_result::different;
 	
 		default:
 			error("default case in other branch");
@@ -215,4 +228,19 @@ Type* concatenate_types(std::vector<Type*>& components)
 
 	if (components.size() == 0) return nullptr;
 	else return concatenate_types(components.data(), components.size());
+}
+
+bool is_full(Type* t)
+{
+	if (t == nullptr) return true;
+	else switch (t->tag)
+	{
+	case Typen("concatenate"): return is_full(t->fields[0].ptr) && is_full(t->fields[1].ptr);
+	case Typen("pointer"):
+	case Typen("dynamic pointer"):
+		if (t->fields[1].num != 0 && t->fields[1].num != 1)
+			error("cases we haven't considered");
+		return t->fields[1].num == 1;
+	default: return true;
+	}
 }

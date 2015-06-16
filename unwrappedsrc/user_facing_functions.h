@@ -2,6 +2,14 @@
 #include "types.h"
 #include "cs11.h"
 
+//warning: array<uint64_t, 2> becomes {i64, i64}
+//using our current set of optimization passes, the undef+insertvalue operations aren't optimized to anything better.
+
+inline uint64_t make_dynamic(uint64_t pointer_to_object, uint64_t pointer_to_type)
+{
+	return (uint64_t)(new uint64_t[2]{pointer_to_object, pointer_to_type});
+}
+
 //return type is actually AST*
 inline uint64_t make_AST_pointer_from_dynamic(uint64_t tag, uint64_t previous_AST, uint64_t intpointer)
 {
@@ -28,7 +36,7 @@ we might need realloc. BUT, the advantage of new is that it throws an exception 
 
 NOTE: std::array<2> becomes {uint64_t, uint64_t}. but array<4> becomes [i64 x 4].
 */
-inline std::array<uint64_t, 2> compile_user_facing(uint64_t target)
+inline uint64_t compile_user_facing(uint64_t target)
 {
 	compiler_object a;
 	unsigned error = a.compile_AST((AST*)target);
@@ -53,13 +61,15 @@ inline std::array<uint64_t, 2> compile_user_facing(uint64_t target)
 		Type* function_return_type = a.return_type;
 		return_type_pointer = new Type("function in clouds", a.return_type, a.parameter_type);
 	}
-	return std::array < uint64_t, 2 > {(uint64_t)return_object_pointer, (uint64_t)return_type_pointer};
+	return make_dynamic((uint64_t)return_object_pointer, (uint64_t)return_type_pointer);
 }
 
-inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_pointer, uint64_t first_type, uint64_t second_pointer, uint64_t second_type)
+//each parameter is an int64[2]*
+inline uint64_t concatenate_dynamic(uint64_t first_dynamic, uint64_t second_dynamic)
 {
-	uint64_t* pointer[2] = { (uint64_t*)first_pointer, (uint64_t*)second_pointer };
-	Type* type[2] = { (Type*)first_type, (Type*)second_type };
+
+	uint64_t* pointer[2] = {((uint64_t**)first_dynamic)[0], ((uint64_t**)second_dynamic)[0]};
+	Type* type[2] = {((Type**)first_dynamic)[1], ((Type**)second_dynamic)[1]};
 	uint64_t size[2];
 	for (int x : { 0, 1 })
 	{
@@ -74,9 +84,8 @@ inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_pointer, uint6
 	{
 		new_dynamic[idx + size[0]] = pointer[1][idx];
 	}
-	Type end_model("concatenate", first_type, second_type);
-	Type* new_type = get_unique_type(&end_model, false);
-	return std::array<uint64_t, 2>{(uint64_t)new_dynamic, (uint64_t)new_type};
+	Type* new_type = get_unique_type(Type("concatenate", type[0], type[1] ));
+	return make_dynamic((uint64_t)new_dynamic, (uint64_t)new_type);
 }
 
 
@@ -142,4 +151,4 @@ inline bool is_AST_user_facing(uint64_t tag, uint64_t reference)
 	return is_AST(tag, (Type*)reference);
 }
 
-inline void print_uint64_t(uint64_t x) {outstream << x << '\n';}
+inline void print_uint64_t(uint64_t x) {console << x << '\n';}

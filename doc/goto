@@ -1,0 +1,16 @@
+goto() forward uses the try_catch system.
+so the label() block creates a scope. this lets you know that anything inside will die, so it can't affect the stack.
+	this means that if you're inside the block, you can goto() out of it.
+what's more, it makes it easy for the user to tell whether a goto ought to fail or not.
+and it lets us get rid of our continuation nonsense, which would have killed compilation performance.
+ideally, you can see every label you can jump to.
+	except with our current try-catch, we can't jump into subfields of expressions. you can only stay in your current basic block.
+	we can't jump into scopes, which is totally ok because labels are scope substitutes. maybe we'll end up removing scopes eventually.
+
+the benefit of for() over labels() is conceptual. user knows exactly where it will start and stop. after that, you don't need to remember it.
+	the compiler too - less need to track things.
+no need for increment, because that's automatically the first thing pointed to (it happens at the end of the block)
+but we should have do while() as an option.
+
+failable goto returns whatever its second argment is, because on success, it returns T::nonexistent.
+non-failable goto returns T::nonexistent.

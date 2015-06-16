@@ -30,6 +30,9 @@
     <ClCompile Include="unwrappedsrc\helperfunctions.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="unwrappedsrc\OrcMCJITReplacement.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="unwrappedsrc\types.h">
@@ -48,6 +51,12 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="unwrappedsrc\helperfunctions.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unwrappedsrc\OrcMCJITReplacement.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unwrappedsrc\user_facing_functions.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
