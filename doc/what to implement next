@@ -1,13 +1,15 @@
-locks on Types and ASTs
-	type slicing maybe
-acquisition of Type and AST values
-note that our createstore is not properly atomic, for items like dynamic pointers. we'll probably do double indirection for dynamic pointers.
-immuting of ASTs.
 move the fuzzer into AST format
+	fix compilation
+	Call() + finiteness
+	getting types of ASTs
+	
+acquisition of Type and AST values
+overwriting ASTs
+cleanup of all the memory leaks
+recursive types
 
-locks?
-pointer offsets.
-threading, which requires locks
+pointer offsets/type slicing
+threading
 
 if we have a dynamic pointer, how do we extract information from it?
 
@@ -16,7 +18,6 @@ if we have a dynamic pointer, how do we extract information from it?
 suppose we have a compiled function. it points to an AST. when the function dies, should we really unimmut the old ASTs? is that at all useful?
 	yeah, it's vital. we don't want to create new copies all the time. and we use compilation as error_checking, so we compile a function many times as we create it.
 
-with my store() command, should I be running dtors?
 
 perhaps: we want createstore to be a simply mem copy.
 then, dynamic pointers, AST pointers, type pointers: can be double indirection.

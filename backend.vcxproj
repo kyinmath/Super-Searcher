@@ -21,7 +21,7 @@
   <ItemGroup>
     <ClInclude Include="unwrappedsrc\cs11.h" />
     <ClInclude Include="unwrappedsrc\debugoutput.h" />
-    <ClInclude Include="unwrappedsrc\errorhandling.h" />
+    <ClInclude Include="unwrappedsrc\console.h" />
     <ClInclude Include="unwrappedsrc\helperfunctions.h" />
     <ClInclude Include="unwrappedsrc\lock.h" />
     <ClInclude Include="unwrappedsrc\OrcMCJITReplacement.h" />

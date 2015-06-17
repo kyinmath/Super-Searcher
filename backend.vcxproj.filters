@@ -47,9 +47,6 @@
     <ClInclude Include="unwrappedsrc\unique_type_creator.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="unwrappedsrc\errorhandling.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="unwrappedsrc\helperfunctions.h">
       <Filter>Source Files</Filter>
     </ClInclude>
@@ -60,6 +57,9 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="unwrappedsrc\lock.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unwrappedsrc\console.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

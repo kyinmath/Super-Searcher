@@ -52,3 +52,12 @@ we can't abuse the AST pointer by making it also function as a lock, because tha
 
 
 so we're trying to move ASTs to be dynamic...the problem is that AST_info needs to be constexpr. will variable-memory lengths work with our constexpr?
+
+
+I think: maybe the pointer should be the one templated to the lock. not the actual contents.
+	because: we work with pointers all the time. not with the object.
+	however, having the pointer be templated will cause trouble when trying to construct the object.
+
+we're probably going to have 3 things:
+uType, for users. can have loops and pathological behavior.
+Type, for us. is immut, unique, behaves nicely. degenerates to uType cleanly.

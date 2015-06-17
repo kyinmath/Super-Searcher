@@ -435,7 +435,6 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 
 			finish(Builder.CreateCall(putsFunc, helloWorld, s("hello world")));
 		}
-
 	case ASTn("print_int"):
 		{
 			l::Value* printer = llvm_function(Builder, print_uint64_t, l::Type::getVoidTy(thread_context), int64_type);
@@ -443,9 +442,7 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 		}
 	case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
 		finish(Builder.CreateCall(llvm_function(Builder, generate_random, int64_type), std::vector<l::Value*>{}));
-	case ASTn("if"): //later: you can see the condition's return object in the branches.
-		//we could have another version where the condition's return object is invisible.
-		//this lets us goto the inside of the if statement.
+	case ASTn("if"):
 		{
 			//the condition statement
 			if (target->fields[0].ptr == nullptr) return_code(null_AST, 0);
@@ -475,9 +472,7 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 
 			Builder.CreateCondBr(comparison, ThenBB, ElseBB);
 
-			//start inserting code in the "then" block
-			//this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty.
-			//if there are already commands inside the "Then" basic block, we would be in trouble
+			//sets the insert point to be the end of the "Then" basic block.
 			Builder.SetInsertPoint(ThenBB);
 
 			//calls with stack_degree as 1 in the called function, if it is 2 outside.
@@ -491,7 +486,7 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 			ThenBB = Builder.GetInsertBlock();
 
 			TheFunction->getBasicBlockList().push_back(ElseBB);
-			Builder.SetInsertPoint(ElseBB); //WATCH OUT: same here.
+			Builder.SetInsertPoint(ElseBB);
 
 			Return_Info else_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, storage_location);
 			if (else_IR.error_code) return else_IR;
@@ -791,7 +786,7 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 			TheFunction->getBasicBlockList().push_back(FailureBB);
 			Builder.SetInsertPoint(FailureBB);
 
-		//todo: expose the error object
+			//todo: expose the error object
 			Return_Info failure_IR = generate_IR(target->fields[3].ptr, stack_degree != 0, storage_location);
 			if (failure_IR.error_code) return failure_IR;
 			if (type_check(RVO, failure_IR.type, T::AST_pointer) != type_check_result::perfect_fit) return_code(type_mismatch, 3);
@@ -834,7 +829,6 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 		}
 	case ASTn("load_object"): //bakes in the value into the compiled function. changes by the function are temporary.
 		{
-			//problem: what to do about pointers? especially things like functions and unique pointers. does a simply memory copy really copy the object?
 			uint64_t* array_of_integers = (uint64_t*)(target->fields[0].ptr);
 			Type* type_of_object = (Type*)target->fields[1].ptr;
 			uint64_t size_of_object = get_size(type_of_object);

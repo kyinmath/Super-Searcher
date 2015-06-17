@@ -27,7 +27,7 @@ Later, we'll have some ASTs that let the user actually query this information.
 #include <cstdint>
 #include <array>
 #include <llvm/Support/ErrorHandling.h>
-#include "errorhandling.h"
+#include "console.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
