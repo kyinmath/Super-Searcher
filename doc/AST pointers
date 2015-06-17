@@ -46,3 +46,9 @@ does this mean we also need a passthrough Type? but both of these are actually a
 problem: user probably wants locks on AST pointers, so he can mess with them and prevent anyone else from looking at them.
 	atomic operations on AST pointers is not enough.
 	but since AST pointers are baked in, this isn't possible.
+	well, he can make concatenate() and then scope some comment objects.
+
+we can't abuse the AST pointer by making it also function as a lock, because that means that copying the pointer may not always give the correct value.
+
+
+so we're trying to move ASTs to be dynamic...the problem is that AST_info needs to be constexpr. will variable-memory lengths work with our constexpr?

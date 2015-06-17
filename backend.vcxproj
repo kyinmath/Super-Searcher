@@ -23,6 +23,7 @@
     <ClInclude Include="unwrappedsrc\debugoutput.h" />
     <ClInclude Include="unwrappedsrc\errorhandling.h" />
     <ClInclude Include="unwrappedsrc\helperfunctions.h" />
+    <ClInclude Include="unwrappedsrc\lock.h" />
     <ClInclude Include="unwrappedsrc\OrcMCJITReplacement.h" />
     <ClInclude Include="unwrappedsrc\types.h" />
     <ClInclude Include="unwrappedsrc\unique_type_creator.h" />

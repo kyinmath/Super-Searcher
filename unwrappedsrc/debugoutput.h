@@ -69,8 +69,9 @@ inline void output_type_and_previous(Type* target)
 
 
 //only call on a non-nullptr target. outputs a single AST.
-inline void output_AST(AST* target)
+inline void output_AST(uAST* target)
 {
+	//uAST* target = locked_target->bypass(); //ignore all locks
 	if (target == nullptr)
 	{
 		console << "null AST\n";
@@ -83,8 +84,9 @@ inline void output_AST(AST* target)
 
 #include <set>
 //for debugging. outputs an AST and everything it can see, recursively.
-inline void output_AST_and_previous(AST* target)
+inline void output_AST_and_previous(Lo<uAST>* locked_target)
 {
+	uAST* target = locked_target->bypass(); //ignore all locks
 	if (target == nullptr)
 	{
 		console << "null AST\n";
@@ -92,7 +94,7 @@ inline void output_AST_and_previous(AST* target)
 	}
 
 	//this makes you not output any AST that has been output before. it prevents infinite loops
-	static thread_local std::set<AST*> AST_list;
+	static thread_local std::set<uAST*> AST_list;
 	if (AST_list.find(target) != AST_list.end())
 	{
 		console << target << '\n';
@@ -117,20 +119,22 @@ inline void output_AST_and_previous(AST* target)
 //be careful: an AST and its previous basic block elements may need braces when referenced one way, but may not need them when referenced another way (for example, if it's referenced as dependencies of two different ASTs, but is not the primary element in the first). this isn't an issue when reading, but is handled appropriately when outputting.
 struct output_AST_console_version
 {
-	std::unordered_set<AST*> AST_list = { nullptr }; //nullptr = 0 is a special value.
-	std::unordered_set<AST*> reference_necessary; //list of ASTs that have references to them later. these ASTs need to print a name.
+	std::unordered_set<uAST*> AST_list = { nullptr }; //nullptr = 0 is a special value.
+	std::unordered_set<uAST*> reference_necessary; //list of ASTs that have references to them later. these ASTs need to print a name.
 
-	output_AST_console_version(AST* target)
+	output_AST_console_version(Lo<uAST>* locked_target)
 	{
-		determine_references(target);
+		determine_references(locked_target);
 		AST_list = { nullptr }; //determine_references changes this, so we must reset it
-		output_console(target, false); //we call it with "false", because the overall function has no braces.
+		output_console(locked_target, false); //we call it with "false", because the overall function has no braces.
 
 		console << '\n';
 	}
 
-	void determine_references(AST* target)
+	void determine_references(Lo<uAST>* locked_target)
 	{
+		uAST* target = locked_target->bypass();
+
 		if (AST_list.find(target) != AST_list.end()) //already seen
 		{
 			if (reference_necessary.find(target) == reference_necessary.end()) //reference not yet added
@@ -144,8 +148,9 @@ struct output_AST_console_version
 	}
 
 	//the purpose of "might be end in BB" is to decide whether to output {} or not.
-	void output_console(AST* target, bool might_be_end_in_BB)
+	void output_console(Lo<uAST>* locked_target, bool might_be_end_in_BB)
 	{
+		uAST* target = locked_target->bypass();
 		if (AST_list.find(target) != AST_list.end())
 		{
 			console << target;

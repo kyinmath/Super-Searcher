@@ -59,5 +59,8 @@
     <ClInclude Include="unwrappedsrc\user_facing_functions.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="unwrappedsrc\lock.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

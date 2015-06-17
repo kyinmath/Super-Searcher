@@ -47,6 +47,7 @@ union int_or_ptr
 //Visual Studio doesn't support constexpr. we use this to make the Intellisense errors go away.
 #ifdef _MSC_VER
 #define constexpr
+#define thread_local
 #endif
 
 //for whatever reason, strcmp is not constexpr. so we do this
@@ -101,18 +102,59 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
 constexpr uint64_t Typen(const char name[])
 { return get_enum_from_name<const Type_info, Type_descriptor>(name); }
 
+#include "lock.h"
+//Lo = Lockable
+template<class T>
+struct Lo : private T
+{
+	using T::T;
+	//void perm_lock() {lock.guaranteed_grab();}
+	//the type held here is only valid for as long as the lock is alive. don't try to extract x unless you know the lock will be alive for longer than that.
+	//don't call get_interior except for very short periods of time! it's not meant to be kept locked.
+	struct holder
+	{
+		T* x;
+		rw_lock& lock;
+		holder(T* t, rw_lock& l) : x(t), lock(l) {}
+		~holder() { lock.release_read(); };
+	};
+	rw_lock lock;
+	holder get_read()
+	{
+		lock.grab_read();
+		return holder((T*)this, lock);
+	}
+
+	T* bypass()
+	{
+		return (T*)this;
+	}
+};
+
 #define fields_in_Type 2u
+//this is for types which are known to be unique and well-behaved (no loops).
 struct Type
 {
 	uint64_t tag;
 	using iop = int_or_ptr<Type>;
 	std::array<iop, fields_in_Type> fields;
+	uint64_t filler = 1; //this probably works. it's being silently converted to an atomic<uint64>
 	constexpr Type(const char name[], const iop a = nullptr, const iop b = nullptr) : tag(Typen(name)), fields{ a, b } {}
 	constexpr Type(const uint64_t t, const iop a = nullptr, const iop b = nullptr) : tag(t), fields{ a, b } {}
 };
+
+//this is for user-created types. they might look totally awful.
+struct uType
+{
+	uint64_t tag;
+	using iop = int_or_ptr<Lo<uType>>;
+	std::array<iop, fields_in_Type> fields;
+	constexpr uType(const char name[], const iop a = nullptr, const iop b = nullptr) : tag(Typen(name)), fields{a, b} {}
+	constexpr uType(const uint64_t t, const iop a = nullptr, const iop b = nullptr) : tag(t), fields{a, b} {}
+};
 #define max_fields_in_AST 4u
 //should accomodate the largest possible AST
-struct AST;
+
 
 //when creating a new element here, remember to instantiate it in types.cpp.
 //the reason these are static members of struct internal is so that the address is the same across translation units.
@@ -121,7 +163,7 @@ namespace T
 {
 	struct internal
 	{
-		static constexpr Type int_{("integer")};
+		static constexpr Type int_{"integer"};
 		static constexpr Type nonexistent{("nonexistent")};
 		static constexpr Type missing_field{("nonexistent")};
 		static constexpr Type special_return{("integer")};
@@ -151,6 +193,8 @@ namespace T
 all object sizes are integer multiples of 64 bits.
 this function returns the size of an object as (number of bits/64).
 thus, a uint64 has size "1". a struct of two uint64s has size "2". etc.
+todo: what about loops? for now, it's ok, because the user doesn't have access to Type creation functions.
+	we'll mark this as the "good" function. it takes in Types that are known to be unique.
 */
 constexpr uint64_t get_size(Type* target)
 {
@@ -158,9 +202,7 @@ constexpr uint64_t get_size(Type* target)
 		return 0;
 	if (Type_descriptor[target->tag].size != special) return Type_descriptor[target->tag].size;
 	else if (target->tag == Typen("concatenate"))
-	{
 		return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
-	}
 	error("couldn't get size of type tag, check backtrace for target->tag");
 }
 
@@ -246,10 +288,11 @@ if you're using the heap, set final_stack_state.
 if you don't want the subfields to be compiled, use make_fields_to_compile().
 if subfields aren't actually AST pointers, but maybe some other special object like a dynamic object or integer, use make_special_fields().
 
-the number of parameter types determines the number of subfields to be compiled and type-checked automatically.
+the number of parameter types determines the number of subfields to be compiled and type-checked automatically. the instructions in these subfields are always run; there's no branching.
 	if you want to compile but not type-check a field, use make_fields_to_compile() and do not list a parameter type.
 	if you want to neither compile or type-check a field, use make_pointer_fields().
 		in these cases, you must handle the type-checking/compilation manually if it's not done automatically and you want it to be done.
+		remember to handle null types and T::nonexistent.
 if the AST branches, then make sure to clear temporaries from the stack list before running the other branch.
 keep AST names to one word only, because our console input takes a single word for the name.
 */
@@ -309,22 +352,27 @@ constexpr AST_info AST_descriptor[] =
 constexpr uint64_t ASTn(const char name[])
 { return get_enum_from_name<const AST_info, AST_descriptor>(name); }
 
-struct AST
+//there's zero point in having "well-formed" ASTs.
+struct uAST
 {
 	//std::mutex lock;
 	uint64_t tag;
-	AST* preceding_BB_element; //this object survives on the stack and can be referenced. it's the previous basic block element.
-	using iop = int_or_ptr<AST>;
+	Lo<uAST>* preceding_BB_element; //this object survives on the stack and can be referenced. it's the previous basic block element.
+	using iop = int_or_ptr<Lo<uAST>>;
 	std::array<iop, max_fields_in_AST> fields;
-	AST(const char name[], AST* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
+	uAST(const char name[], Lo<uAST>* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
 		: tag(ASTn(name)), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {} //VS complains about aggregate initialization, but it is wrong.
-	AST(uint64_t direct_tag, AST* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
+	uAST(uint64_t direct_tag, Lo<uAST>* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
 		: tag(direct_tag), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {}
 	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };
 
+//todo: we're just hoping that there aren't any infinite loops.
+//this should be healthier later. we still need to optimize concatenate and embed this along with the main loop_catcher.
 
-constexpr uint64_t get_size(AST* target)
+constexpr uint64_t get_size(uAST* target);
+constexpr uint64_t get_size(Lo<uAST>* lo_target) { return get_size(lo_target->bypass()); }
+constexpr uint64_t get_size(uAST* target) 
 {
 	if (target == nullptr)
 		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.

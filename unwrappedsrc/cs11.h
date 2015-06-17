@@ -102,14 +102,14 @@ class compiler_object
 	llvm::ExecutionEngine* engine;
 
 	//lists the ASTs we're currently looking at. goal is to prevent infinite loops.
-	std::unordered_set<AST*> loop_catcher;
+	std::unordered_set<Lo<uAST>*> loop_catcher;
 
 	//a stack for bookkeeping lifetimes; keeps track of when objects are alive.
 	//bool is true if the object is on the stack.
-	std::stack<std::pair<AST*, bool>> object_stack;
+	std::stack<std::pair<Lo<uAST>*, bool>> object_stack;
 
 	//maps ASTs to their generated IR and return type.
-	std::unordered_map<AST*, Return_Info> objects;
+	std::unordered_map<Lo<uAST>*, Return_Info> objects;
 
 	//these are the labels which are later in the basic block. you can jump to them without checking finiteness, but you must check the type stack
 	//std::stack<AST*> future_labels;
@@ -122,7 +122,7 @@ class compiler_object
 		label_info(llvm::BasicBlock* l, uint64_t s, bool f) : block(l), stack_size(s), is_forward(f) {}
 	};
 	//these are labels which can be jumped to. the basic block, and the object stack.
-	std::map<AST*, label_info> labels;
+	std::map<Lo<uAST>*, label_info> labels;
 
 	//increases by 1 every time an object is created. imposes an ordering on stack object lifetimes, such that if two objects exist simultaneously, the lower one will survive longer.
 	//but two objects don't necessarily exist simultaneously. for example, two temporary objects that live separately. then this number is useless in that case.
@@ -135,15 +135,15 @@ class compiler_object
 
 	llvm::AllocaInst* create_alloca(uint64_t size);
 
-	Return_Info generate_IR(AST* target, unsigned stack_degree, llvm::AllocaInst* storage_location = nullptr);
+	Return_Info generate_IR(Lo<uAST>* target, unsigned stack_degree, llvm::AllocaInst* storage_location = nullptr);
 
 public:
 	compiler_object();
-	unsigned compile_AST(AST* target); //we can't combine this with the ctor, because it needs to return an int
+	unsigned compile_AST(Lo<uAST>* target); //we can't combine this with the ctor, because it needs to return an int
 	//todo: right now, compile_AST runs the function that it creates. that's not what we want.
 
 	//exists when IRgen_status has an error.
-	AST* error_location;
+	Lo<uAST>* error_location;
 	unsigned error_field; //which field in error_location has the error
 
 	//these exist on successful compilation. guaranteed to be uniqued and in the heap.

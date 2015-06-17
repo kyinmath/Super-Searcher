@@ -1,6 +1,6 @@
-variable changing (CreateStore)
-	ownership of dynamic objects, so we can overwrite the types.
-	type slicing
+locks on Types and ASTs
+	type slicing maybe
+acquisition of Type and AST values
 note that our createstore is not properly atomic, for items like dynamic pointers. we'll probably do double indirection for dynamic pointers.
 immuting of ASTs.
 move the fuzzer into AST format
@@ -8,9 +8,6 @@ move the fuzzer into AST format
 locks?
 pointer offsets.
 threading, which requires locks
-
-Normally, we'd need locks before we implemented CreateStore.
-	but right now, things are ok since all CreateStores are roughly atomic.
 
 if we have a dynamic pointer, how do we extract information from it?
 

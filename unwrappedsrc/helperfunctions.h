@@ -50,14 +50,14 @@ inline llvm::Value* llvm_create_phi(llvm::IRBuilder<>& Builder, llvm::Value* fir
 }
 
 //return true on success
-inline bool compile_and_run(AST* ast)
+inline bool compile_and_run(Lo<uAST>* ast)
 {
 	finiteness = FINITENESS_LIMIT;
 	compiler_object j;
 	unsigned error_code = j.compile_AST(ast);
 	if (error_code)
 	{
-		console << "Malformed AST: code " << error_code << " at AST " << j.error_location << " " << AST_descriptor[j.error_location->tag].name << " field " << j.error_field << "\n\n";
+		console << "Malformed AST: code " << error_code << " at AST " << j.error_location << " " << AST_descriptor[j.error_location->bypass()->tag].name << " field " << j.error_field << "\n\n";
 		return 0;
 	}
 	else console << "Successful compile\n\n";

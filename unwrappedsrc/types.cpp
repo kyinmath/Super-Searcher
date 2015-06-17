@@ -5,16 +5,16 @@
 
 namespace T
 {
-	constexpr Type	internal::int_;
-	constexpr Type	internal::nonexistent;
-	constexpr Type	internal::missing_field;
-	constexpr Type	internal::special_return;
-	constexpr Type	internal::parameter_no_type_check;
-	constexpr Type	internal::cheap_dynamic_pointer;
-	constexpr Type	internal::full_dynamic_pointer;
-	constexpr Type	internal::AST_pointer;
-	constexpr Type	internal::conca1;
-	constexpr Type	internal::error_object;
+	constexpr Type internal::int_;
+	constexpr Type internal::nonexistent;
+	constexpr Type internal::missing_field;
+	constexpr Type internal::special_return;
+	constexpr Type internal::parameter_no_type_check;
+	constexpr Type internal::cheap_dynamic_pointer;
+	constexpr Type internal::full_dynamic_pointer;
+	constexpr Type internal::AST_pointer;
+	constexpr Type internal::conca1;
+	constexpr Type internal::error_object;
 };
 
 /* this checks if a new reference can be bound to an old reference.

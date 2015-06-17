@@ -32,7 +32,8 @@ storage must be prohibited for ASTs. maybe you can't get a pointer? at least, yo
 the problem is that you might have old references lying around, and then you would be able to use these to modify the immut AST. that means createstore would have to be special.
 	so perhaps: you can't get references to AST and type interiors, at all. you can only get copies.
 
-types...also require locks. uniqued types must be lockable.
+types...also require locks. uniqued types must be lockable. and so must types on dynamic objects, which can be baked into functions.
+	in both cases, the trouble stems from compiled functions.
 
 should we have locks? the user can have his own user-defined locking system, although random modification might go trampling over this. locks are like a guarantee. but if the user is going to fuck things up, probably this formal check won't help much.
 

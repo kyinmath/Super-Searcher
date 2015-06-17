@@ -19,7 +19,7 @@ inline uint64_t make_AST_pointer_from_dynamic(uint64_t tag, uint64_t previous_AS
 	std::vector<uint64_t> fields{ 0, 0, 0, 0 };
 	for (int x = 0; x < AST_descriptor[tag].pointer_fields + AST_descriptor[tag].additional_special_fields; ++x)
 		fields[x] = pointer[x];
-	return (uint64_t)(new AST(tag, (AST*)previous_AST, fields[0], fields[1], fields[2], fields[3]));
+	return (uint64_t)(new Lo<uAST>(tag, (Lo<uAST>*)previous_AST, fields[0], fields[1], fields[2], fields[3]));
 }
 
 
@@ -39,7 +39,7 @@ NOTE: std::array<2> becomes {uint64_t, uint64_t}. but array<4> becomes [i64 x 4]
 inline uint64_t compile_user_facing(uint64_t target)
 {
 	compiler_object a;
-	unsigned error = a.compile_AST((AST*)target);
+	unsigned error = a.compile_AST((Lo<uAST>*)target);
 
 	void* return_object_pointer;
 	Type* return_type_pointer;
@@ -93,34 +93,6 @@ uint64_t ASTmaker()
 {
 	return 0; //we don't want any trouble. and the AST maker is a constant source of problems as it diverges from fuzztester().
 	//right now, it's not going to create special parameter fields correctly. and it'll try to create a 0-tag AST, which is bad.
-	unsigned iterations = 4;
-	std::vector<AST*> AST_list{ nullptr }; //start with nullptr as the default referenceable AST
-	while (iterations--)
-	{
-		//create a random AST
-		unsigned tag = mersenne() % ASTn("never reached");
-		unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
-		unsigned prev_AST = generate_exponential_dist() % AST_list.size(); //todo: prove that exponential_dist is desired.
-		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
-		//but does exponential falloff solve this problem in the way we want?
-
-		int_or_ptr<AST> fields[4]{nullptr, nullptr, nullptr, nullptr};
-		int incrementor = 0;
-		for (; incrementor < pointer_fields; ++incrementor)
-			fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous ASTs
-		for (; incrementor < max_fields_in_AST; ++incrementor)
-			fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields
-		AST* test_AST = new AST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
-		output_AST_and_previous(test_AST);
-		output_AST_console_version a(test_AST);
-
-		compiler_object compiler;
-		unsigned error_code = compiler.compile_AST(test_AST);
-		if (error_code) delete test_AST;
-		else AST_list.push_back(test_AST);
-	}
-	output_AST_and_previous(AST_list.back());
-	return (uint64_t)AST_list.back();
 }
 
 //return value is the address
