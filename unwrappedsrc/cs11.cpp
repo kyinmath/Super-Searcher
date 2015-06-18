@@ -291,8 +291,6 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 	stack_state final_stack_state = stack_state::temp;
 	if (stack_degree != 0) final_stack_state = stack_state::cheap_alloca; //the default. unless any further information appears.
 
-	bool full_validity = true;
-
 	//generated IR of the fields of the AST
 	std::vector<Return_Info> field_results; //we don't actually need the return code, but we leave it anyway.
 
@@ -363,7 +361,7 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 	};
 
 	//call the finish macros when you've constructed something.
-	//_pointer suffix is when target lifetime information is relevant (for pointers).
+	//_pointer suffix is when target lifetime information is relevant (for cheap pointers).
 	//_stack_handled if your AST has already created a stack alloca whenever necessary. also, size_result must be already known.
 	//for example, concatenate() and if() use previously constructed return objects, and simply pass them through.
 	//remember: pass the value itself if stack_degree == 0, and pass a pointer to the value if stack_degree == 1 or 2.
@@ -569,8 +567,8 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 
 
 			l::Function *TheFunction = Builder.GetInsertBlock()->getParent();
-			l::BasicBlock *SuccessBB = l::BasicBlock::Create(thread_context, s("success"), TheFunction);
-			l::BasicBlock *FailureBB = l::BasicBlock::Create(thread_context, s("failure"));
+			l::BasicBlock *SuccessBB = l::BasicBlock::Create(thread_context, s("finiteness success"), TheFunction);
+			l::BasicBlock *FailureBB = l::BasicBlock::Create(thread_context, s("finiteness failure"));
 			Builder.CreateCondBr(comparison, SuccessBB, FailureBB);
 
 			//start inserting code in the "then" block
@@ -1091,8 +1089,6 @@ int main(int argc, char* argv[])
 	l::InitializeNativeTargetAsmPrinter();
 	l::InitializeNativeTargetAsmParser();
 
-	test_unique_types();
-	debugtypecheck(T::nonexistent);
 
 
 	//these do nothing
@@ -1121,6 +1117,10 @@ int main(int argc, char* argv[])
 		}
 		else error(string("unrecognized flag ") + argv[x]);
 	}
+
+	test_unique_types();
+	debugtypecheck(T::nonexistent);
+
 	/*
 	AST get1("integer", nullptr, 1); //get the integer 1
 	AST get2("integer", nullptr, 2);

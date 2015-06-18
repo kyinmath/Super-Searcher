@@ -111,9 +111,6 @@ class compiler_object
 	//maps ASTs to their generated IR and return type.
 	std::unordered_map<Lo<uAST>*, Return_Info> objects;
 
-	//these are the labels which are later in the basic block. you can jump to them without checking finiteness, but you must check the type stack
-	//std::stack<AST*> future_labels;
-
 	struct label_info
 	{
 		llvm::BasicBlock* block;

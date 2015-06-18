@@ -58,7 +58,7 @@ inline uint64_t compile_user_facing(uint64_t target)
 		return_object_pointer = nullptr;
 		//todo: make this actually work.
 
-		Type* function_return_type = a.return_type;
+		//Type* function_return_type = a.return_type;
 		return_type_pointer = new Type("function in clouds", a.return_type, a.parameter_type);
 	}
 	return make_dynamic((uint64_t)return_object_pointer, (uint64_t)return_type_pointer);

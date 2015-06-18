@@ -11,6 +11,7 @@ Then, it checks type_hash_table if there is already a unique type that is the sa
 #include <unordered_set>
 
 //this wrapper type is used for the hash table. we want equality and hashing to occur on a Type, not a Type*, since hashing on pointers is dumb. but we want the hash table to store pointers to types, so that references to them stay valid forever.
+
 struct Type_wrapper_pointer
 {
 	Type* ptr;
@@ -28,6 +29,11 @@ namespace std {
 			uint64_t hash = f.ptr->tag;
 			for (int x = 0; x < fields_in_Type; ++x)
 				hash ^= f.ptr->fields[x].num;
+
+			if (VERBOSE_DEBUG)
+			{
+				console << "hash is" << hash << '\n';
+			}
 			return hash;
 		}
 	};
@@ -39,7 +45,7 @@ namespace std {
 		{
 			if (VERBOSE_DEBUG)
 			{
-				console << "testing equal.";
+				console << "testing equal.\n";
 				output_type(l.ptr);
 				output_type(r.ptr);
 			}
@@ -49,6 +55,10 @@ namespace std {
 				if (l.ptr->fields[x].num != r.ptr->fields[x].num)
 					return false;
 
+			if (VERBOSE_DEBUG)
+			{
+				console << "true\n";
+			}
 			return true;
 		}
 	};
@@ -62,15 +72,27 @@ std::unordered_set<Type_wrapper_pointer> type_hash_table; //a hash table of all 
 //this means that any types pointing to this type must necessarily not already exist in the type hash table.
 std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_parameter)
 {
+
+	if (VERBOSE_DEBUG)
+	{
+		console << "type of original model ";
+		output_type(model);
+	}
 	Type temporary_model = *model;
 
-	bool create_new_for_sure; //it's true if one of the subfields created a type instead of finding it.
+	bool create_new_for_sure = false; //it's true if one of the subfields created a type instead of finding it.
 	//in that case, we don't have to check if this object is in the hash table. we know it is new.
 	//but if it's false, it still might not be new.
 
 	//uniqueify any pointer fields.
-	for (int x; x < Type_descriptor[model->tag].pointer_fields; ++x)
+	if (VERBOSE_DEBUG)
+		console << "number of subfields to handle: " << Type_descriptor[model->tag].pointer_fields << '\n'; 
+	for (int x = 0; x < Type_descriptor[model->tag].pointer_fields; ++x)
 	{
+		if (VERBOSE_DEBUG)
+		{
+			console << "uniquefying subfield " << x << '\n';
+		}
 		auto result = get_unique_type_internal(model->fields[x].ptr, can_reuse_parameter);
 		create_new_for_sure |= result.second;
 		temporary_model.fields[x] = result.first;
@@ -109,6 +131,7 @@ Type* get_unique_type(Type* model, bool can_reuse_parameter)
 void test_unique_types()
 {
 	Type zero("integer");
+	Type zero_two("integer");
 	Type one("integer", 1);
 
 	Type* unique_zero = get_unique_type(&zero, false);
@@ -119,9 +142,9 @@ void test_unique_types()
 	check(unique_zero != unique_one, "zero and one uniqued to same element");
 
 	Type pointer_zero("pointer", &zero);
-	Type pointer_zero_second("pointer", &zero);
+	Type pointer_zero_second("pointer", &zero_two);
 	Type* unique_pointer_zero = get_unique_type(&pointer_zero, false);
-	Type* unique_pointer_zero_second = get_unique_type(&pointer_zero, false);
+	Type* unique_pointer_zero_second = get_unique_type(&pointer_zero_second, false);
 	check(unique_pointer_zero == unique_pointer_zero_second, "pointers don't unique");
 
 	Type pointer_one("pointer", &one);

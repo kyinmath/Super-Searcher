@@ -1,8 +1,13 @@
+1. change type concatenation to a vector.
+2. dynamic_get_type(object)
+2. dynamic_assert(object, Type, number)
+3. dynamic_assert_pointer
 move the fuzzer into AST format
 	fix compilation
 	Call() + finiteness
 	getting types of ASTs
-	
+		which requires being able to look at types.
+	how to figure out the internals of dynamic objects? since we don't have function parameters, we'll need to use global pointers to pass data.
 acquisition of Type and AST values
 overwriting ASTs
 cleanup of all the memory leaks
@@ -25,3 +30,7 @@ then, dynamic pointers, AST pointers, type pointers: can be double indirection.
 but any old references are going to be left behind forever. for example, if you get a dynamic pointer to the various fields.
 	for both ASTs and Types, we can require passthrough using their concatenate() operations.
 for dynamic pointers, 128bit atomic is nice, but there are worries about alignment.
+
+I think: we have a special "concatenation" type, which is an array. the benefit is the random access: to look at parts of the type, you don't need to repetitively re-get pointers, which would kill finiteness.
+	but storing pointers is the same as storing numbers.
+	however, having these funny types is bad for constexpr.

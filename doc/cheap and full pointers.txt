@@ -11,7 +11,9 @@ this is what Java does. https://programmers.stackexchange.com/questions/65281/st
 since pointers and full pointers are pretty similar, now I am going to put them both in a single type.
 0 = cheap, 1 = full, in the second field.
 maybe later I'll add in nullable cheap = 2, nullable full = 3.
+	this can be done using dynamic types. and since we don't have recursive types anymore, nullable isn't really necessary.
 and maybe immut on a bit as well. third bit, 0 = normal, 1 = immut.
+	but immut is only good for Types/ASTs. in those cases, we can simply load the object/copy the object. this won't work across function boundaries, but that's fine.
 
 
 

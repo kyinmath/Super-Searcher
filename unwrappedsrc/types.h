@@ -39,6 +39,7 @@ union int_or_ptr
 {
 	uint64_t num;
 	target_type* ptr;
+	constexpr int_or_ptr() : num(0) {}
 	constexpr int_or_ptr(uint64_t x) : num(x) {}
 	constexpr int_or_ptr(target_type* x) : ptr(x) {}
 };
@@ -75,7 +76,7 @@ constexpr Type_info Type_descriptor[] =
 {
 	{"concatenate", 2, special}, //concatenate two types
 	{"integer", 0, 1}, //64-bit integer
-	{"pointer", 1, 1}, //pointer to anything
+	{"pointer", 1, 1}, //pointer to anything, except the target type must be non-nullptr.
 	{"dynamic pointer", 0, 1}, //dynamic pointer. a double-indirection. points to two elements: first field is the pointer, second field is a pointer to the type. the purpose of double indirection is lock safety
 	{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
 	//the actual object has 6: tag, then previous, then 4 fields.
@@ -139,8 +140,8 @@ struct Type
 	using iop = int_or_ptr<Type>;
 	std::array<iop, fields_in_Type> fields;
 	uint64_t filler = 1; //this probably works. it's being silently converted to an atomic<uint64>
-	constexpr Type(const char name[], const iop a = nullptr, const iop b = nullptr) : tag(Typen(name)), fields{ a, b } {}
-	constexpr Type(const uint64_t t, const iop a = nullptr, const iop b = nullptr) : tag(t), fields{ a, b } {}
+	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{args...} {} //this only works because 0 is the proper default value
+	template<typename... Args> constexpr Type(const uint64_t t, Args... args) : tag(t), fields{args...} {}
 };
 
 //this is for user-created types. they might look totally awful.
@@ -149,8 +150,10 @@ struct uType
 	uint64_t tag;
 	using iop = int_or_ptr<Lo<uType>>;
 	std::array<iop, fields_in_Type> fields;
-	constexpr uType(const char name[], const iop a = nullptr, const iop b = nullptr) : tag(Typen(name)), fields{a, b} {}
-	constexpr uType(const uint64_t t, const iop a = nullptr, const iop b = nullptr) : tag(t), fields{a, b} {}
+	template<typename... Args>
+	constexpr uType(const char name[], Args... args) : tag(Typen(name)), fields{args...} {} //this only works because 0 is the proper default value
+	template<typename... Args>
+	constexpr uType(const uint64_t t, Args... args) : tag(t), fields{args...} {}
 };
 #define max_fields_in_AST 4u
 //should accomodate the largest possible AST
@@ -221,8 +224,8 @@ struct AST_info
 	//in the case of types, the size of the actual object.
 	const int size_of_return;
 
-	Type* parameter_types[4];
 	Type* return_object; //if this type is null, do not check it using the generic method - check it specially.
+	Type* parameter_types[4];
 
 	unsigned fields_to_compile; //we may not always compile all pointers, such as with "copy".
 	//number_to_compile < pointer_fields, so this also forces pointer_fields upward if it is too low. by default, they are equal.

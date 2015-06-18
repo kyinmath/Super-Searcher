@@ -34,6 +34,7 @@ the problem is that you might have old references lying around, and then you wou
 
 types...also require locks. uniqued types must be lockable. and so must types on dynamic objects, which can be baked into functions.
 	in both cases, the trouble stems from compiled functions.
+unless all types are immut. which they now are.
 
 should we have locks? the user can have his own user-defined locking system, although random modification might go trampling over this. locks are like a guarantee. but if the user is going to fuck things up, probably this formal check won't help much.
 
