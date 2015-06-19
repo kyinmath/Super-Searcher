@@ -73,19 +73,14 @@ inline uint64_t concatenate_dynamic(uint64_t first_dynamic, uint64_t second_dyna
 	uint64_t size[2];
 	for (int x : { 0, 1 })
 	{
-		size[x] = get_size(type[x]);
+		size[x] = get_size((Type*)type[x]);
 	}
+	if (size[0] == 0) return second_dynamic;
+	else if (size[1] == 0) return first_dynamic;
 	uint64_t* new_dynamic = new uint64_t[size[0] + size[1]];
-	for (int idx = 0; idx < size[0]; ++idx)
-	{
-		new_dynamic[idx] = pointer[0][idx];
-	}
-	for (int idx = 0; idx < size[1]; ++idx)
-	{
-		new_dynamic[idx + size[0]] = pointer[1][idx];
-	}
-	Type* new_type = get_unique_type(Type("concatenate", type[0], type[1] ));
-	return make_dynamic((uint64_t)new_dynamic, (uint64_t)new_type);
+	for (int idx = 0; idx < size[0]; ++idx) new_dynamic[idx] = pointer[0][idx];
+	for (int idx = 0; idx < size[1]; ++idx) new_dynamic[idx + size[0]] = pointer[1][idx];
+	return make_dynamic((uint64_t)new_dynamic, (uint64_t)concatenate_types(std::vector<Type*>{type[0], type[1]}));
 }
 
 

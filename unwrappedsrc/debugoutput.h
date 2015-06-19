@@ -39,7 +39,8 @@ private:
 
 
 
-//only call on a non-nullptr target. outputs a single Type.
+//only call on a non-nullptr target. outputs a single Type. doesn't have the right number of fields, but that's probably ok.
+//for debug purposes, we don't want to limit it to the number of pointer fields.
 inline void output_type(Type* target)
 {
 	if (target == nullptr)
@@ -61,10 +62,8 @@ inline void output_type_and_previous(Type* target)
 		return;
 	}
 	output_type(target);
-	unsigned further_outputs = Type_descriptor[target->tag].pointer_fields;
-	for (int x = 0; x < further_outputs; ++x)
-		if (target->fields[x].ptr != nullptr)
-			output_type_and_previous(target->fields[x].ptr);
+	for (auto& x : target->pointers())
+		output_type_and_previous(x);
 }
 
 
@@ -107,7 +106,7 @@ inline void output_AST_and_previous(Lo<uAST>* locked_target)
 		output_AST_and_previous(target->preceding_BB_element);
 	unsigned number_of_further_ASTs = AST_descriptor[target->tag].pointer_fields;
 	//boost::irange may be useful, but pulling in unnecessary (possibly-buggy) code is bad
-	for (int x = 0; x < number_of_further_ASTs; ++x)
+	for (unsigned x = 0; x < number_of_further_ASTs; ++x)
 		if (target->fields[x].ptr != nullptr)
 			output_AST_and_previous(target->fields[x].ptr);
 }
@@ -144,7 +143,7 @@ struct output_AST_console_version
 		else AST_list.insert(target);
 
 		if (target->preceding_BB_element != nullptr) determine_references(target->preceding_BB_element);
-		for (int x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x) determine_references(target->fields[x].ptr);
+		for (unsigned x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x) determine_references(target->fields[x].ptr);
 	}
 
 	//the purpose of "might be end in BB" is to decide whether to output {} or not.
@@ -170,7 +169,7 @@ struct output_AST_console_version
 			console << ' ';
 		}
 		console << "[" << AST_descriptor[target->tag].name;
-		int x = 0;
+		unsigned x = 0;
 		for (; x < AST_descriptor[target->tag].pointer_fields; ++x)
 		{
 			console << ' ';

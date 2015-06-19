@@ -3,8 +3,8 @@ A "user" will be defined as a program that is interpreted by the CS11 backend. T
 Apart from minor types like pointers and integers, there are two heavy-duty types that a user can see - Types, and ASTs.
 
 A Type object consists of a tag and two fields, and describes another object. The two fields depend on the tag. For example, if the tag is "pointer", then the first field will be a pointer to the Type of the object that is being pointed to, and the second field is nullptr. If the tag is "integer", then both fields are nullptr. If the tag is "AST", then the first field will be a pointer to the Type of the return object, and the second field will be a pointer to the Type of the parameter object.
-For large structures, the "concatenate" Type is used. A structure consisting of two elements will be described by a "concatenate" Type, which points its two fields at the two elements.
-If we need a structure consisting of three elements, we use a "concatenate" Type for the first two elements. Then, we have another "concatenate" Type with its first field pointing to the first concatenate, and its second field pointing to the third element. In this way, we get a binary tree. The overall Type of the structure is represented the root node, which contains pointers to the remaining parts of the Type.
+For large structures, the "con_vec" Type is used. A structure consisting of three elements will be described by a "con_vec" Type, which has four fields: 3, Type*, Type*, Type*. The "3" says that there are 3 elements. The subfield of a con_vec type cannot be another con_vec.
+The subfield of a pointer cannot be nullptr.
 
 An AST object represents an expression, and consists of:
 1. "tag", signifying what type of AST it is.
@@ -27,6 +27,7 @@ Later, we'll have some ASTs that let the user actually query this information.
 #include <cstdint>
 #include <array>
 #include <llvm/Support/ErrorHandling.h>
+#include <llvm/ADT/ArrayRef.h>
 #include "console.h"
 
 #ifdef NDEBUG
@@ -63,21 +64,35 @@ struct Type_info
 	//size of the actual object. -1ll if special
 	const uint64_t size;
 
-	constexpr Type_info(const char a[], unsigned n, uint64_t s) : name(a), pointer_fields(n), size(s) {}
+	unsigned additional_special_fields = 0; //these fields come after the pointer fields. they are REAL types, not AST return types.
+	//for example, if you have a Type* in the second field and a normal AST* in the first field, then this would be 1.
+	//then, in the argument list, you'd put a Type* in the second parameter slot.
+
+	//this DOES NOT reduce the number of pointer fields. this is because we aren't specifying types. take note of this.
+	//todo: we aren't using this at all.
+	constexpr Type_info make_special_fields(uint64_t x)
+	{
+		Type_info new_copy(*this);
+		new_copy.additional_special_fields = x;
+		return new_copy;
+	}
+
+	constexpr Type_info(const char a[], uint64_t n, uint64_t s) : name(a), pointer_fields(n), size(s) {}
 };
 
 constexpr uint64_t special = -1ll; //note that a -1 literal, without specifying ll, can either be int32 or int64, so we could be in great trouble.
 
+using _t = Type_info;
 /* Guidelines for new Types:
 you must create an entry in type_check.
 full_validity.
 */
 constexpr Type_info Type_descriptor[] =
 {
-	{"concatenate", 2, special}, //concatenate two types
+	{"con_vec", special, special}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types.
 	{"integer", 0, 1}, //64-bit integer
-	{"pointer", 1, 1}, //pointer to anything, except the target type must be non-nullptr.
-	{"dynamic pointer", 0, 1}, //dynamic pointer. a double-indirection. points to two elements: first field is the pointer, second field is a pointer to the type. the purpose of double indirection is lock safety
+	_t("pointer", 1, 1).make_special_fields(1), //pointer to anything, except the target type must be non-nullptr. second field is 1 if it's a full pointer, and 0 otherwise
+	_t("dynamic pointer", 0, 1).make_special_fields(1), //dynamic pointer. a double-indirection. points to two elements: first field is the pointer, second field is a pointer to the type. the purpose of double indirection is lock safety
 	{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
 	//the actual object has 6: tag, then previous, then 4 fields.
 	{"function in clouds", 2, 2}, //points to: return AST, then parameter AST, then compiled area. we don't embed the AST along with the function signature, in order to keep them separate.
@@ -100,8 +115,7 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
 
 	}
 }
-constexpr uint64_t Typen(const char name[])
-{ return get_enum_from_name<const Type_info, Type_descriptor>(name); }
+constexpr uint64_t Typen(const char name[]) { return get_enum_from_name<const Type_info, Type_descriptor>(name); }
 
 #include "lock.h"
 //Lo = Lockable
@@ -132,32 +146,51 @@ struct Lo : private T
 	}
 };
 
-#define fields_in_Type 2u
+#define fields_in_Type 3u
 //this is for types which are known to be unique and well-behaved (no loops).
+struct Type_pointer_range;
+struct Type_everything_range;
+struct Type;
+inline uint64_t total_valid_fields(const Type* t);
 struct Type
 {
 	uint64_t tag;
 	using iop = int_or_ptr<Type>;
 	std::array<iop, fields_in_Type> fields;
-	uint64_t filler = 1; //this probably works. it's being silently converted to an atomic<uint64>
-	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{args...} {} //this only works because 0 is the proper default value
-	template<typename... Args> constexpr Type(const uint64_t t, Args... args) : tag(t), fields{args...} {}
-};
-
-//this is for user-created types. they might look totally awful.
-struct uType
-{
-	uint64_t tag;
-	using iop = int_or_ptr<Lo<uType>>;
-	std::array<iop, fields_in_Type> fields;
-	template<typename... Args>
-	constexpr uType(const char name[], Args... args) : tag(Typen(name)), fields{args...} {} //this only works because 0 is the proper default value
-	template<typename... Args>
-	constexpr uType(const uint64_t t, Args... args) : tag(t), fields{args...} {}
+	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{{args...}} {} //this only works because 0 is the proper default value
+	template<typename... Args> constexpr Type(const uint64_t t, Args... args) : tag(t), fields{{args...}} {}
+	Type_pointer_range& pointers() { return *(Type_pointer_range*)this; }
+	Type_everything_range& all_values() { return *(Type_everything_range*)this; }
+	constexpr Type(const Type& other) : tag(other.tag)
+	{
+		for (uint64_t x = 0; x < total_valid_fields(&other); ++x)
+			((uint64_t*)this)[1 + x] = ((uint64_t*)&other)[1 + x];
+	}
 };
 #define max_fields_in_AST 4u
 //should accomodate the largest possible AST
+struct Type_pointer_range
+{
+	Type* t;
+	Type_pointer_range(Type* t_) : t(t_) {}
+	Type** begin() { return (t->tag == Typen("con_vec")) ? &(t->fields[1].ptr) : &(t->fields[0].ptr); }
+	Type** end() { return (t->tag == Typen("con_vec")) ? &(t->fields[1].ptr) + (uint64_t)t->fields[0].num :
+		&(t->fields[0].ptr) + Type_descriptor[t->tag].pointer_fields;
+	}
+};
 
+struct Type_everything_range
+{
+	uint64_t tag;
+	Type* fields;
+	Type** begin() { return &fields; }
+	Type** end() { return (tag == Typen("con_vec")) ? (&fields) + (uint64_t)fields + 1 : (&fields) + Type_descriptor[tag].pointer_fields + Type_descriptor[tag].additional_special_fields; }
+};
+
+inline uint64_t total_valid_fields(const Type* t)
+{
+	return (t->tag == Typen("con_vec")) ? t->fields[0].num + 1 : Type_descriptor[t->tag].pointer_fields + Type_descriptor[t->tag].additional_special_fields;
+}
 
 //when creating a new element here, remember to instantiate it in types.cpp.
 //the reason these are static members of struct internal is so that the address is the same across translation units.
@@ -174,8 +207,7 @@ namespace T
 		static constexpr Type cheap_dynamic_pointer{("dynamic pointer")};
 		static constexpr Type full_dynamic_pointer{"dynamic pointer", 1};
 		static constexpr Type AST_pointer{("AST pointer")};
-		static constexpr Type conca1{Type("concatenate", const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer))};
-		static constexpr Type error_object{Type("concatenate", const_cast<Type* const>(&conca1), const_cast<Type* const>(&int_))};
+		static constexpr Type error_object{Type("con_vec", const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer), const_cast<Type* const>(&int_))};
 		//error_object is int, pointer to AST, int. it's what is returned when compilation fails: the error code, then the AST, then the field.
 	};
 	typedef internal i;
@@ -201,11 +233,14 @@ todo: what about loops? for now, it's ok, because the user doesn't have access t
 */
 constexpr uint64_t get_size(Type* target)
 {
-	if (target == nullptr)
-		return 0;
-	if (Type_descriptor[target->tag].size != special) return Type_descriptor[target->tag].size;
-	else if (target->tag == Typen("concatenate"))
-		return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr);
+	if (target == nullptr) return 0;
+	else if (Type_descriptor[target->tag].size != special) return Type_descriptor[target->tag].size;
+	else if (target->tag == Typen("con_vec"))
+	{
+		uint64_t total_size = 0;
+		for (auto& x : target->pointers()) total_size += get_size(x);
+		return total_size;
+	}
 	error("couldn't get size of type tag, check backtrace for target->tag");
 }
 
@@ -225,18 +260,7 @@ struct AST_info
 	const int size_of_return;
 
 	Type* return_object; //if this type is null, do not check it using the generic method - check it specially.
-	Type* parameter_types[4];
-
-	unsigned fields_to_compile; //we may not always compile all pointers, such as with "copy".
-	//number_to_compile < pointer_fields, so this also forces pointer_fields upward if it is too low. by default, they are equal.
-	constexpr AST_info make_fields_to_compile(int x)
-	{
-		AST_info new_copy(*this);
-		new_copy.fields_to_compile = x;
-		if (new_copy.pointer_fields <= new_copy.fields_to_compile)
-			new_copy.pointer_fields = new_copy.fields_to_compile;
-		return new_copy;
-	}
+	Type* parameter_types[max_fields_in_AST];
 
 	unsigned pointer_fields; //how many field elements are pointers.
 	//for ASTs, this means pointers to other ASTs. for Types, this means pointers to other Types.
@@ -247,6 +271,17 @@ struct AST_info
 		new_copy.pointer_fields = x;
 		if (new_copy.fields_to_compile >= new_copy.pointer_fields)
 			new_copy.fields_to_compile = new_copy.pointer_fields;
+		return new_copy;
+	}
+
+	unsigned fields_to_compile; //we may not always compile all pointers, such as with "copy".
+	//number_to_compile < pointer_fields, so this also forces pointer_fields upward if it is too low. by default, they are equal.
+	constexpr AST_info make_fields_to_compile(int x)
+	{
+		AST_info new_copy(*this);
+		new_copy.fields_to_compile = x;
+		if (new_copy.pointer_fields <= new_copy.fields_to_compile)
+			new_copy.pointer_fields = new_copy.fields_to_compile;
 		return new_copy;
 	}
 
@@ -265,7 +300,7 @@ struct AST_info
 	//unsigned non_pointer_fields; //how many fields are not pointers. but maybe not necessary.
 	constexpr int field_count(Type* f1, Type* f2, Type* f3, Type* f4)
 	{
-		int number_of_fields = 4; //by default, both pointer_fields and number_of_fields will be equal to this.
+		int number_of_fields = max_fields_in_AST; //by default, both pointer_fields and number_of_fields will be equal to this.
 		if (f4 == T::missing_field) number_of_fields = 3;
 		if (f3 == T::missing_field) number_of_fields = 2;
 		if (f2 == T::missing_field) number_of_fields = 1;
@@ -276,7 +311,7 @@ struct AST_info
 	//in AST_descriptor[], fields_to_compile and pointer_fields are normally set to the number of parameter types specified.
 	//	however, they can be overridden by make_fields_to_compile() and make_pointer_fields()
 	constexpr AST_info(const char a[], Type* r, Type* f1 = T::missing_field, Type* f2 = T::missing_field, Type* f3 = T::missing_field, Type* f4 = T::missing_field)
-		: name(a), return_object(r), parameter_types{ f1, f2, f3, f4 }, pointer_fields(field_count(f1, f2, f3, f4)), fields_to_compile(field_count(f1, f2, f3, f4)), size_of_return(get_size(r)) { }
+		: name(a), size_of_return(get_size(r)), return_object(r), parameter_types{f1, f2, f3, f4}, pointer_fields(field_count(f1, f2, f3, f4)), fields_to_compile(field_count(f1, f2, f3, f4)){ }
 
 };
 
@@ -364,9 +399,9 @@ struct uAST
 	using iop = int_or_ptr<Lo<uAST>>;
 	std::array<iop, max_fields_in_AST> fields;
 	uAST(const char name[], Lo<uAST>* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
-		: tag(ASTn(name)), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {} //VS complains about aggregate initialization, but it is wrong.
+		: tag(ASTn(name)), preceding_BB_element(preceding), fields{{f1, f2, f3, f4}} {}
 	uAST(uint64_t direct_tag, Lo<uAST>* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
-		: tag(direct_tag), preceding_BB_element(preceding), fields{ f1, f2, f3, f4 } {}
+		: tag(direct_tag), preceding_BB_element(preceding), fields{{f1, f2, f3, f4}} {}
 	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };
 
@@ -407,5 +442,5 @@ enum class type_check_result
 
 void debugtypecheck(Type* test);
 type_check_result type_check(type_status version, Type* existing_reference, Type* new_reference);
-extern Type* concatenate_types(std::vector<Type*>& components);
+extern Type* concatenate_types(llvm::ArrayRef<Type*> components);
 bool is_full(Type* t);

@@ -29,6 +29,7 @@ namespace std {
 			uint64_t hash = f.ptr->tag;
 			for (int x = 0; x < fields_in_Type; ++x)
 				hash ^= f.ptr->fields[x].num;
+			//we're ignoring con_vec, but that's probably ok
 
 			if (VERBOSE_DEBUG)
 			{
@@ -49,16 +50,19 @@ namespace std {
 				output_type(l.ptr);
 				output_type(r.ptr);
 			}
+			if ((l.ptr == nullptr) != (r.ptr == nullptr)) return false;
+			if ((l.ptr == nullptr) && (r.ptr == nullptr)) return true;
 			if (l.ptr->tag != r.ptr->tag)
 				return false;
-			for (int x = 0; x < fields_in_Type; ++x)
-				if (l.ptr->fields[x].num != r.ptr->fields[x].num)
+
+			uint64_t no_of_fields = total_valid_fields(l.ptr);
+			uint64_t* left = (uint64_t*)l.ptr;
+			uint64_t* right = (uint64_t*)r.ptr;
+			for (int x = 0; x < no_of_fields; ++x)
+				if (left[x] != right[x])
 					return false;
 
-			if (VERBOSE_DEBUG)
-			{
-				console << "true\n";
-			}
+			if (VERBOSE_DEBUG) console << "true\n";
 			return true;
 		}
 	};
@@ -70,6 +74,7 @@ std::unordered_set<Type_wrapper_pointer> type_hash_table; //a hash table of all 
 //an internal function with a bool for speedup.
 //the bool is true if you created a type instead of finding a type.
 //this means that any types pointing to this type must necessarily not already exist in the type hash table.
+//rule: for now, the user is prohibited from seeing any non-unique types. that means we can mess with the original model however we like.
 std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_parameter)
 {
 
@@ -78,42 +83,42 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 		console << "type of original model ";
 		output_type(model);
 	}
-	Type temporary_model = *model;
 
 	bool create_new_for_sure = false; //it's true if one of the subfields created a type instead of finding it.
 	//in that case, we don't have to check if this object is in the hash table. we know it is new.
 	//but if it's false, it still might not be new.
 
-	//uniqueify any pointer fields.
-	if (VERBOSE_DEBUG)
-		console << "number of subfields to handle: " << Type_descriptor[model->tag].pointer_fields << '\n'; 
-	for (int x = 0; x < Type_descriptor[model->tag].pointer_fields; ++x)
+	//note: we can't find the index with pointer arithmetic and range-for, because range for makes a move copy of the element.
+	//this function finds unique versions of any pointer subfields.
+	uint64_t counter = model->tag == Typen("con_vec") ? 1 : 0; //this counter starting value is a bit fragile.
+	for (Type*& pointer : model->pointers())
 	{
 		if (VERBOSE_DEBUG)
 		{
-			console << "uniquefying subfield " << x << '\n';
+			console << "uniquefying subfield " << counter << '\n';
 		}
-		auto result = get_unique_type_internal(model->fields[x].ptr, can_reuse_parameter);
+		auto result = get_unique_type_internal(pointer, can_reuse_parameter);
 		create_new_for_sure |= result.second;
-		temporary_model.fields[x] = result.first;
+		model->fields[counter] = result.first;
+		++counter;
 	}
 	if (VERBOSE_DEBUG)
 	{
 		console << "type of temporary model ";
-		output_type(&temporary_model);
+		output_type(model);
 	}
 
 	if (create_new_for_sure)
 	{
-		Type* handle = new Type(temporary_model);
+		Type* handle = new Type(*model);
 		type_hash_table.insert(handle);
 		return std::make_pair(handle, true);
 	}
-	auto existing_type = type_hash_table.find(&temporary_model);
+	auto existing_type = type_hash_table.find(model);
 	if (existing_type == type_hash_table.end())
 	{
 		if (!can_reuse_parameter)
-			model = new Type(temporary_model);
+			model = new Type(*model);
 		type_hash_table.insert(model);
 		return std::make_pair(model, true);
 	}

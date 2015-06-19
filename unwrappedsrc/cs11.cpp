@@ -65,7 +65,7 @@ uint64_t generate_exponential_dist()
 
 
 
-compiler_object::compiler_object() : error_location(nullptr), Builder(thread_context)
+compiler_object::compiler_object() : Builder(thread_context), error_location(nullptr)
 {
 	if (VERBOSE_DEBUG) console << "creating compiler object\n";
 
@@ -412,14 +412,10 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 	//we generate code for the AST, depending on its tag.
 	switch (target->tag)
 	{
-	case ASTn("integer"):
-		finish(llvm_integer(target->fields[0].num));
-	case ASTn("add"): //add two integers.
-		finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
-	case ASTn("subtract"):
-		finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
-	case ASTn("increment"):
-		finish(Builder.CreateAdd(field_results[0].IR, llvm_integer(1), s("increment")));
+	case ASTn("integer"): finish(llvm_integer(target->fields[0].num));
+	case ASTn("add"): finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
+	case ASTn("subtract"): finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
+	case ASTn("increment"): finish(Builder.CreateAdd(field_results[0].IR, llvm_integer(1), s("increment")));
 	case ASTn("hello"):
 		{
 			l::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!");
@@ -435,7 +431,7 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 		}
 	case ASTn("print_int"):
 		{
-			l::Value* printer = llvm_function(Builder, print_uint64_t, l::Type::getVoidTy(thread_context), int64_type);
+			l::Value* printer = llvm_function(Builder, print_uint64_t, void_type, int64_type);
 			finish(Builder.CreateCall(printer, std::vector<l::Value*>{field_results[0].IR}));
 		}
 	case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
@@ -644,7 +640,7 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 					else
 					{
 						l::Type* pointer_to_array = llvm_array(size[x])->getPointerTo();
-						pointer[x] = Builder.CreateConstInBoundsGEP2_64(storage_location, 0, offset, s("half of concatenate") + s(string{(char)x}));
+						pointer[x] = Builder.CreateConstInBoundsGEP2_64(storage_location, 0, offset, s("half of concatenate ") + s(string{(char)x}));
 						location[x] = l::cast<l::AllocaInst>(Builder.CreatePointerCast(pointer[x], pointer_to_array, s("pointer cast to array")));
 					}
 
@@ -658,8 +654,10 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 
 				uint64_t result_target_life_guarantee = std::max(half[0].self_validity_guarantee, half[1].self_validity_guarantee);
 				uint64_t result_target_hit_contract = std::min(half[0].target_hit_contract, half[1].target_hit_contract);
-
-				finish_special_stack_handled_pointer(final_value, get_unique_type(Type("concatenate", half[0].type, half[1].type)), result_target_life_guarantee, result_target_hit_contract);
+				Type* concatenation = concatenate_types(std::vector<Type*>{half[0].type, half[1].type});
+				console << "concatenation " << concatenation->fields[0].num << '\n';
+				Type* final_type = get_unique_type(*concatenation);
+				finish_special_stack_handled_pointer(final_value, final_type, result_target_life_guarantee, result_target_hit_contract);
 			}
 			else //it's convenient having a pass-through special case, because pass-through means we don't need to have special cases for size-1 objects.
 			{

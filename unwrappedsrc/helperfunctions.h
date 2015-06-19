@@ -3,6 +3,7 @@
 #include "debugoutput.h"
 #include "cs11.h"
 extern llvm::IntegerType* int64_type;
+extern llvm::Type* void_type;
 inline llvm::Constant* llvm_integer(uint64_t value)
 {
 	return llvm::ConstantInt::get(int64_type, value);
