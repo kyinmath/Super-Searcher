@@ -154,6 +154,6 @@ void test_unique_types()
 	check(unique_pointer_zero != unique_zero, "pointers uniqeuing to integers");
 
 	
-	Type* unique_pointer_dynamic = get_unique_type(Type("pointer", &dynamic));
+	Type* unique_pointer_dynamic = get_non_convec_unique_type(Type("pointer", &dynamic));
 	check(unique_pointer_zero != unique_pointer_dynamic, "different pointers unique");
 }

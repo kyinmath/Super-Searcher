@@ -59,5 +59,20 @@ I think: maybe the pointer should be the one templated to the lock. not the actu
 	however, having the pointer be templated will cause trouble when trying to construct the object.
 
 we're probably going to have 3 things:
-uType, for users. can have loops and pathological behavior.
-Type, for us. is immut, unique, behaves nicely. degenerates to uType cleanly.
+uASTs, for users. can have loops and pathological behavior.
+AST, for us. is immut, unique, behaves nicely. degenerates to uAST cleanly.
+
+if ASTs are always immut, that will result in an absolute shitload of copying whenever you want to change even the smallest things.
+that's impossible. and especially impossible for goto().
+
+maybe we do unique ASTs. so ASTs in a special region are locked forever.
+this means we never have to put locks on them.
+	however, we need to return meaningful error messages. so compilation would have to return pointers to the original ASTs.
+	furthermore, we'd have to make a lot of copies of ASTs, by remembering each AST as we read it. we'd have to copy the AST as it is compiled, in order to prevent race conditions.
+	and things like function parameters still seem to be part of the function type...
+big bonus: you know exactly when an AST is writable or not. no corner case failures.
+
+garbage collection:
+suppose a function becomes un-compiled. is it actually possible to unimmut all references in a way that's useful?
+	not really, if you're trying to modify an arbitrary function.
+but if you're touching a function you just made, it's incredibly useful to be able to modify it.

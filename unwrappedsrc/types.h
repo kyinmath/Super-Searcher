@@ -156,11 +156,11 @@ struct Type
 	uint64_t tag;
 	using iop = int_or_ptr<Type>;
 	std::array<iop, fields_in_Type> fields;
-	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{{args...}} { if (tag == Typen("con_vec")) console << ("make it another way"); } //this only works because 0 is the proper default value
-	template<typename... Args> constexpr Type(const uint64_t t, Args... args) : tag(t), fields{{args...}} { if (tag == Typen("con_vec")) console << ("make it another way"); }
+	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{{args...}} { if (tag == Typen("con_vec")) error("make it another way"); } //this only works because 0 is the proper default value
+	template<typename... Args> constexpr Type(const uint64_t t, Args... args) : tag(t), fields{{args...}} { if (tag == Typen("con_vec")) error("make it another way"); }
 	constexpr Type(const Type& other) : tag(other.tag)
 	{
-		if (tag == Typen("con_vec")) console << ("make it another way");
+		if (tag == Typen("con_vec")) error("make it another way");
 		for (uint64_t x = 0; x < total_valid_fields(&other); ++x)
 			((uint64_t*)this)[1 + x] = ((uint64_t*)&other)[1 + x];
 	}

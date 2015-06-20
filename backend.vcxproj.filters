@@ -33,6 +33,9 @@
     <ClCompile Include="unwrappedsrc\OrcMCJITReplacement.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="unwrappedsrc\memory allocator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="unwrappedsrc\types.h">

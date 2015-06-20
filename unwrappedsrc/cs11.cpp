@@ -599,7 +599,7 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			if (found_AST->second.on_stack == stack_state::temp) return_code(pointer_to_temporary, 0);
 			bool is_full_pointer = is_full(found_AST->second.on_stack);
-			Type* new_pointer_type = get_unique_type(Type("pointer", found_AST->second.type, is_full_pointer));
+			Type* new_pointer_type = get_non_convec_unique_type(Type("pointer", found_AST->second.type, is_full_pointer));
 
 			l::Value* final_result = Builder.CreatePtrToInt(found_AST->second.IR, int64_type, s("flattening pointer"));
 
@@ -655,9 +655,8 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 
 				uint64_t result_target_life_guarantee = std::max(half[0].self_validity_guarantee, half[1].self_validity_guarantee);
 				uint64_t result_target_hit_contract = std::min(half[0].target_hit_contract, half[1].target_hit_contract);
-				Type* concatenation = concatenate_types(std::vector<Type*>{half[0].type, half[1].type});
 				//console << "concatenation " << concatenation->fields[0].num << '\n';
-				Type* final_type = get_unique_type(*concatenation);
+				Type* final_type = get_unique_type(concatenate_types(std::vector<Type*>{half[0].type, half[1].type}), true);
 				console << "final type "; output_type(final_type);
 				finish_special_stack_handled_pointer(final_value, final_type, result_target_life_guarantee, result_target_hit_contract);
 			}
@@ -735,7 +734,7 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 
 			//we're creating it in heap memory, but if we're copying pointers, we're in trouble.
 			bool is_full_dynamic = is_full(field_results[0].type) && is_full(field_results[1].type);
-			Type* dynamic_type = get_unique_type(Type(Typen("dynamic pointer"), is_full_dynamic));
+			Type* dynamic_type = get_non_convec_unique_type(Type(Typen("dynamic pointer"), is_full_dynamic));
 
 			finish_special(result_of_compile, dynamic_type);
 		}

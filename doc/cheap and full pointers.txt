@@ -14,7 +14,7 @@ maybe later I'll add in nullable cheap = 2, nullable full = 3.
 	this can be done using dynamic types. and since we don't have recursive types anymore, nullable isn't really necessary.
 and maybe immut on a bit as well. third bit, 0 = normal, 1 = immut.
 	but immut is only good for Types/ASTs. in those cases, we can simply load the object/copy the object. this won't work across function boundaries, but that's fine.
-
+	for functions. if you get a pointer to the actual x86 function, you're fixed. but again, we can have pointer-to-function.
 
 
 we don't care too much about pointer lifetimes, since normally you can just pass them around as broken-up pointers. since lifetime only matters locally, and is only used for createstore.
@@ -30,3 +30,15 @@ and when using createstore (pointer, value), we must have that (guarantee of val
 
 what life guarantee is good for is a self validity. when yourself no longer makes sense. so for integers, it's infinity.
 	this determines when it's possible to store.
+
+must full pointers point to the beginning of the object?
+	+garbage collection is faster, with our bitset. only need to check the first bit to see if you already checked that object.
+	+in the future, we'll want mutators to know where the object is, for concurrent GC. will that require knowing the full object?
+	-less expressivity. so: what's the cost precisely?
+		you can't store the pointer on the heap. when might we want this? for ASTs?
+		actually, when might you want big objects on the heap at all? when they logically belong together. for example, one of our big compilation objects (passes).
+		in that case, you want to see everything together. then, would there be exceptional cases where you want pointers to just the internals, and to be able to also store these pointers? in those cases, you would be explicitly throwing away information about the overall object.
+	and then, what about vectors?
+		sure, that seems to work fine with dynamic objects, since the dynamic type can be changed in-place.
+		ASTs embed the type inside, but maybe we can just treat them differently.
+if so, maybe they'd want to point to the entire object. this is so that after you've checked an object, you know you've handled every field. but this messes with vector truncation

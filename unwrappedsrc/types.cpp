@@ -71,7 +71,11 @@ type_check_result type_check(type_status version, Type* existing_reference, Type
 	if (iter[0] == iter[1]) return type_check_result::perfect_fit; //easy way out, if lucky. we can't do this later, because our stack might have extra things to look at.
 	if (existing_reference == T::nonexistent) return type_check_result::perfect_fit; //nonexistent means that the code path is never seen.
 	if (existing_reference->tag != Typen("con_vec")) //not a concatenation
-		return type_check_once(version, existing_reference, new_reference);
+	{
+		if (new_reference->tag != Typen("con_vec"))
+			return type_check_once(version, existing_reference, new_reference);
+		else return type_check_result::different;
+	}
 	else if (new_reference->tag != Typen("con_vec")) //then the other one better be a concatenation too
 		return type_check_result::different;
 	else
@@ -153,7 +157,7 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 				return type_check_result::perfect_fit;
 			return type_check_result::different;
 		default:
-			error("default switch in fully immut/RVO branch");
+			error("default switch in fully immut/RVO branch " + std::string(Type_descriptor[iter[1]->tag].name));
 		}
 	}
 
