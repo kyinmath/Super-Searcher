@@ -13,7 +13,6 @@ namespace T
 	constexpr Type internal::cheap_dynamic_pointer;
 	constexpr Type internal::full_dynamic_pointer;
 	constexpr Type internal::AST_pointer;
-	constexpr Type internal::error_object;
 };
 
 /* this checks if a new reference can be bound to an old reference.

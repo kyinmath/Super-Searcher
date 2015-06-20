@@ -245,7 +245,8 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 		console << "stack degree " << stack_degree;
 		console << ", storage location is ";
 		if (storage_location) storage_location->print(*llvm_console);
-		else console << "null\n";
+		else console << "null";
+		console << '\n';
 	}
 
 	if (stack_degree == 2) check(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
@@ -655,8 +656,9 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 				uint64_t result_target_life_guarantee = std::max(half[0].self_validity_guarantee, half[1].self_validity_guarantee);
 				uint64_t result_target_hit_contract = std::min(half[0].target_hit_contract, half[1].target_hit_contract);
 				Type* concatenation = concatenate_types(std::vector<Type*>{half[0].type, half[1].type});
-				console << "concatenation " << concatenation->fields[0].num << '\n';
+				//console << "concatenation " << concatenation->fields[0].num << '\n';
 				Type* final_type = get_unique_type(*concatenation);
+				console << "final type "; output_type(final_type);
 				finish_special_stack_handled_pointer(final_value, final_type, result_target_life_guarantee, result_target_hit_contract);
 			}
 			else //it's convenient having a pass-through special case, because pass-through means we don't need to have special cases for size-1 objects.
@@ -895,7 +897,7 @@ void fuzztester(unsigned iterations)
 		if (result)
 		{
 			AST_list.push_back(test_AST);
-			console << "Successful compile " << AST_list.size() - 1 << "\n";
+			console << AST_list.size() - 1 << "\n";
 		}
 		else delete test_AST;
 		if (INTERACTIVE)

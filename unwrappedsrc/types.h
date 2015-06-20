@@ -148,8 +148,7 @@ struct Lo : private T
 
 #define fields_in_Type 3u
 //this is for types which are known to be unique and well-behaved (no loops).
-struct Type_pointer_range;
-struct Type_everything_range;
+//WARNING: don't use the ctor for this 
 struct Type;
 inline uint64_t total_valid_fields(const Type* t);
 struct Type
@@ -157,12 +156,11 @@ struct Type
 	uint64_t tag;
 	using iop = int_or_ptr<Type>;
 	std::array<iop, fields_in_Type> fields;
-	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{{args...}} {} //this only works because 0 is the proper default value
-	template<typename... Args> constexpr Type(const uint64_t t, Args... args) : tag(t), fields{{args...}} {}
-	Type_pointer_range& pointers() { return *(Type_pointer_range*)this; }
-	Type_everything_range& all_values() { return *(Type_everything_range*)this; }
+	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{{args...}} { if (tag == Typen("con_vec")) console << ("make it another way"); } //this only works because 0 is the proper default value
+	template<typename... Args> constexpr Type(const uint64_t t, Args... args) : tag(t), fields{{args...}} { if (tag == Typen("con_vec")) console << ("make it another way"); }
 	constexpr Type(const Type& other) : tag(other.tag)
 	{
+		if (tag == Typen("con_vec")) console << ("make it another way");
 		for (uint64_t x = 0; x < total_valid_fields(&other); ++x)
 			((uint64_t*)this)[1 + x] = ((uint64_t*)&other)[1 + x];
 	}
@@ -179,17 +177,31 @@ struct Type_pointer_range
 	}
 };
 
+//range operator. gets all the fields, but not the tag.
 struct Type_everything_range
 {
+	Type* t;
+	Type_everything_range(Type* t_) : t(t_) {}
 	uint64_t tag;
 	Type* fields;
-	Type** begin() { return &fields; }
-	Type** end() { return (tag == Typen("con_vec")) ? (&fields) + (uint64_t)fields + 1 : (&fields) + Type_descriptor[tag].pointer_fields + Type_descriptor[tag].additional_special_fields; }
+	Type** begin() { return &(t->fields[0].ptr); }
+	Type** end() { return &(t->fields[0].ptr) + total_valid_fields(t);
+	}
 };
 
 inline uint64_t total_valid_fields(const Type* t)
 {
 	return (t->tag == Typen("con_vec")) ? t->fields[0].num + 1 : Type_descriptor[t->tag].pointer_fields + Type_descriptor[t->tag].additional_special_fields;
+}
+
+inline Type* copy_type(const Type* t)
+{
+	uint64_t fields = total_valid_fields(t);
+	uint64_t* new_type = new uint64_t[fields + 1];
+	uint64_t* old_type = (uint64_t*)t;
+	for (int idx = 0; idx < fields + 1; ++idx)
+		new_type[idx] = old_type[idx];
+	return (Type*)(new_type);
 }
 
 //when creating a new element here, remember to instantiate it in types.cpp.
@@ -207,7 +219,7 @@ namespace T
 		static constexpr Type cheap_dynamic_pointer{("dynamic pointer")};
 		static constexpr Type full_dynamic_pointer{"dynamic pointer", 1};
 		static constexpr Type AST_pointer{("AST pointer")};
-		static constexpr Type error_object{Type("con_vec", const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer), const_cast<Type* const>(&int_))};
+		//static constexpr Type error_object{concatenate_types(std::vector<Type*>{const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer), const_cast<Type* const>(&int_)})};
 		//error_object is int, pointer to AST, int. it's what is returned when compilation fails: the error code, then the AST, then the field.
 	};
 	typedef internal i;
@@ -219,7 +231,6 @@ namespace T
 	constexpr Type* cheap_dynamic_pointer = const_cast<Type* const>(&i::cheap_dynamic_pointer);
 	constexpr Type* full_dynamic_pointer = const_cast<Type* const>(&i::full_dynamic_pointer);
 	constexpr Type* null = nullptr;
-	constexpr Type* error_object = const_cast<Type* const>(&i::error_object);
 	constexpr Type* AST_pointer = const_cast<Type* const>(&i::AST_pointer);
 };
 
@@ -238,7 +249,7 @@ constexpr uint64_t get_size(Type* target)
 	else if (target->tag == Typen("con_vec"))
 	{
 		uint64_t total_size = 0;
-		for (auto& x : target->pointers()) total_size += get_size(x);
+		for (auto& x : Type_pointer_range(target)) total_size += get_size(x);
 		return total_size;
 	}
 	error("couldn't get size of type tag, check backtrace for target->tag");

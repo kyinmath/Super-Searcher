@@ -51,7 +51,7 @@ inline uint64_t compile_user_facing(uint64_t target)
 		error_return[2] = a.error_field;
 
 		return_object_pointer = error_return;
-		return_type_pointer = T::error_object;
+		return_type_pointer = concatenate_types(std::vector < Type* > {T::integer, T::AST_pointer, T::integer});
 	}
 	else
 	{

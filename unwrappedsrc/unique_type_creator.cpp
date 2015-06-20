@@ -7,8 +7,11 @@ Then, it checks type_hash_table if there is already a unique type that is the sa
 
 #include "types.h"
 #include "debugoutput.h"
+#include "unique_type_creator.h"
 #include "cs11.h"
 #include <unordered_set>
+
+bool UNIQUE_VERBOSE_DEBUG = false;
 
 //this wrapper type is used for the hash table. we want equality and hashing to occur on a Type, not a Type*, since hashing on pointers is dumb. but we want the hash table to store pointers to types, so that references to them stay valid forever.
 
@@ -27,11 +30,11 @@ namespace std {
 		size_t operator () (const Type_wrapper_pointer& f) const
 		{
 			uint64_t hash = f.ptr->tag;
-			for (int x = 0; x < fields_in_Type; ++x)
+			for (int x = 0; x < total_valid_fields(f.ptr); ++x)
 				hash ^= f.ptr->fields[x].num;
 			//we're ignoring con_vec, but that's probably ok
 
-			if (VERBOSE_DEBUG)
+			if (UNIQUE_VERBOSE_DEBUG)
 			{
 				console << "hash is" << hash << '\n';
 			}
@@ -44,7 +47,7 @@ namespace std {
 	{
 		size_t operator () (const Type_wrapper_pointer& l, const Type_wrapper_pointer& r) const
 		{
-			if (VERBOSE_DEBUG)
+			if (UNIQUE_VERBOSE_DEBUG)
 			{
 				console << "testing equal.\n";
 				output_type(l.ptr);
@@ -62,7 +65,7 @@ namespace std {
 				if (left[x] != right[x])
 					return false;
 
-			if (VERBOSE_DEBUG) console << "true\n";
+			if (UNIQUE_VERBOSE_DEBUG) console << "true\n";
 			return true;
 		}
 	};
@@ -78,7 +81,7 @@ std::unordered_set<Type_wrapper_pointer> type_hash_table; //a hash table of all 
 std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_parameter)
 {
 
-	if (VERBOSE_DEBUG)
+	if (UNIQUE_VERBOSE_DEBUG)
 	{
 		console << "type of original model ";
 		output_type(model);
@@ -91,9 +94,9 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 	//note: we can't find the index with pointer arithmetic and range-for, because range for makes a move copy of the element.
 	//this function finds unique versions of any pointer subfields.
 	uint64_t counter = model->tag == Typen("con_vec") ? 1 : 0; //this counter starting value is a bit fragile.
-	for (Type*& pointer : model->pointers())
+	for (Type*& pointer : Type_pointer_range(model))
 	{
-		if (VERBOSE_DEBUG)
+		if (UNIQUE_VERBOSE_DEBUG)
 		{
 			console << "uniquefying subfield " << counter << '\n';
 		}
@@ -102,7 +105,7 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 		model->fields[counter] = result.first;
 		++counter;
 	}
-	if (VERBOSE_DEBUG)
+	if (UNIQUE_VERBOSE_DEBUG)
 	{
 		console << "type of temporary model ";
 		output_type(model);
@@ -110,7 +113,7 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 
 	if (create_new_for_sure)
 	{
-		Type* handle = new Type(*model);
+		Type* handle = copy_type(model);
 		type_hash_table.insert(handle);
 		return std::make_pair(handle, true);
 	}
@@ -118,7 +121,7 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 	if (existing_type == type_hash_table.end())
 	{
 		if (!can_reuse_parameter)
-			model = new Type(*model);
+			model = copy_type(model);
 		type_hash_table.insert(model);
 		return std::make_pair(model, true);
 	}
@@ -137,22 +140,20 @@ void test_unique_types()
 {
 	Type zero("integer");
 	Type zero_two("integer");
-	Type one("integer", 1);
+	Type dynamic("dynamic pointer");
 
 	Type* unique_zero = get_unique_type(&zero, false);
 	Type* second_zero = get_unique_type(&zero, false);
 	check(unique_zero == second_zero, "duplicated type doesn't even unique");
-
-	Type* unique_one = get_unique_type(&one, false);
-	check(unique_zero != unique_one, "zero and one uniqued to same element");
 
 	Type pointer_zero("pointer", &zero);
 	Type pointer_zero_second("pointer", &zero_two);
 	Type* unique_pointer_zero = get_unique_type(&pointer_zero, false);
 	Type* unique_pointer_zero_second = get_unique_type(&pointer_zero_second, false);
 	check(unique_pointer_zero == unique_pointer_zero_second, "pointers don't unique");
+	check(unique_pointer_zero != unique_zero, "pointers uniqeuing to integers");
 
-	Type pointer_one("pointer", &one);
-	Type* unique_pointer_one = get_unique_type(&pointer_one, false);
-	check(unique_pointer_zero != unique_pointer_one, "different pointers unique");
+	
+	Type* unique_pointer_dynamic = get_unique_type(Type("pointer", &dynamic));
+	check(unique_pointer_zero != unique_pointer_dynamic, "different pointers unique");
 }

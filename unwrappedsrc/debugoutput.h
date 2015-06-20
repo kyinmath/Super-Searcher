@@ -50,7 +50,10 @@ inline void output_type(Type* target)
 	}
 	if (target == T::special_return) { console << "special\n"; return; }
 	console << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), addr " << target << ", ";
-	console << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << '\n';
+	console << "fields";
+	for (auto& x : Type_everything_range(target))
+		console << ' ' << x;
+	console << '\n';
 }
 
 //for debugging. outputs a Type and everything it points to, recursively.
@@ -62,7 +65,7 @@ inline void output_type_and_previous(Type* target)
 		return;
 	}
 	output_type(target);
-	for (auto& x : target->pointers())
+	for (auto& x : Type_pointer_range(target))
 		output_type_and_previous(x);
 }
 
