@@ -109,7 +109,7 @@ constexpr AST_info AST_descriptor[] =
 	a("concatenate", T::special_return).make_pointer_fields(2),
 	a("dynamic", T::full_dynamic_pointer).make_fields_to_compile(1), //creates dynamic storage for any kind of object. moves it to the heap.
 	a("compile", T::full_dynamic_pointer, T::AST_pointer), //compiles an AST, returning a dynamic object which is either the error object or the desired info.
-	a("temp_generate_AST", T::AST_pointer), //hacked in, generates a random AST.
+	//a("temp_generate_AST", T::AST_pointer), //hacked in, generates a random AST.
 	{"dynamic_conc", T::special_return, T::cheap_dynamic_pointer, T::cheap_dynamic_pointer}, //concatenate the interiors of two dynamic pointers
 	a("goto", T::special_return).make_pointer_fields(1),
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.

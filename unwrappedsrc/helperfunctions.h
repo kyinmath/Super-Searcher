@@ -58,7 +58,7 @@ inline bool compile_and_run(uAST* ast)
 	unsigned error_code = j.compile_AST(ast);
 	if (error_code)
 	{
-		console << "Malformed AST: code " << error_code << " at AST " << j.error_location << " " << AST_descriptor[j.error_location->bypass()->tag].name << " field " << j.error_field << "\n\n";
+		console << "Malformed AST: code " << error_code << " at AST " << j.error_location << " " << AST_descriptor[j.error_location->tag].name << " field " << j.error_field << "\n\n";
 		return 0;
 	}
 	else console << "Successful compile\n\n";

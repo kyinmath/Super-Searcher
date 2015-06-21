@@ -26,6 +26,10 @@ std::map<uint64_t*, uint64_t> living_objects;
 std::unordered_set<uint64_t*> living_functions;
 std::stack < std::pair<uint64_t*, Type*>> to_be_marked;
 
+void marky_mark(uint64_t* memory, Type* t);
+void initialize_roots();
+void sweepy_sweep();
+
 uint64_t* allocate(uint64_t size)
 {
 	auto k = free_memory.upper_bound(size + 1);
@@ -53,6 +57,7 @@ uint64_t* allocate(uint64_t size)
 uint64_t* allocate_function(uint64_t size)
 {
 	//future: implement
+	return nullptr;
 }
 
 void start_GC()
@@ -72,6 +77,7 @@ void initialize_roots()
 	//add in the thread ASTs
 }
 
+void mark_single_element(uint64_t* memory, Type* t);
 void marky_mark(uint64_t* memory, Type* t)
 {
 	if (t == nullptr) return; //handle a null type. this might appear from dynamic objects. although later we might require dynamic objects to have non-null type?

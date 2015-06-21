@@ -84,12 +84,6 @@ inline uint64_t concatenate_dynamic(uint64_t first_dynamic, uint64_t second_dyna
 }
 
 
-uint64_t ASTmaker()
-{
-	return 0; //we don't want any trouble. and the AST maker is a constant source of problems as it diverges from fuzztester().
-	//right now, it's not going to create special parameter fields correctly. and it'll try to create a 0-tag AST, which is bad.
-}
-
 //return value is the address
 inline uint64_t allocate_memory(uint64_t size)
 {

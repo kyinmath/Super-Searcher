@@ -259,7 +259,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
 	if (this->loop_catcher.find(user_target) != this->loop_catcher.end()) return_code(infinite_loop, 10);
 	uAST* target = new uAST(*user_target); //make a copy
-	loop_catcher.insert(user_target, target); //we've seen this AST now.
+	loop_catcher.insert({user_target, target}); //we've seen this AST now.
 	
 
 	//after we're done with this AST, we remove it from loop_catcher.
@@ -801,12 +801,13 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			else finish_special_stack_handled(storage_location, T::AST_pointer);
 
 		}
+		/*
 	case ASTn("temp_generate_AST"):
 		{
 			l::Value* generator = llvm_function(Builder, ASTmaker, int64_type);
 			//l::Constant *twister_function = TheModule->getOrInsertFunction("ASTmaker", AST_maker_type);
 			finish(Builder.CreateCall(generator, std::vector<l::Value*>{}, s("ASTmaker")));
-		}
+		}*/
 	case ASTn("static_object"):
 		{
 			l::Value* address_of_object = llvm_integer(target->fields[0].num);
