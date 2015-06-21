@@ -68,5 +68,8 @@
     <ClInclude Include="unwrappedsrc\ASTs.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="unwrappedsrc\function.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

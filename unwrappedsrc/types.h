@@ -47,6 +47,7 @@ union int_or_ptr
 
 
 //Visual Studio doesn't support constexpr. we use this to make the Intellisense errors go away.
+//don't mark it const, because Visual Studio starts complaining about const correctness.
 #ifdef _MSC_VER
 #define constexpr
 #define thread_local
@@ -94,13 +95,13 @@ constexpr Type_info Type_descriptor[] =
 	_t("pointer", 1, 1).make_special_fields(1), //pointer to anything, except the target type must be non-nullptr. second field is 1 if it's a full pointer, and 0 otherwise
 	_t("dynamic pointer", 0, 1).make_special_fields(1), //dynamic pointer. a double-indirection. points to two elements: first field is the pointer, second field is a pointer to the type. the purpose of double indirection is lock safety
 	{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
-	//the actual object has 6: tag, then previous, then 4 fields.
+	//the actual object has 2+fields: tag, then previous, then some fields.
+	{"type pointer", 0, 1},
 	{"function in clouds", 2, 2}, //points to: return AST, then parameter AST, then compiled area. we don't embed the AST along with the function signature, in order to keep them separate.
 	{"nonexistent", 0, 0}, //a special value
 	{"never reached", 0, 0},
 	//except: if we have two ASTs, it's going to bloat our type object. and meanwhile, we want the parameter AST to be before everything that might use it, so having it as a first_pointer is not good, since the beginning of the function might change.
 	{"lock", 0, 1},
-	{"type pointer", 0, 1},
 };
 
 #include <iostream>
@@ -207,6 +208,7 @@ namespace T
 	constexpr Type* AST_pointer = const_cast<Type* const>(&i::AST_pointer);
 };
 
+Type* concatenate_types(llvm::ArrayRef<Type*> components);
 
 /*
 all object sizes are integer multiples of 64 bits.

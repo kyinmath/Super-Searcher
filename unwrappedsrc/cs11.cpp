@@ -87,7 +87,7 @@ template<size_t array_num> void cout_array(std::array<uint64_t, array_num> objec
 }
 
 //return value is the error code, which is 0 if successful
-unsigned compiler_object::compile_AST(Lo<uAST>* target)
+unsigned compiler_object::compile_AST(uAST* target)
 {
 
 	llvm::Module *TheModule(new l::Module("temp module", thread_context));
@@ -258,18 +258,18 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
 	if (this->loop_catcher.find(user_target) != this->loop_catcher.end()) return_code(infinite_loop, 10);
-	loop_catcher.insert(user_target); //we've seen this AST now.
-	auto k = locked_target->get_read(); //todo: this is the wrong thing to do. when we unlock it, it does absolutely no good.
-	uAST* target = k.x;
+	uAST* target = new uAST(*user_target); //make a copy
+	loop_catcher.insert(user_target, target); //we've seen this AST now.
+	
 
 	//after we're done with this AST, we remove it from loop_catcher.
 	struct loop_catcher_destructor_cleanup
 	{
 		//compiler_state can only be used if it is passed in.
-		compiler_object* object; Lo<uAST>* targ;
-		loop_catcher_destructor_cleanup(compiler_object* x, Lo<uAST>* t) : object(x), targ(t) {}
+		compiler_object* object; uAST* targ;
+		loop_catcher_destructor_cleanup(compiler_object* x, uAST* t) : object(x), targ(t) {}
 		~loop_catcher_destructor_cleanup() { object->loop_catcher.erase(targ); }
-	} temp_object(this, locked_target);
+	} temp_object(this, user_target);
 
 	//compile the previous elements in the basic block.
 	if (target->preceding_BB_element)
@@ -350,13 +350,13 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		{
 			if (stack_degree >= 1)
 			{
-				object_stack.push({locked_target, true});
-				auto insert_result = objects.insert({locked_target, Return_Info(IRgen_status::no_error, return_value, type, final_stack_state, lifetime_of_return_value, self_validity_guarantee, target_hit_contract)});
+				object_stack.push({user_target, true});
+				auto insert_result = objects.insert({user_target, Return_Info(IRgen_status::no_error, return_value, type, final_stack_state, lifetime_of_return_value, self_validity_guarantee, target_hit_contract)});
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication, 10);
 			}
 			else //stack_degree == 0
-				object_stack.push(std::make_pair(locked_target, false));
+				object_stack.push(std::make_pair(user_target, false));
 		}
 		return Return_Info(IRgen_status::no_error, return_value, type, final_stack_state, lifetime_of_return_value, self_validity_guarantee, target_hit_contract);
 	};
@@ -521,7 +521,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
 			l::BasicBlock *label = l::BasicBlock::Create(thread_context, "");
-			auto label_insertion = labels.insert(std::make_pair(locked_target, label_info(label, final_stack_position, true)));
+			auto label_insertion = labels.insert(std::make_pair(user_target, label_info(label, final_stack_position, true)));
 			if (label_insertion.second == false) return_code(label_duplication, 0);
 
 			Return_Info scoped = generate_IR(target->fields[0].ptr, 0);
@@ -863,7 +863,7 @@ todo: this scheme can't produce forward references, which are necessary for goto
 */
 void fuzztester(unsigned iterations)
 {
-	std::vector<Lo<uAST>*> AST_list{nullptr}; //start with nullptr as the default referenceable AST
+	std::vector<uAST*> AST_list{nullptr}; //start with nullptr as the default referenceable AST
 	while (iterations--)
 	{
 		//create a random AST
@@ -874,7 +874,7 @@ void fuzztester(unsigned iterations)
 		//but does exponential falloff solve this problem in the way we want?
 
 
-		int_or_ptr<Lo<uAST>> fields[4]{nullptr, nullptr, nullptr, nullptr};
+		int_or_ptr<uAST> fields[4]{nullptr, nullptr, nullptr, nullptr};
 		int incrementor = 0;
 		for (; incrementor < pointer_fields; ++incrementor)
 			fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous ASTs
@@ -888,7 +888,7 @@ void fuzztester(unsigned iterations)
 				check(incrementor == pointer_fields + AST_descriptor[tag].additional_special_fields - 1, "egads! I need to build functionality for tracking the current parameter field offset and the current parameter type separately, because there are extra fields after the special field, and the special field may have size different from 1\n");
 			}
 		}
-		Lo<uAST>* test_AST = new Lo<uAST>(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
+		uAST* test_AST = new uAST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
 		if (OLD_AST_OUTPUT) output_AST_and_previous(test_AST);
 		output_AST_console_version a(test_AST);
 
@@ -921,9 +921,9 @@ using std::string; //this can't go inside source_reader for stupid C++ reasons
 class source_reader
 {
 
-	std::unordered_map<string, Lo<uAST>*> ASTmap = {{"0", nullptr}}; //from name to location. starts with 0 = nullptr.
-	std::unordered_map<Lo<uAST>**, string> goto_delay; //deferred binding of addresses, for goto. we can only see the labels at the end.
-	Lo<uAST>* delayed_binding_special_value = new Lo<uAST>(1); //memleak
+	std::unordered_map<string, uAST*> ASTmap = {{"0", nullptr}}; //from name to location. starts with 0 = nullptr.
+	std::unordered_map<uAST**, string> goto_delay; //deferred binding of addresses, for goto. we can only see the labels at the end.
+	uAST* delayed_binding_special_value = new uAST(1); //memleak
 	string delayed_binding_name; //a backdoor return value.
 	std::istream& input;
 
@@ -960,11 +960,11 @@ class source_reader
 	}
 
 	//continued_string is in case we already read the first token. then, that's the first thing to start with.
-	Lo<uAST>* read_single_AST(Lo<uAST>* previous_AST, string continued_string = "")
+	uAST* read_single_AST(uAST* previous_AST, string continued_string = "")
 	{
 		string first = continued_string == "" ? get_token() : continued_string;
-		char* new_type_location = new char[sizeof(Lo<uAST>)]; //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
-		//Lo<uAST>* new_type = new Lo<uAST>(special);
+		char* new_type_location = new char[sizeof(uAST)]; //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
+		//uAST* new_type = new uAST(special);
 
 		if (first != string(1, '[')) //it's a name reference.
 		{
@@ -985,7 +985,7 @@ class source_reader
 		if (VERBOSE_DEBUG) console << "AST tag was " << AST_type << "\n";
 		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
 
-		int_or_ptr<Lo<uAST>> fields[max_fields_in_AST] = { nullptr, nullptr, nullptr, nullptr };
+		int_or_ptr<uAST> fields[max_fields_in_AST] = { nullptr, nullptr, nullptr, nullptr };
 
 		//field_num is which field we're on
 		int field_num = 0;
@@ -1012,7 +1012,7 @@ class source_reader
 			}
 		}
 		//check(next_token == "]", "failed to have ]");
-		Lo<uAST>* new_type = new(new_type_location) Lo<uAST>(AST_type, previous_AST, fields[0], fields[1], fields[2], fields[3]);
+		uAST* new_type = new(new_type_location) uAST(AST_type, previous_AST, fields[0], fields[1], fields[2], fields[3]);
 
 		if (VERBOSE_DEBUG)
 			output_AST_console_version a(new_type);
@@ -1039,9 +1039,9 @@ class source_reader
 
 	}
 
-	Lo<uAST>* create_single_basic_block(bool create_brace_at_end = false)
+	uAST* create_single_basic_block(bool create_brace_at_end = false)
 	{
-		Lo<uAST>* current_previous = nullptr;
+		uAST* current_previous = nullptr;
 		if (create_brace_at_end == false)
 		{
 			if (std::cin.peek() == '\n') std::cin.ignore(1);
@@ -1065,9 +1065,9 @@ class source_reader
 
 public:
 	source_reader(std::istream& stream, char end) : input(stream) {}
-	Lo<uAST>* read()
+	uAST* read()
 	{
-		Lo<uAST>* end = create_single_basic_block();
+		uAST* end = create_single_basic_block();
 
 		//resolve all the forward references from goto()
 		for (auto& x : goto_delay)
@@ -1150,7 +1150,7 @@ int main(int argc, char* argv[])
 		{
 			source_reader k(std::cin, '\n'); //have to reinitialize to clear the ASTmap
 			console << "Input AST:\n";
-			Lo<uAST>* end = k.read();
+			uAST* end = k.read();
 			if (VERBOSE_DEBUG) console << "Done reading.\n";
 			if (end == nullptr)
 			{

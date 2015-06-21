@@ -19,7 +19,7 @@ inline uint64_t make_AST_pointer_from_dynamic(uint64_t tag, uint64_t previous_AS
 	std::vector<uint64_t> fields{ 0, 0, 0, 0 };
 	for (int x = 0; x < AST_descriptor[tag].pointer_fields + AST_descriptor[tag].additional_special_fields; ++x)
 		fields[x] = pointer[x];
-	return (uint64_t)(new Lo<uAST>(tag, (Lo<uAST>*)previous_AST, fields[0], fields[1], fields[2], fields[3]));
+	return (uint64_t)(new uAST(tag, (uAST*)previous_AST, fields[0], fields[1], fields[2], fields[3]));
 }
 
 
@@ -39,7 +39,7 @@ NOTE: std::array<2> becomes {uint64_t, uint64_t}. but array<4> becomes [i64 x 4]
 inline uint64_t compile_user_facing(uint64_t target)
 {
 	compiler_object a;
-	unsigned error = a.compile_AST((Lo<uAST>*)target);
+	unsigned error = a.compile_AST((uAST*)target);
 
 	void* return_object_pointer;
 	Type* return_type_pointer;
@@ -99,7 +99,7 @@ inline uint64_t allocate_memory(uint64_t size)
 
 inline bool is_AST_internal(uint64_t tag, Type* reference)
 {
-	return type_check(RVO, reference, get_AST_type(tag)) == type_check_result::perfect_fit;
+	return type_check(RVO, reference, get_AST_fields_type(tag)) == type_check_result::perfect_fit;
 	//this is RVO because we're copying the dynamic object over.
 }
 

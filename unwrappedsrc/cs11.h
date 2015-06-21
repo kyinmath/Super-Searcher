@@ -104,7 +104,7 @@ class compiler_object
 
 	//lists the ASTs we're currently looking at. goal is to prevent infinite loops.
 	//and maps user ASTs to copied ASTs.
-	std::unordered_map<uAST*, AST*> loop_catcher;
+	std::unordered_map<uAST*, uAST*> loop_catcher;
 
 	//a stack for bookkeeping lifetimes; keeps track of when objects are alive.
 	//bool is true if the object is on the stack.

@@ -5,6 +5,7 @@ Module->print(*llvm_console, nullptr) prints the generated llvm code.
 */
 #pragma once
 #include "types.h"
+#include "ASTs.h"
 #include <unordered_set>
 
 //s("test") returns "test" if debug_names is true, and an empty string if debug_names is false.
@@ -86,9 +87,8 @@ inline void output_AST(uAST* target)
 
 #include <set>
 //for debugging. outputs an AST and everything it can see, recursively.
-inline void output_AST_and_previous(Lo<uAST>* locked_target)
+inline void output_AST_and_previous(uAST* target)
 {
-	uAST* target = locked_target->bypass(); //ignore all locks
 	if (target == nullptr)
 	{
 		console << "null AST\n";
@@ -124,19 +124,17 @@ struct output_AST_console_version
 	std::unordered_set<uAST*> AST_list = { nullptr }; //nullptr = 0 is a special value.
 	std::unordered_set<uAST*> reference_necessary; //list of ASTs that have references to them later. these ASTs need to print a name.
 
-	output_AST_console_version(Lo<uAST>* locked_target)
+	output_AST_console_version(uAST* target)
 	{
-		determine_references(locked_target);
+		determine_references(target);
 		AST_list = { nullptr }; //determine_references changes this, so we must reset it
-		output_console(locked_target, false); //we call it with "false", because the overall function has no braces.
+		output_console(target, false); //we call it with "false", because the overall function has no braces.
 
 		console << '\n';
 	}
 
-	void determine_references(Lo<uAST>* locked_target)
+	void determine_references(uAST* target)
 	{
-		uAST* target = locked_target->bypass();
-
 		if (AST_list.find(target) != AST_list.end()) //already seen
 		{
 			if (reference_necessary.find(target) == reference_necessary.end()) //reference not yet added
@@ -150,9 +148,8 @@ struct output_AST_console_version
 	}
 
 	//the purpose of "might be end in BB" is to decide whether to output {} or not.
-	void output_console(Lo<uAST>* locked_target, bool might_be_end_in_BB)
+	void output_console(uAST* target, bool might_be_end_in_BB)
 	{
-		uAST* target = locked_target->bypass();
 		if (AST_list.find(target) != AST_list.end())
 		{
 			console << target;
