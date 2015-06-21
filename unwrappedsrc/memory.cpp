@@ -5,6 +5,9 @@
 #include <stack>
 #include "console.h"
 #include "types.h"
+#include "user_facing_functions.h"
+
+//todo: replace all new()
 
 //todo: actually figure out memory size according to the computer specs
 //problem: the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. do we really need to have special cases, just for them?
@@ -47,31 +50,69 @@ uint64_t* allocate(uint64_t size)
 	return k->second + 1;
 }
 
+uint64_t* allocate_AST(uint64_t size)
+{
+}
+
+void initialize_roots()
+{
+	//add in the special types which we need to know about
+	//add in the thread ASTs
+}
+
 void marky_mark(uint64_t* memory, Type* t)
 {
 	if (t == nullptr) return; //handle a null type. this might appear from dynamic objects. although later we might require dynamic objects to have non-null type?
 	if (living_objects.find(memory) != living_objects.end()) return; //it's already there. nothing needs to be done, if we assume that full pointers point to the entire object. todo.
 	living_objects.insert({memory, get_size(t)});
+	if (t->tag == Typen("con_vec"))
+	{
+		uint64_t* current_pointer = memory;
+		for (auto& t : Type_pointer_range(t))
+		{
+			mark_single_element(current_pointer, t);
+			current_pointer += get_size(t);
+		}
+	}
+	else mark_single_element(memory, t);
+}
+
+void mark_single_element(uint64_t* memory, Type* t)
+{
 	switch (t->tag)
 	{
 	case Typen("con_vec"):
+		error("no nested con_vecs allowed");
 	case Typen("integer"):
 		break;
 	case Typen("pointer"):
 		to_be_marked.push({*(uint64_t**)memory, t->fields[0].ptr});
 		break;
 	case Typen("dynamic pointer"):
-		if (living_objects.find(*(uint64_t**)memory) != living_objects.end()) break;
-		living_objects.insert({*(uint64_t**)memory, 2});
-		to_be_marked.push({*(uint64_t**)memory, *(Type**)(memory + 1)}); //pushing the object
-		to_be_marked.push({*(uint64_t**)(memory + 1), T::type}); //pushing the type
+		if (*memory != 0)
+		{
+			if (living_objects.find(*(uint64_t**)memory) != living_objects.end()) break;
+			living_objects.insert({*(uint64_t**)memory, 2});
+			to_be_marked.push({*(uint64_t**)memory, *(Type**)(memory + 1)}); //pushing the object
+			to_be_marked.push({*(uint64_t**)(memory + 1), T::type}); //pushing the type
+		}
+		break;
 	case Typen("AST pointer"):
-		if (living_objects.find(*(uint64_t**)memory) != living_objects.end()) break;
-		uAST* the_AST = *(uAST**)memory; //todo: make a decision
-		living_objects.insert({*(uint64_t**)memory, 2});
-		to_be_marked.push({*(uint64_t**)memory, *(Type**)(memory + 1)}); //pushing the object
-		to_be_marked.push({*(uint64_t**)(memory + 1), T::type}); //pushing the type
+		if (*memory != 0)
+		{
+			uAST* the_AST = *(uAST**)memory;
+			Type* type_of_AST = get_AST_full_type(the_AST->tag);
+			to_be_marked.push({*(uint64_t**)memory, type_of_AST});
+		}
+		break;
 	case Typen("type pointer"):
+		if (*memory != 0)
+		{
+			Type* the_type = *(Type**)memory;
+			Type* type_of_type = get_Type_full_type(the_type);
+			to_be_marked.push({*(uint64_t**)memory, type_of_type});
+		}
+		break;
 	case Typen("function in clouds"):
 	}
 }

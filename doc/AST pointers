@@ -16,9 +16,18 @@ problem with pointer_to_AST: is that we can't exactly have ownership.
 for example, if we want to create an AST, we pass in a dynamic type. but can we really create a reference to that type as an AST?
 	generally, no. so we'd have to make a new copy.
 
-benefit of pointer_to_AST: the compilation function knows it can just immute the AST. otherwise, it would need to create a copy
-AST pointers do need to be pointers when used. we can only compile full objects. so we'd have to make full objects eventually; it's good to bake the fullness into the type.
+benefit of pointer_to_AST: fixed size.
+%the compilation function knows it can just immute the AST. otherwise, it would need to create a copy
+%AST pointers do need to be pointers when used. we can only compile full objects. so we'd have to make full objects eventually; it's good to bake the fullness into the type.
 
+
+in our AST structure, the pointers point backwards, because forward makes them impossible to construct. (otherwise, we could use a dynamic concatenation).
+	however, analyzing such ASTs is virtually impossible. for example, my generate_IR function has so many different returns.
+	it's far better to start at the beginning, and then build up information from there. that's how everything works, including math.
+in that case, maybe it is better to have a vector basic block.
+	+no first pointer
+	+can jump to the first element in the basic block, without needing to burn through finiteness
+	---lack of linked list means that inserting instructions in the middle is ridiculous. for example, my compile_IR ufnction would be totally unmodifiable.
 
 
 if we get an element from an AST. we should receive a pointer_to_AST, for example if we request previous_AST, and should not receive a dynamic object.
@@ -89,6 +98,7 @@ Copying
 Benchmarks:
 	https://stackoverflow.com/questions/2538070/atomic-operation-cost 310 cycles for atomic operation, 2 per AST.
 	https://stackoverflow.com/questions/7612292/how-bad-it-is-to-keep-calling-malloc-and-free 418 cycles. only one necessary; "malloc" a bunch of memory at once.
+maybe the "get AST" function produces the complete copy automatically? no, sometimes (in the far future) you just want to look.
 
 garbage collection:
 suppose a function becomes un-compiled. is it actually possible to unimmut all references in a way that's useful?

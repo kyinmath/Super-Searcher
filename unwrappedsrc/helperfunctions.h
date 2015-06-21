@@ -51,7 +51,7 @@ inline llvm::Value* llvm_create_phi(llvm::IRBuilder<>& Builder, llvm::Value* fir
 }
 
 //return true on success
-inline bool compile_and_run(Lo<uAST>* ast)
+inline bool compile_and_run(uAST* ast)
 {
 	finiteness = FINITENESS_LIMIT;
 	compiler_object j;

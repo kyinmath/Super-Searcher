@@ -232,16 +232,16 @@ note that while we have a rich type system, the only types that llvm sees are in
 example: the l::Value* of an object that had stack_degree = 2 is a pointer to the memory location, where the pointer is casted to an integer.
 currently, the finish() macro takes in the array itself, not the pointer-to-array.
 */
-Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack_degree, l::AllocaInst* storage_location)
+Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degree, l::AllocaInst* storage_location)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
-#define return_code(X, Y) do { error_location = locked_target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, T::null, stack_state::temp, 0, 0, 0); } while (0)
+#define return_code(X, Y) do { error_location = user_target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, T::null, stack_state::temp, 0, 0, 0); } while (0)
 
 
 	if (VERBOSE_DEBUG)
 	{
 		console << "generate_IR single AST start ^^^^^^^^^\n";
-		if (locked_target->bypass()) output_AST(locked_target->bypass());
+		if (user_target) output_AST(user_target);
 		console << "stack degree " << stack_degree;
 		console << ", storage location is ";
 		if (storage_location) storage_location->print(*llvm_console);
@@ -250,15 +250,15 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 	}
 
 	if (stack_degree == 2) check(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
-	if (stack_degree == 1) check((storage_location != nullptr) || (get_size(locked_target) == 0), "if stack degree is 1, we should have a storage_location");
+	if (stack_degree == 1) check((storage_location != nullptr) || (get_size(user_target) == 0), "if stack degree is 1, we should have a storage_location");
 
 	//generate_IR is allowed to take nullptr. otherwise, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
 	//check(target != nullptr, "generate_IR should never receive a nullptr target");
-	if (locked_target == nullptr) return Return_Info();
+	if (user_target == nullptr) return Return_Info();
 
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
-	if (this->loop_catcher.find(locked_target) != this->loop_catcher.end()) return_code(infinite_loop, 10);
-	loop_catcher.insert(locked_target); //we've seen this AST now.
+	if (this->loop_catcher.find(user_target) != this->loop_catcher.end()) return_code(infinite_loop, 10);
+	loop_catcher.insert(user_target); //we've seen this AST now.
 	auto k = locked_target->get_read(); //todo: this is the wrong thing to do. when we unlock it, it does absolutely no good.
 	uAST* target = k.x;
 

@@ -17,6 +17,7 @@ extern bool TIMER;
 #include "llvm/ExecutionEngine/OrcMCJITReplacement.h"
 #include "llvm/ExecutionEngine/MCJIT.h"
 #include "types.h"
+#include "ASTs.h"
 #ifdef _MSC_VER
 #define thread_local
 #endif
@@ -102,14 +103,15 @@ class compiler_object
 	llvm::ExecutionEngine* engine;
 
 	//lists the ASTs we're currently looking at. goal is to prevent infinite loops.
-	std::unordered_set<Lo<uAST>*> loop_catcher;
+	//and maps user ASTs to copied ASTs.
+	std::unordered_map<uAST*, AST*> loop_catcher;
 
 	//a stack for bookkeeping lifetimes; keeps track of when objects are alive.
 	//bool is true if the object is on the stack.
-	std::stack<std::pair<Lo<uAST>*, bool>> object_stack;
+	std::stack<std::pair<uAST*, bool>> object_stack;
 
 	//maps ASTs to their generated IR and return type.
-	std::unordered_map<Lo<uAST>*, Return_Info> objects;
+	std::unordered_map<uAST*, Return_Info> objects;
 
 	struct label_info
 	{
@@ -119,7 +121,7 @@ class compiler_object
 		label_info(llvm::BasicBlock* l, uint64_t s, bool f) : block(l), stack_size(s), is_forward(f) {}
 	};
 	//these are labels which can be jumped to. the basic block, and the object stack.
-	std::map<Lo<uAST>*, label_info> labels;
+	std::map<uAST*, label_info> labels;
 
 	//increases by 1 every time an object is created. imposes an ordering on stack object lifetimes, such that if two objects exist simultaneously, the lower one will survive longer.
 	//but two objects don't necessarily exist simultaneously. for example, two temporary objects that live separately. then this number is useless in that case.
@@ -132,15 +134,15 @@ class compiler_object
 
 	llvm::AllocaInst* create_alloca(uint64_t size);
 
-	Return_Info generate_IR(Lo<uAST>* target, unsigned stack_degree, llvm::AllocaInst* storage_location = nullptr);
+	Return_Info generate_IR(uAST* target, unsigned stack_degree, llvm::AllocaInst* storage_location = nullptr);
 
 public:
 	compiler_object();
-	unsigned compile_AST(Lo<uAST>* target); //we can't combine this with the ctor, because it needs to return an int
+	unsigned compile_AST(uAST* target); //we can't combine this with the ctor, because it needs to return an int
 	//todo: right now, compile_AST runs the function that it creates. that's not what we want.
 
 	//exists when IRgen_status has an error.
-	Lo<uAST>* error_location;
+	uAST* error_location;
 	unsigned error_field; //which field in error_location has the error
 
 	//these exist on successful compilation. guaranteed to be uniqued and in the heap.
