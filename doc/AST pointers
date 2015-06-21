@@ -66,11 +66,29 @@ if ASTs are always immut, that will result in an absolute shitload of copying wh
 that's impossible. and especially impossible for goto().
 
 maybe we do unique ASTs. so ASTs in a special region are locked forever.
-this means we never have to put locks on them.
++never have to put locks on them. so no lock-checking either.
 	however, we need to return meaningful error messages. so compilation would have to return pointers to the original ASTs.
-	furthermore, we'd have to make a lot of copies of ASTs, by remembering each AST as we read it. we'd have to copy the AST as it is compiled, in order to prevent race conditions.
+-furthermore, we'd have to make a lot of copies of ASTs, by remembering each AST as we read it. we'd have to copy the AST as it is compiled, in order to prevent race conditions.
 	and things like function parameters still seem to be part of the function type...
-big bonus: you know exactly when an AST is writable or not. no corner case failures.
++you know exactly when an AST is writable or not. no corner case failures.
+	however, in normal operation: if you're trying to modify an arbitrary function, you want to copy the ASTs. all semantics are the same.
+		-cost of copying
+	if you are trying to modify a local function, you want to reuse. is it really possible for the implementation to guarantee an unimmuting?
+		as long as you don't pass the newly-compiled function to another function, you know that you hold the only reference. this guarantees the immuting.
+		passing is the only problem. even running the function doesn't cause any problems.
+static variables are fine either way, since they're pointers.
+costs:
+Locks
+	lock check whenever writing/reading
+		++bonus: can replace ASTs in-place.
+	lock memory
+	on compilation, immut chain, and then unimmut chain on un-compilation
+Copying
+	on compilation, copy, and then clear-mem on un-compilation.
+		++bonus: can compile two versions, then compare them. well, maybe not necessarily so amazing, since your version is gone.
+Benchmarks:
+	https://stackoverflow.com/questions/2538070/atomic-operation-cost 310 cycles for atomic operation, 2 per AST.
+	https://stackoverflow.com/questions/7612292/how-bad-it-is-to-keep-calling-malloc-and-free 418 cycles. only one necessary; "malloc" a bunch of memory at once.
 
 garbage collection:
 suppose a function becomes un-compiled. is it actually possible to unimmut all references in a way that's useful?

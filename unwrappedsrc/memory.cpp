@@ -1,14 +1,14 @@
-#include "datatypes.h"
-#include "constants.h"
-#include <set>
 #include <array>
-#include <multimap>
+#include <map>
 #include <bitset>
 #include <memory>
+#include <stack>
+#include "console.h"
+#include "types.h"
 
 //todo: actually figure out memory size according to the computer specs
 //problem: the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. do we really need to have special cases, just for them?
-	//maybe not. in the future, we'll just make sure to wrap them in a unique() function, so that the user only ever sees GC-handled objects.
+//maybe not. in the future, we'll just make sure to wrap them in a unique() function, so that the user only ever sees GC-handled objects.
 
 constexpr uint64_t memory_size = 100000000Ui64; //number of uint64_ts
 constexpr uint64_t AST_number = 1000000Ui64; //memory explicitly for ASTs
@@ -17,42 +17,62 @@ uint64_t big_memory_pool[memory_size];
 uint64_t function_pool[AST_number];
 std::bitset<AST_number> AST_pool_flags; //each bit refers to a AST, which is made up of multiple slots. it's marked 1 if it's occupied
 
-std::multimap 
+//todo: a lock on this. maybe using Lo<>
+//first value = size of slot. second value = address.
+std::multimap<uint64_t, uint64_t*> free_memory;
+std::map<uint64_t*, uint64_t> living_objects;
+std::stack < std::pair<uint64_t*, Type*>> to_be_marked;
 
 uint64_t* allocate(uint64_t size)
 {
-	
-}
-
-
-void mark_AST_target(AST_T* location)
-{
-	if (uintptr_t(location) < uintptr_t(&AST_pool) || uintptr_t(location) >= uintptr_t(&AST_pool[AST_number]))
-		assert("AST outside of bounds");
-
-	if (AST_pool_flags[location - AST_pool])
-		return; //it's already set.
-	AST_pool_flags.set(location - AST_pool);
-	mark_nonAST_target(type_pointer::AST, uintptr_t(location->AST));
-}
-
-void mark_nonAST_target(immut_type_T* type, uintptr_t location)
-{
-	//check if the location is actually located in the memory pool, or if it's a global. and I think you CAN get pointers to globals, using "get pointer to TU type N"
-	if (location < uintptr_t(&big_memory_pool) || location >= uintptr_t(&big_memory_pool[memory_size]))
-		return; //mark nothing, it's a global
-
-	//dyn pointer: mark the type first, then mark the target.
-
-}
-
-//todo: shut down threads first
-void collect_garbage()
-{
-	clear_pool_flags();
-	for (auto& k : system_threads)
+	auto k = free_memory.upper_bound(size + 1);
+	if (k == free_memory.end())
 	{
-		mark_AST_target(k.the_AST);
+		//time to reallocate!
+		//then, try to allocate() again, and return the proper value. except if you fail again, then call abort().
+	}
+	if (k->first == size + 1) //lucky! got the exact size we needed
+	{
+		free_memory.erase(k); //block is no longer free
+	}
+	else	if (k->first >= size + 1) //it's a bit too big
+	{
+		//reduce the block size
+		free_memory.erase(k);
+		free_memory.insert(std::make_pair(k->first - size - 1, k->second + size + 1));
+	}
+	else error("what damn kind of allocated object did I just find");
+
+	*(k->second) = 0; //mark and sweep allocator, so just mark it 0. we never use this though.
+	return k->second + 1;
+}
+
+void marky_mark(uint64_t* memory, Type* t)
+{
+	if (t == nullptr) return; //handle a null type. this might appear from dynamic objects. although later we might require dynamic objects to have non-null type?
+	if (living_objects.find(memory) != living_objects.end()) return; //it's already there. nothing needs to be done, if we assume that full pointers point to the entire object. todo.
+	living_objects.insert({memory, get_size(t)});
+	switch (t->tag)
+	{
+	case Typen("con_vec"):
+	case Typen("integer"):
+		break;
+	case Typen("pointer"):
+		to_be_marked.push({*(uint64_t**)memory, t->fields[0].ptr});
+		break;
+	case Typen("dynamic pointer"):
+		if (living_objects.find(*(uint64_t**)memory) != living_objects.end()) break;
+		living_objects.insert({*(uint64_t**)memory, 2});
+		to_be_marked.push({*(uint64_t**)memory, *(Type**)(memory + 1)}); //pushing the object
+		to_be_marked.push({*(uint64_t**)(memory + 1), T::type}); //pushing the type
+	case Typen("AST pointer"):
+		if (living_objects.find(*(uint64_t**)memory) != living_objects.end()) break;
+		uAST* the_AST = *(uAST**)memory; //todo: make a decision
+		living_objects.insert({*(uint64_t**)memory, 2});
+		to_be_marked.push({*(uint64_t**)memory, *(Type**)(memory + 1)}); //pushing the object
+		to_be_marked.push({*(uint64_t**)(memory + 1), T::type}); //pushing the type
+	case Typen("type pointer"):
+	case Typen("function in clouds"):
 	}
 }
 
@@ -289,14 +309,4 @@ void perfTest() {
 		}
 	}
 	freeVM(vm);
-}
-
-int main(int argc, const char * argv[]) {
-	test1();
-	test2();
-	test3();
-	test4();
-	perfTest();
-
-	return 0;
 }

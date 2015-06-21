@@ -259,7 +259,7 @@ Return_Info compiler_object::generate_IR(Lo<uAST>* locked_target, unsigned stack
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
 	if (this->loop_catcher.find(locked_target) != this->loop_catcher.end()) return_code(infinite_loop, 10);
 	loop_catcher.insert(locked_target); //we've seen this AST now.
-	auto k = locked_target->get_read();
+	auto k = locked_target->get_read(); //todo: this is the wrong thing to do. when we unlock it, it does absolutely no good.
 	uAST* target = k.x;
 
 	//after we're done with this AST, we remove it from loop_catcher.

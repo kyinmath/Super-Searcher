@@ -12,6 +12,7 @@ namespace T
 	constexpr Type internal::parameter_no_type_check;
 	constexpr Type internal::cheap_dynamic_pointer;
 	constexpr Type internal::full_dynamic_pointer;
+	constexpr Type internal::type;
 	constexpr Type internal::AST_pointer;
 };
 

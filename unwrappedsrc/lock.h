@@ -58,3 +58,32 @@ public:
 		lock.fetch_sub(42949672960ULL);
 	}
 };
+
+
+//Lo = Lockable
+template<class T>
+struct Lo : private T
+{
+	using T::T;
+	//void perm_lock() {lock.guaranteed_grab();}
+	//the type held here is only valid for as long as the lock is alive. don't try to extract x unless you know the lock will be alive for longer than that.
+	//don't call get_interior except for very short periods of time! it's not meant to be kept locked.
+	struct holder
+	{
+		T* x;
+		rw_lock& lock;
+		holder(T* t, rw_lock& l) : x(t), lock(l) {}
+		~holder() { lock.release_read(); };
+	};
+	rw_lock lock;
+	holder get_read()
+	{
+		lock.grab_read();
+		return holder((T*)this, lock);
+	}
+
+	T* bypass()
+	{
+		return (T*)this;
+	}
+};

@@ -86,6 +86,7 @@ using _t = Type_info;
 /* Guidelines for new Types:
 you must create an entry in type_check.
 full_validity.
+marky_mark.
 */
 constexpr Type_info Type_descriptor[] =
 {
@@ -100,7 +101,7 @@ constexpr Type_info Type_descriptor[] =
 	{"never reached", 0, 0},
 	//except: if we have two ASTs, it's going to bloat our type object. and meanwhile, we want the parameter AST to be before everything that might use it, so having it as a first_pointer is not good, since the beginning of the function might change.
 	{"lock", 0, 1},
-	{"type", 0, 3},
+	{"type pointer", 0, 1},
 };
 
 #include <iostream>
@@ -117,34 +118,6 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
 }
 constexpr uint64_t Typen(const char name[]) { return get_enum_from_name<const Type_info, Type_descriptor>(name); }
 
-#include "lock.h"
-//Lo = Lockable
-template<class T>
-struct Lo : private T
-{
-	using T::T;
-	//void perm_lock() {lock.guaranteed_grab();}
-	//the type held here is only valid for as long as the lock is alive. don't try to extract x unless you know the lock will be alive for longer than that.
-	//don't call get_interior except for very short periods of time! it's not meant to be kept locked.
-	struct holder
-	{
-		T* x;
-		rw_lock& lock;
-		holder(T* t, rw_lock& l) : x(t), lock(l) {}
-		~holder() { lock.release_read(); };
-	};
-	rw_lock lock;
-	holder get_read()
-	{
-		lock.grab_read();
-		return holder((T*)this, lock);
-	}
-
-	T* bypass()
-	{
-		return (T*)this;
-	}
-};
 
 #define fields_in_Type 3u
 //this is for types which are known to be unique and well-behaved (no loops).
@@ -218,6 +191,7 @@ namespace T
 		static constexpr Type parameter_no_type_check{("integer")};
 		static constexpr Type cheap_dynamic_pointer{("dynamic pointer")};
 		static constexpr Type full_dynamic_pointer{"dynamic pointer", 1};
+		static constexpr Type type{"type pointer"};
 		static constexpr Type AST_pointer{("AST pointer")};
 		//static constexpr Type error_object{concatenate_types(std::vector<Type*>{const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer), const_cast<Type* const>(&int_)})};
 		//error_object is int, pointer to AST, int. it's what is returned when compilation fails: the error code, then the AST, then the field.
@@ -231,6 +205,7 @@ namespace T
 	constexpr Type* cheap_dynamic_pointer = const_cast<Type* const>(&i::cheap_dynamic_pointer);
 	constexpr Type* full_dynamic_pointer = const_cast<Type* const>(&i::full_dynamic_pointer);
 	constexpr Type* null = nullptr;
+	constexpr Type* type = const_cast<Type* const>(&i::type);
 	constexpr Type* AST_pointer = const_cast<Type* const>(&i::AST_pointer);
 };
 
