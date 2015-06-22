@@ -260,7 +260,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
 	if (this->loop_catcher.find(user_target) != this->loop_catcher.end()) return_code(infinite_loop, 10); //for now, 10 is a special value, and means not any of the fields
-	uAST* target = copy_AST(user_target); //make a copy
+	uAST* target = copy_AST(user_target); //make a copy. todo: this is definitely not the right thing to do, because our new pointers should point to the new objects.
 	loop_catcher.insert({user_target, target}); //we've seen this AST now.
 	
 
@@ -522,8 +522,8 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
 			l::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 
-			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
-			l::BasicBlock *label = l::BasicBlock::Create(thread_context, "");
+			// Create blocks for the then and else cases.  Insert the block into the function, or else it'll leak when we return_code
+			l::BasicBlock *label = l::BasicBlock::Create(thread_context, "", TheFunction);
 			auto label_insertion = labels.insert(std::make_pair(user_target, label_info(label, final_stack_position, true)));
 			if (label_insertion.second == false) return_code(label_duplication, 0);
 
@@ -534,7 +534,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			label_insertion.first->second.is_forward = false;
 
 			Builder.CreateBr(label);
-			TheFunction->getBasicBlockList().push_back(label);
 			Builder.SetInsertPoint(label);
 			finish(nullptr);
 		}
