@@ -14,14 +14,14 @@
 //problem: the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. do we really need to have special cases, just for them?
 //maybe not. in the future, we'll just make sure to wrap them in a unique() function, so that the user only ever sees GC-handled objects.
 
-constexpr const uint64_t pool_size = 100000000ull;
+constexpr const uint64_t pool_size = 100000ull;
 uint64_t big_memory_pool[pool_size];
 function function_pool[10000ull];
 //std::bitset<AST_number> AST_pool_flags; //each bit refers to a AST, which is made up of multiple slots. it's marked 1 if it's occupied
 
 //todo: a lock on this. maybe using Lo<>
 //first value = size of slot. second value = address.
-std::multimap<uint64_t, uint64_t*> free_memory;
+std::multimap<uint64_t, uint64_t*> free_memory = {{pool_size, big_memory_pool}};
 std::map<uint64_t*, uint64_t> living_objects;
 std::unordered_set<uint64_t*> living_functions;
 std::stack < std::pair<uint64_t*, Type*>> to_be_marked;
@@ -32,26 +32,29 @@ void sweepy_sweep();
 
 uint64_t* allocate(uint64_t size)
 {
-	auto k = free_memory.upper_bound(size + 1);
+	uint64_t true_size = size + 1; //including the header
+	auto k = free_memory.upper_bound(true_size);
+	uint64_t found_size = k->first; //we have to do this, because we'll be deleting k.
+	uint64_t* found_place = k->second;
 	if (k == free_memory.end())
 	{
-		//time to reallocate!
-		//then, try to allocate() again, and return the proper value. except if you fail again, then call abort().
+		abort();
+		//we can't reallocate, since we have no way to figure out the pointers on the stack.
+		//you must have fucked up to fill up everything.
+		//that means we can either allocate another pool temporarily, or we can just give up. for now, we give up completely.
 	}
-	if (k->first == size + 1) //lucky! got the exact size we needed
-	{
+	if (k->first == true_size) //lucky! got the exact size we needed
 		free_memory.erase(k); //block is no longer free
-	}
-	else	if (k->first >= size + 1) //it's a bit too big
+	else	if (k->first >= true_size) //it's a bit too big
 	{
 		//reduce the block size
 		free_memory.erase(k);
-		free_memory.insert(std::make_pair(k->first - size - 1, k->second + size + 1));
+		free_memory.insert(std::make_pair(found_size - true_size, found_place + true_size));
 	}
 	else error("what damn kind of allocated object did I just find");
 
-	*(k->second) = 0; //mark and sweep allocator, so just mark it 0. we never use this though.
-	return k->second + 1;
+	*found_place = 0; //mark and sweep allocator, so just mark it 0. we never use this though.
+	return found_place + 1;
 }
 
 uint64_t* allocate_function(uint64_t size)

@@ -119,7 +119,9 @@ constexpr uint64_t Typen(const char name[]) { return get_enum_from_name<const Ty
 
 #define fields_in_Type 3u
 //this is for types which are known to be unique and well-behaved (no loops).
-//WARNING: don't use the ctor for this 
+//WARNING: don't use the ctor for creating user objects
+//WARNING: don't use the copy ctor for user objects either!
+//the Type does not properly represent its true size.
 //todo: add const to all of these things. and to AST tag as well.
 struct Type;
 inline uint64_t total_valid_fields(const Type* t);
@@ -166,10 +168,23 @@ inline uint64_t total_valid_fields(const Type* t)
 	return (t->tag == Typen("con_vec")) ? t->fields[0].num + 1 : Type_descriptor[t->tag].pointer_fields + Type_descriptor[t->tag].additional_special_fields;
 }
 
+#include "memory.h"
+//warning: takes fields directly. so concatenate should worry.
+inline Type* new_type(uint64_t tag, llvm::ArrayRef<Type*> fields)
+{
+	uint64_t total_field_size = (tag == Typen("con_vec")) ? (uint64_t)fields[0] + 1 :
+		Type_descriptor[tag].pointer_fields + Type_descriptor[tag].additional_special_fields;
+	uint64_t* new_home = allocate(total_field_size + 1);
+	new_home[0] = tag;
+	for (uint64_t x = 0; x < total_field_size; ++x)
+		new_home[x + 1] = (uint64_t)fields[x];
+	return (Type*)new_home;
+}
+
 inline Type* copy_type(const Type* t)
 {
 	uint64_t fields = total_valid_fields(t);
-	uint64_t* new_type = new uint64_t[fields + 1];
+	uint64_t* new_type = allocate(fields + 1);
 	uint64_t* old_type = (uint64_t*)t;
 	for (int idx = 0; idx < fields + 1; ++idx)
 		new_type[idx] = old_type[idx];

@@ -33,15 +33,6 @@ struct AST_info
 	}
 
 	unsigned fields_to_compile; //we may not always compile all pointers, such as with "copy".
-	//number_to_compile < pointer_fields, so this also forces pointer_fields upward if it is too low. by default, they are equal.
-	constexpr AST_info make_fields_to_compile(int x)
-	{
-		AST_info new_copy(*this);
-		new_copy.fields_to_compile = x;
-		if (new_copy.pointer_fields <= new_copy.fields_to_compile)
-			new_copy.pointer_fields = new_copy.fields_to_compile;
-		return new_copy;
-	}
 
 	unsigned additional_special_fields = 0; //these fields come after the pointer fields. they are REAL types, not AST return types.
 	//for example, if you have a Type* in the second field and a normal AST* in the first field, then this would be 1.
@@ -55,7 +46,6 @@ struct AST_info
 		return new_copy.make_pointer_fields(pointer_fields - x);
 	}
 
-	//unsigned non_pointer_fields; //how many fields are not pointers. but maybe not necessary.
 	constexpr int field_count(Type* f1, Type* f2, Type* f3, Type* f4)
 	{
 		int number_of_fields = max_fields_in_AST; //by default, both pointer_fields and number_of_fields will be equal to this.
@@ -97,25 +87,24 @@ constexpr AST_info AST_descriptor[] =
 	{"null_AST", T::null}, //tag is 0. used when you create an AST and want nullptr. this AST doesn't actually exist.
 	a("integer", T::integer, T::integer).make_special_fields(1), //first argument is an integer, which is the returned value.
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
-	{"hello", T::null},
+	//{"hello", T::null},
 	{"print_int", T::null, T::integer},
 	a("if", T::special_return).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
-	a("scope", T::null).make_fields_to_compile(1), //fulfills the purpose of {} from C++
+	{"scope", T::null, T::parameter_no_type_check}, //fulfills the purpose of {} from C++
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
 	{"subtract", T::integer, T::integer, T::integer},
 	{"random", T::integer}, //returns a random integer
 	a("pointer", T::special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
 	a("load", T::special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
 	a("concatenate", T::special_return).make_pointer_fields(2),
-	a("dynamic", T::full_dynamic_pointer).make_fields_to_compile(1), //creates dynamic storage for any kind of object. moves it to the heap.
+	{"dynamic", T::full_dynamic_pointer}, //creates dynamic storage for any kind of object. moves it to the heap.
 	a("compile", T::full_dynamic_pointer, T::AST_pointer), //compiles an AST, returning a dynamic object which is either the error object or the desired info.
 	//a("temp_generate_AST", T::AST_pointer), //hacked in, generates a random AST.
 	{"dynamic_conc", T::special_return, T::cheap_dynamic_pointer, T::cheap_dynamic_pointer}, //concatenate the interiors of two dynamic pointers
 	a("goto", T::special_return).make_pointer_fields(1),
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
-	a("convert_to_AST", T::AST_pointer, T::integer, T::parameter_no_type_check, T::cheap_dynamic_pointer, T::AST_pointer).make_fields_to_compile(3), //don't compile the nonexistent branch, because it needs to go in a special basic block.
+	a("convert_to_AST", T::AST_pointer, T::integer, T::parameter_no_type_check, T::cheap_dynamic_pointer).make_pointer_fields(4), //last branch should return AST_pointer. but don't compile it, because it needs to go in a special basic block.
 	a("store", T::null, T::parameter_no_type_check, T::parameter_no_type_check), //pointer, then value.
-	//todo: I had these parameter_no_type_check as "T::special_return" before. yet my testcase still passed. why?
 	a("static_object", T::special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a static object.
 	a("load_object", T::special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a constant. similar to "int x = 40". if the value ends up on the stack, it can still be modified, but any changes are temporary.
 	{"never reached", T::special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
@@ -159,28 +148,6 @@ struct uAST
 	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };
 
-//todo: we're just hoping that there aren't any infinite loops.
-//this should be healthier later. we still need to optimize concatenate and embed this along with the main loop_catcher.
-
-//size of return object
-constexpr uint64_t get_size(uAST* target)
-{
-	if (target == nullptr)
-		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
-	if (AST_descriptor[target->tag].return_object != T::special_return) return get_size(AST_descriptor[target->tag].return_object);
-	else if (target->tag == ASTn("if")) return get_size(target->fields[1].ptr);
-	else if (target->tag == ASTn("pointer")) return 1;
-	else if (target->tag == ASTn("load")) return get_size(target->fields[0].ptr);
-	else if (target->tag == ASTn("concatenate")) return get_size(target->fields[0].ptr) + get_size(target->fields[1].ptr); //todo: this is slow. takes n^2 time.
-	else if (target->tag == ASTn("static_object")) return get_size((Type*)target->fields[1].ptr);
-	else if (target->tag == ASTn("load_object")) return get_size((Type*)target->fields[1].ptr);
-	else if (target->tag == ASTn("goto")) return get_size(target->fields[3].ptr);
-	else if (target->tag == ASTn("dynamic_conc")) return get_size(T::cheap_dynamic_pointer); //future: maybe we'll want cheap and full dynamic pointers to be separate? no double indirection?
-	error(string("couldn't get size of tag in get_size(AST*), target->tag was ") + AST_descriptor[target->tag].name);
-}
-
-
-
 //pass in a valid AST tag, 1 <= x < "never reached"
 inline Type* get_AST_fields_type(uint64_t tag)
 {
@@ -197,4 +164,48 @@ inline Type* get_AST_fields_type(uint64_t tag)
 inline Type* get_AST_full_type(uint64_t tag)
 {
 	return concatenate_types(std::vector<Type*>{T::integer, T::AST_pointer, get_AST_fields_type(tag)});
+}
+
+#include "memory.h"
+inline uAST* new_AST(uint64_t tag, uAST* previous, llvm::ArrayRef<uAST*> fields)
+{
+	uint64_t total_field_size = get_size(get_AST_fields_type(tag));
+	uint64_t* new_home = allocate(total_field_size + 2);
+	new_home[0] = tag;
+	new_home[1] = (uint64_t)previous;
+	for (uint64_t x = 0; x < total_field_size; ++x)
+		new_home[x + 2] = (uint64_t)fields[x];
+	return (uAST*)new_home;
+}
+
+inline uAST* copy_AST(uAST* t)
+{
+	uint64_t tag = t->tag;
+	uAST* previous = t->preceding_BB_element;
+	uint64_t total_field_size = get_size(get_AST_fields_type(tag));
+	uint64_t* new_home = allocate(total_field_size + 2);
+	new_home[0] = tag;
+	new_home[1] = (uint64_t)previous;
+	for (uint64_t x = 0; x < total_field_size; ++x)
+		new_home[x + 2] = t->fields[x].num;
+	return (uAST*)new_home;
+}
+
+//todo: we're just hoping that there aren't any infinite loops.
+//what's more, we're hoping that the obvious double-load doesn't occur. we really need to fix this
+//this should be healthier later. we still need to optimize concatenate and embed this along with the main loop_catcher.
+constexpr uint64_t return_size(uAST* target)
+{
+	if (target == nullptr)
+		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
+	if (AST_descriptor[target->tag].return_object != T::special_return) return get_size(AST_descriptor[target->tag].return_object);
+	else if (target->tag == ASTn("if")) return return_size(target->fields[1].ptr); //todo: this isn't proper.
+	else if (target->tag == ASTn("pointer")) return 1;
+	else if (target->tag == ASTn("load")) return return_size(target->fields[0].ptr); //todo: this is almost certainly wrong.
+	else if (target->tag == ASTn("concatenate")) return return_size(target->fields[0].ptr) + return_size(target->fields[1].ptr); //todo: this is slow. takes n^2 time.
+	else if (target->tag == ASTn("static_object")) return get_size((Type*)target->fields[1].ptr);
+	else if (target->tag == ASTn("load_object")) return get_size((Type*)target->fields[1].ptr);
+	else if (target->tag == ASTn("goto")) return return_size(target->fields[1].ptr);
+	else if (target->tag == ASTn("dynamic_conc")) return get_size(T::cheap_dynamic_pointer); //future: maybe we'll want cheap and full dynamic pointers to be separate? no double indirection?
+	error(string("couldn't get size of tag in return_size(AST*), target->tag was ") + AST_descriptor[target->tag].name);
 }

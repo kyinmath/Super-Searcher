@@ -203,7 +203,8 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 //this takes a vector of types, and then puts them in concatenation. none of them is allowed to be a concatenation.
 Type* concatenate_types(llvm::ArrayRef<Type*> components)
 {
-	std::vector<Type*> true_components; //every Type here is a single element, not a concatenation.
+	std::vector<Type*> true_components{0}; //every Type here is a single element, not a concatenation. except: the very first element of the vector is the total number of components.
+
 	for (auto& x : components)
 	{
 		if (x == nullptr) continue;
@@ -218,17 +219,15 @@ Type* concatenate_types(llvm::ArrayRef<Type*> components)
 		}
 		else true_components.push_back(x);
 	}
+	true_components[0] = (Type*)(true_components.size() - 1); //get the number of fields in the eventual type
+	
+	//console << "size of true components is " << true_components.size();
+	//output_type(components[0]);
+	//output_type(true_components[1]);
 
-	if (true_components.size() == 0) return nullptr;
-	if (true_components.size() == 1) return components[0];
-	else
-	{
-		uint64_t* new_type = new uint64_t[true_components.size() + 2];
-		new_type[0] = Typen("con_vec");
-		new_type[1] = true_components.size();
-		for (int idx = 0; idx < true_components.size(); ++idx) new_type[idx + 2] = (uint64_t)true_components[idx];
-		return (Type*)new_type;
-	}
+	if (true_components.size() == 1) return nullptr; //only thing in the vector is the size
+	if (true_components.size() == 2) return true_components[1]; //one element in the vector.
+	else return new_type(Typen("con_vec"), true_components);
 }
 
 bool is_full(Type* t)

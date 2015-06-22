@@ -7,19 +7,14 @@
 
 inline uint64_t make_dynamic(uint64_t pointer_to_object, uint64_t pointer_to_type)
 {
-	return (uint64_t)(new uint64_t[2]{pointer_to_object, pointer_to_type});
+	return (uint64_t)(new_object(pointer_to_object, pointer_to_type));
 }
 
 //return type is actually AST*
 inline uint64_t make_AST_pointer_from_dynamic(uint64_t tag, uint64_t previous_AST, uint64_t intpointer)
 {
 	if (tag == ASTn("null_AST")) return 0;
-
-	uint64_t* pointer = (uint64_t*)intpointer;
-	std::vector<uint64_t> fields{ 0, 0, 0, 0 };
-	for (int x = 0; x < AST_descriptor[tag].pointer_fields + AST_descriptor[tag].additional_special_fields; ++x)
-		fields[x] = pointer[x];
-	return (uint64_t)(new uAST(tag, (uAST*)previous_AST, fields[0], fields[1], fields[2], fields[3]));
+	return (uint64_t)new_AST(tag, (uAST*)previous_AST, (uAST*)intpointer);
 }
 
 
@@ -31,8 +26,6 @@ the bool is TRUE if the compilation is successful, and FALSE if not.
 this determines what the type of the pointer is.
 
 the type of target is actually of type AST*. it's stated as uint64_t for current convenience
-Note: memory allocations that interact with the user should use new, not malloc.
-we might need realloc. BUT, the advantage of new is that it throws an exception on failure.
 
 NOTE: std::array<2> becomes {uint64_t, uint64_t}. but array<4> becomes [i64 x 4].
 */
@@ -45,10 +38,7 @@ inline uint64_t compile_user_facing(uint64_t target)
 	Type* return_type_pointer;
 	if (error)
 	{
-		uint64_t* error_return = new uint64_t[3];
-		error_return[0] = error;
-		error_return[1] = (uint64_t)a.error_location;
-		error_return[2] = a.error_field;
+		uint64_t* error_return = new_object(error, (uint64_t)a.error_location, a.error_field);
 
 		return_object_pointer = error_return;
 		return_type_pointer = concatenate_types(std::vector < Type* > {T::integer, T::AST_pointer, T::integer});
@@ -59,7 +49,7 @@ inline uint64_t compile_user_facing(uint64_t target)
 		//todo: make this actually work.
 
 		//Type* function_return_type = a.return_type;
-		return_type_pointer = new Type("function in clouds", a.return_type, a.parameter_type);
+		return_type_pointer = new_type(Typen("function in clouds"), std::vector<Type*>{a.return_type, a.parameter_type});
 	}
 	return make_dynamic((uint64_t)return_object_pointer, (uint64_t)return_type_pointer);
 }
@@ -77,17 +67,17 @@ inline uint64_t concatenate_dynamic(uint64_t first_dynamic, uint64_t second_dyna
 	}
 	if (size[0] == 0) return second_dynamic;
 	else if (size[1] == 0) return first_dynamic;
-	uint64_t* new_dynamic = new uint64_t[size[0] + size[1]];
+	uint64_t* new_dynamic = allocate(size[0] + size[1]);
 	for (int idx = 0; idx < size[0]; ++idx) new_dynamic[idx] = pointer[0][idx];
 	for (int idx = 0; idx < size[1]; ++idx) new_dynamic[idx + size[0]] = pointer[1][idx];
 	return make_dynamic((uint64_t)new_dynamic, (uint64_t)concatenate_types(std::vector<Type*>{type[0], type[1]}));
 }
 
-
+#include "memory.h"
 //return value is the address
-inline uint64_t allocate_memory(uint64_t size)
+inline uint64_t user_allocate_memory(uint64_t size)
 {
-	return (uint64_t)(new uint64_t[size]);
+	return (uint64_t)(allocate(size));
 }
 
 

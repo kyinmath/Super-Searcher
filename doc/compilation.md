@@ -11,9 +11,9 @@ Run
 ```
 wget -O - http://llvm.org/apt/llvm-snapshot.gpg.key|sudo apt-key add -
 sudo apt-get update
-sudo apt-get install clang-3.7 llvm-3.7
+sudo apt-get install clang-3.7 llvm-3.7 zlib1g-dev libedit-dev
 ```
 
-If there are errors about lz and ledit, apt-get install the packages zlib1g-dev and libedit-dev. The 3.7 branch is necessary at the moment because the headers move around every llvm version.
+The packages zlib1g-dev and libedit-dev are to suppress errors about lz and ledit. The 3.7 branch is necessary at the moment because the headers move around every llvm version.
 
-To compile, run "make". Or if your path is clang++ instead of clang++-3.7, you should change the makefile from clang++-3.6 to clang++, and maybe llvm-config-3.7 to llvm_config.
+To compile, run "make". Or if your path is clang++ instead of clang++-3.7, you should change the makefile from clang++-3.7 to clang++, and llvm-config-3.7 to llvm_config.

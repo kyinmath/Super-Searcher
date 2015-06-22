@@ -228,8 +228,6 @@ namespace llvm {
 				return reinterpret_cast<void *>(static_cast<uintptr_t>(Addr));
 			}
 
-			GenericValue runFunction(Function *F,
-				ArrayRef<GenericValue> ArgValues) override;
 
 			void setObjectCache(ObjectCache *NewCache) override {
 				CompileLayer.setObjectCache(NewCache);

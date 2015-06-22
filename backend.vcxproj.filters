@@ -30,10 +30,10 @@
     <ClCompile Include="unwrappedsrc\helperfunctions.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="unwrappedsrc\OrcMCJITReplacement.cpp">
+    <ClCompile Include="unwrappedsrc\memory.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="unwrappedsrc\memory.cpp">
+    <ClCompile Include="unwrappedsrc\OrcMCJITReplacement.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -53,9 +53,6 @@
     <ClInclude Include="unwrappedsrc\helperfunctions.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="unwrappedsrc\OrcMCJITReplacement.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="unwrappedsrc\user_facing_functions.h">
       <Filter>Source Files</Filter>
     </ClInclude>
@@ -69,6 +66,12 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="unwrappedsrc\function.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unwrappedsrc\memory.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unwrappedsrc\OrcMCJITReplacement.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

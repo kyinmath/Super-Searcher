@@ -29,6 +29,8 @@ generate_IR() is the main AST conversion tool. it turns ASTs into l::Values, rec
 #include "user_facing_functions.h"
 #include "cs11.h"
 
+//#include <../lib/ExecutionEngine/Orc/OrcMCJITReplacement.cpp> this fails.
+
 
 namespace l = llvm;
 
@@ -98,7 +100,7 @@ unsigned compiler_object::compile_AST(uAST* target)
 	using namespace llvm;
 	FunctionType *FT;
 
-	auto size_of_return = get_size(target);
+	auto size_of_return = return_size(target);
 	if (size_of_return == 0) FT = FunctionType::get(l::Type::getVoidTy(thread_context), false);
 	else FT = FunctionType::get(llvm_type(size_of_return), false);
 	if (VERBOSE_DEBUG) console << "Size of return is " << size_of_return << '\n';
@@ -250,15 +252,15 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	}
 
 	if (stack_degree == 2) check(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
-	if (stack_degree == 1) check((storage_location != nullptr) || (get_size(user_target) == 0), "if stack degree is 1, we should have a storage_location");
+	if (stack_degree == 1) check((storage_location != nullptr) || (return_size(user_target) == 0), "if stack degree is 1, we should have a storage_location");
 
 	//generate_IR is allowed to take nullptr. otherwise, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
 	//check(target != nullptr, "generate_IR should never receive a nullptr target");
 	if (user_target == nullptr) return Return_Info();
 
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
-	if (this->loop_catcher.find(user_target) != this->loop_catcher.end()) return_code(infinite_loop, 10);
-	uAST* target = new uAST(*user_target); //make a copy
+	if (this->loop_catcher.find(user_target) != this->loop_catcher.end()) return_code(infinite_loop, 10); //for now, 10 is a special value, and means not any of the fields
+	uAST* target = copy_AST(user_target); //make a copy
 	loop_catcher.insert({user_target, target}); //we've seen this AST now.
 	
 
@@ -304,7 +306,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	{
 		check(type != T::special_return, "didn't specify return type when necessary");
 
-		if (stack_degree >= 1 && size_result == special) size_result = get_size(target);
+		if (stack_degree >= 1 && size_result == special) size_result = return_size(target);
 		if (stack_degree == 2 && size_result != 0 && storage_location == nullptr)
 		{
 			if (storage_location == nullptr)
@@ -396,9 +398,10 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			console << "desired type is \n";
 			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
 		}
+
 		//check that the type matches.
-		if (AST_descriptor[target->tag].parameter_types[x] != T::parameter_no_type_check)
-			if (AST_descriptor[target->tag].parameter_types[x] != T::missing_field)
+		if (AST_descriptor[target->tag].parameter_types[x] != T::parameter_no_type_check) //for fields that are 
+			//if (AST_descriptor[target->tag].parameter_types[x] != T::missing_field) //this is for fields that are not specified, but created through make_fields_to_compile. it's kind of redundant with parameter_no_type_check. we'll probably delete make_fields_to_compile, except that the convert_to_AST() function wants it.
 			{
 				if (AST_descriptor[target->tag].parameter_types[x] == T::nonexistent)
 					finish_special(nullptr, T::nonexistent); //just get out of here, since we're never going to run the current command anyway.
@@ -417,7 +420,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	case ASTn("add"): finish(Builder.CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
 	case ASTn("subtract"): finish(Builder.CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
 	case ASTn("increment"): finish(Builder.CreateAdd(field_results[0].IR, llvm_integer(1), s("increment")));
-	case ASTn("hello"):
+	/*case ASTn("hello"):
 		{
 			l::Value *helloWorld = Builder.CreateGlobalStringPtr("hello world!");
 
@@ -429,7 +432,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			l::Constant *putsFunc = Builder.GetInsertBlock()->getModule()->getOrInsertFunction("puts", putsType);
 
 			finish(Builder.CreateCall(putsFunc, helloWorld, s("hello world")));
-		}
+		}*/
 	case ASTn("print_int"):
 		{
 			l::Value* printer = llvm_function(Builder, print_uint64_t, void_type, int64_type);
@@ -448,7 +451,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 			if (stack_degree == 2)
 			{
-				size_result = get_size(target);
+				size_result = return_size(target);
 				if (size_result >= 1) storage_location = create_alloca(size_result);
 			}
 
@@ -624,7 +627,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		{
 			//optimization: if stack_degree == 1, then you've already gotten the size. look it up in a special location.
 
-			uint64_t size[2] = {get_size(target->fields[0].ptr), get_size(target->fields[1].ptr)};
+			uint64_t size[2] = {return_size(target->fields[0].ptr), return_size(target->fields[1].ptr)};
 			size_result = size[0] + size[1];
 			if (size[0] > 0 && size[1] > 0)
 			{
@@ -693,10 +696,10 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		}
 	case ASTn("dynamic"):
 		{
-			uint64_t size_of_object = get_size(target->fields[0].ptr);
+			uint64_t size_of_object = return_size(target->fields[0].ptr);
 			if (size_of_object >= 1)
 			{
-				l::Value* allocator = llvm_function(Builder, allocate_memory, int64_type, int64_type);
+				l::Value* allocator = llvm_function(Builder, user_allocate_memory, int64_type, int64_type);
 				l::Value* dynamic_object_address = Builder.CreateCall(allocator, std::vector<l::Value*>{llvm_integer(size_of_object)}, s("allocate memory"));
 
 				//this represents either an integer or an array of integers.
