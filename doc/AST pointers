@@ -42,11 +42,8 @@ we want to create an AST, which needs to create a previous_AST, which needs to c
 	for the others, if you want null ASTs, you have to build them using 0.
 the problem is that this will force the AST creation into two paths: one with an object and one without. the turtles will have to eventually stop somewhere. that's probably fine: we have a branch statement, with one of the branches creating nullptr AST (the end turtle), and the other branch creating a legit AST.
 
-
-the AST pointer is not actually a pointer, because it owns the AST. no free copies; you need a deep copy.
-	the reason for this is to allow for immut ASTs. if the pointer is immut, then the AST is immut.
-	but then you won't even be able to look at the AST because you can't get a pointer to it.
-
+I think the problem with convert_to_AST is that we shouldn't have a backup plan. return null on failure instead?
+	because forcing the user to handle failure isn't always possible. the user has no reliable way to create ASTs anyway.
 
 we need: passthrough AST, since our dynamic objects can't change types.
 does this mean we also need a passthrough Type? but both of these are actually already possible, using concatenate() in Type or AST.

@@ -4,7 +4,7 @@
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
-#include "llvm/ExecutionEngine/Orc/LazyEmittingLayer.h"
+#include "llvm/IR/Mangler.h"
 #include "llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -18,10 +18,11 @@
 #include <sstream>
 #include "console.h"
 
+//taken directly from Lang Hames' ORC
+
 class SessionContext {
 public:
-	SessionContext(llvm::LLVMContext &C)
-		: Context(C), TM(llvm::EngineBuilder().selectTarget()) {}
+	SessionContext(llvm::LLVMContext &C) : Context(C), TM(llvm::EngineBuilder().selectTarget()) {}
 	llvm::LLVMContext& getLLVMContext() const { return Context; }
 	llvm::TargetMachine& getTarget() { return *TM; }
 private:
@@ -31,7 +32,6 @@ private:
 
 };
 
-// FIXME: Obviously we can do better than this
 inline std::string GenerateUniqueName(const std::string &Root) {
 	static int i = 0;
 	std::ostringstream NameStream;
@@ -56,9 +56,6 @@ public:
 	std::unique_ptr<llvm::Module> takeM() { return std::move(M); }
 	llvm::IRBuilder<>& getBuilder() { return Builder; }
 	llvm::LLVMContext& getLLVMContext() { return Session.getLLVMContext(); }
-	llvm::Function* getPrototype(const std::string &Name);
-
-	std::map<std::string, llvm::AllocaInst*> NamedValues;
 private:
 	SessionContext &Session;
 	std::unique_ptr<llvm::Module> M;

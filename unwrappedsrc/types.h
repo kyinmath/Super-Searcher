@@ -26,7 +26,6 @@ Later, we'll have some ASTs that let the user actually query this information.
 #pragma once
 #include <cstdint>
 #include <array>
-#include <llvm/Support/ErrorHandling.h>
 #include <llvm/ADT/ArrayRef.h>
 #include "console.h"
 
@@ -199,8 +198,8 @@ namespace T
 	struct internal
 	{
 		static constexpr Type int_{"integer"};
-		static constexpr Type nonexistent{("nonexistent")};
-		static constexpr Type missing_field{("nonexistent")};
+		static constexpr Type nonexistent{"nonexistent"};
+		static constexpr Type missing_field{"nonexistent"};
 		static constexpr Type special_return{("integer")};
 		static constexpr Type parameter_no_type_check{("integer")};
 		static constexpr Type cheap_dynamic_pointer{("dynamic pointer")};
@@ -229,7 +228,7 @@ Type* concatenate_types(llvm::ArrayRef<Type*> components);
 all object sizes are integer multiples of 64 bits.
 this function returns the size of an object as (number of bits/64).
 thus, a uint64 has size "1". a struct of two uint64s has size "2". etc.
-todo: what about loops? for now, it's ok, because the user doesn't have access to Type creation functions.
+there can't be loops because Types are immut. the user doesn't have access to Type creation functions.
 	we'll mark this as the "good" function. it takes in Types that are known to be unique.
 */
 constexpr uint64_t get_size(Type* target)
