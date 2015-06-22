@@ -11,10 +11,10 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="miscjunk\orc.cpp" />
     <ClCompile Include="unwrappedsrc\cs11.cpp" />
     <ClCompile Include="unwrappedsrc\helperfunctions.cpp" />
     <ClCompile Include="unwrappedsrc\memory.cpp" />
-    <ClCompile Include="unwrappedsrc\OrcMCJITReplacement.cpp" />
     <ClCompile Include="unwrappedsrc\testdriver.cpp" />
     <ClCompile Include="unwrappedsrc\types.cpp" />
     <ClCompile Include="unwrappedsrc\unique_type_creator.cpp" />
@@ -28,7 +28,7 @@
     <ClInclude Include="unwrappedsrc\helperfunctions.h" />
     <ClInclude Include="unwrappedsrc\lock.h" />
     <ClInclude Include="unwrappedsrc\memory.h" />
-    <ClInclude Include="unwrappedsrc\OrcMCJITReplacement.h" />
+    <ClInclude Include="unwrappedsrc\orc.h" />
     <ClInclude Include="unwrappedsrc\types.h" />
     <ClInclude Include="unwrappedsrc\unique_type_creator.h" />
     <ClInclude Include="unwrappedsrc\user_facing_functions.h" />

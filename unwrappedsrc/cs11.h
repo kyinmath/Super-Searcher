@@ -14,10 +14,11 @@ extern bool TIMER;
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
-#include "llvm/ExecutionEngine/OrcMCJITReplacement.h"
-#include "llvm/ExecutionEngine/MCJIT.h"
+//#include "llvm/ExecutionEngine/MCJIT.h"
 #include "types.h"
 #include "ASTs.h"
+#include "orc.h"
+
 #ifdef _MSC_VER
 #define thread_local
 #endif
@@ -99,8 +100,10 @@ struct Return_Info
 
 class compiler_object
 {
-	llvm::IRBuilder<> Builder;
-	llvm::ExecutionEngine* engine;
+
+	SessionContext S;
+	KaleidoscopeJIT J;
+	IRGenContext C;
 
 	//lists the ASTs we're currently looking at. goal is to prevent infinite loops.
 	//and maps user ASTs to copied ASTs.

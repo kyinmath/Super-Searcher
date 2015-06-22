@@ -28,8 +28,8 @@ generate_IR() is the main AST conversion tool. it turns ASTs into l::Values, rec
 #include "unique_type_creator.h"
 #include "user_facing_functions.h"
 #include "cs11.h"
+#include "orc.h"
 
-//#include <../lib/ExecutionEngine/Orc/OrcMCJITReplacement.cpp> this fails.
 
 
 namespace l = llvm;
@@ -67,18 +67,8 @@ uint64_t generate_exponential_dist()
 
 
 
-compiler_object::compiler_object() : Builder(thread_context), error_location(nullptr)
+compiler_object::compiler_object() : S(thread_context), J(S), C(S), error_location(nullptr)
 {
-	if (VERBOSE_DEBUG) console << "creating compiler object\n";
-
-	std::string ErrStr;
-	
-	//later: memleak with our memory 
-	engine = l::EngineBuilder(std::unique_ptr<l::Module>{new l::Module("useless engine module", thread_context)})
-		.setErrorStr(&ErrStr)
-		.setMCJITMemoryManager(std::unique_ptr<l::SectionMemoryManager>(new l::SectionMemoryManager))
-		.create();
-	check(engine, "Could not create ExecutionEngine: " + ErrStr + "\n"); //check engine! :D
 }
 
 template<size_t array_num> void cout_array(std::array<uint64_t, array_num> object)
@@ -92,8 +82,6 @@ template<size_t array_num> void cout_array(std::array<uint64_t, array_num> objec
 unsigned compiler_object::compile_AST(uAST* target)
 {
 
-	llvm::Module *TheModule(new l::Module("temp module", thread_context));
-	engine->addModule(std::unique_ptr<l::Module>(TheModule));
 
 	if (VERBOSE_DEBUG) console << "starting compilation\ntarget is " << target << '\n'; //necessary in case it crashes here
 	if (target == nullptr) return IRgen_status::null_AST;
@@ -105,25 +93,25 @@ unsigned compiler_object::compile_AST(uAST* target)
 	else FT = FunctionType::get(llvm_type(size_of_return), false);
 	if (VERBOSE_DEBUG) console << "Size of return is " << size_of_return << '\n';
 
-	Function *F = Function::Create(FT, Function::ExternalLinkage, "temp function", TheModule);
+	Function *F = Function::Create(FT, Function::ExternalLinkage, "__anon_expr", &C.getM());
 
 	BasicBlock *BB = BasicBlock::Create(thread_context, "entry", F);
-	Builder.SetInsertPoint(BB);
+	C.getBuilder().SetInsertPoint(BB);
 
 	auto return_object = generate_IR(target, false);
 	if (return_object.error_code) return return_object.error_code; //error
 
 	return_type = get_unique_type(return_object.type, false);
-	if (size_of_return) Builder.CreateRet(return_object.IR);
-	else Builder.CreateRetVoid();
+	if (size_of_return) C.getBuilder().CreateRet(return_object.IR);
+	else C.getBuilder().CreateRetVoid();
 
-	TheModule->print(*llvm_console, nullptr);
+	C.getM().print(*llvm_console, nullptr);
 	check(!l::verifyFunction(*F, llvm_console), "verification failed");
 	if (OPTIMIZE)
 	{
 		console << "optimized code: \n";
-		l::legacy::FunctionPassManager FPM(TheModule);
-		TheModule->setDataLayout(*engine->getDataLayout());
+		l::legacy::FunctionPassManager FPM(&C.getM());
+		C.getM().setDataLayout(*S.getTarget().getDataLayout());
 
 		FPM.add(createBasicAliasAnalysisPass()); //Provide basic AliasAnalysis support for GVN.
 		FPM.add(createInstructionCombiningPass()); //Do simple "peephole" optimizations and bit-twiddling optzns.
@@ -136,14 +124,21 @@ unsigned compiler_object::compile_AST(uAST* target)
 		FPM.add(createScalarReplAggregatesPass()); //I added this.
 
 		FPM.doInitialization();
-		FPM.run(*TheModule->begin());
+		FPM.run(*F);
 
-		TheModule->print(*llvm_console, nullptr);
+		C.getM().print(*llvm_console, nullptr);
 	}
 
 	if (VERBOSE_DEBUG) console << "finalizing object...\n";
-	engine->finalizeObject();
-	void* fptr = engine->getPointerToFunction(F);
+
+	auto H = J.addModule(C.takeM());
+
+	// Get the address of the JIT'd function in memory.
+	auto ExprSymbol = J.findUnmangledSymbol("__anon_expr");
+
+	// Cast it to the right type (takes no arguments, returns a double) so we
+	// can call it as a native function.
+	void *fptr = (void*)(intptr_t)ExprSymbol.getAddress();
 	if (VERBOSE_DEBUG) console << "running function:\n";
 	if (size_of_return == 1)
 	{
@@ -171,6 +166,10 @@ unsigned compiler_object::compile_AST(uAST* target)
 		void(*FP)() = (void(*)())(intptr_t)fptr;
 		FP();
 	}
+
+
+	// Remove the function.
+	J.removeModule(H);
 	return 0;
 }
 
@@ -183,7 +182,7 @@ we call this "create_alloca" instead of "create_alloca_in_entry_block", because 
 */
 l::AllocaInst* compiler_object::create_alloca(uint64_t size) {
 	check(size > 0, "tried to create a 0-size alloca");
-	l::BasicBlock& first_block = Builder.GetInsertBlock()->getParent()->getEntryBlock();
+	l::BasicBlock& first_block = C.getBuilder().GetInsertBlock()->getParent()->getEntryBlock();
 	l::IRBuilder<> TmpB(&first_block, first_block.begin());
 
 	//we explicitly create the array type instead of allocating multiples, because that's what clang does for C++ arrays.
@@ -239,6 +238,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
 #define return_code(X, Y) do { error_location = user_target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, T::null, stack_state::temp, 0, 0, 0); } while (0)
 
+	llvm::IRBuilder<>& Builder = C.getBuilder();
 
 	if (VERBOSE_DEBUG)
 	{

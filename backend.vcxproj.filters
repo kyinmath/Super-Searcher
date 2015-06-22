@@ -33,7 +33,7 @@
     <ClCompile Include="unwrappedsrc\memory.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="unwrappedsrc\OrcMCJITReplacement.cpp">
+    <ClCompile Include="miscjunk\orc.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -71,7 +71,7 @@
     <ClInclude Include="unwrappedsrc\memory.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="unwrappedsrc\OrcMCJITReplacement.h">
+    <ClInclude Include="unwrappedsrc\orc.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>
