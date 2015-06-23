@@ -1,0 +1,23 @@
+http://www.di.ens.fr/~zappa/projects/cmmtest/ for concurrency bugs
+clang
+	use "scan-build-3.7 --use-analyzer /usr/lib/llvm-3.7/bin/clang make"
+valgrind
+	valgrind --tool=memcheck --leak-check=yes -v ./toy timer quiet
+	found memory errors! very useful. search for "==" and read-error or whatever.
+cppcheck
+	cppcheck ../unwrappedsrc/
+coverity
+viva64
+
+
+
+
+
+"Twenty-five of our reported GCC bugs have been classified as P1, the maximum, release-blocking priority for GCC defects. Our results suggest that fixed test suites—the main way that compilers are tested—are an inadequate mechanism for quality control."
+
+
+
+
+Doesn't work: I added <thread> and no change.
+sudo apt-get install iwyu
+make -k CXX=/usr/bin/iwyu
