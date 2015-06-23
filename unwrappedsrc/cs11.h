@@ -97,6 +97,26 @@ struct Return_Info
 	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T::null), on_stack(stack_state::temp), self_lifetime(0), self_validity_guarantee(0), target_hit_contract(full_lifetime) {}
 };
 
+
+struct memory_location //used for GEP.
+{
+	llvm::AllocaInst* a;
+	uint64_t offset;
+	memory_location(llvm::AllocaInst* f1, uint64_t o) : a(f1), offset(o) {}
+	llvm::Value* store(llvm::IRBuilder<>& Builder, llvm::Value* val, uint64_t size)
+	{
+		//top level AllocaInst is always originally a placeholder integer.
+		//if top level AllocaInst ends up as an integer, that's fine, because then offset = 0 and size = 1, and "location" skips both statements and also ends up as an integer AllocaInst
+
+		check(size != 0, "tried to store 0 size object");
+		llvm::AllocaInst* location = a;
+		if (offset) location = l::cast<l::AllocaInst>(Builder.CreateConstInBoundsGEP2_64(a, 0, offset));
+		if (size != 1) location = l::cast<l::AllocaInst>(Builder.CreatePointerCast(location, llvm_array(size)->getPointerTo(), s("cast to array")));
+		return Builder.CreateStore(val, location);
+	}
+};
+
+
 struct compiler_host
 {
 	SessionContext S; //seems these can't be thread_local. maybe we should split them off into a different class.
@@ -142,9 +162,9 @@ class compiler_object
 	//this runs the dtors. it's called by clear_stack, but also called by goto, which jumps stacks.
 	void emit_dtors(uint64_t desired_stack_size);
 
-	llvm::AllocaInst* create_alloca(uint64_t size);
+	llvm::AllocaInst* create_empty_alloca();
 
-	Return_Info generate_IR(uAST* target, unsigned stack_degree, llvm::AllocaInst* storage_location = nullptr);
+	Return_Info generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired);
 
 public:
 	compiler_object() : S(c->S), J(c->J), C(S), error_location(nullptr) {}

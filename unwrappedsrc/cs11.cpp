@@ -176,14 +176,14 @@ thus, this function builds l::Allocas in the entry block. it should be preferred
 maybe scalarrepl is more useful for us.
 clang likes to allocate everything in the beginning, so we follow their lead
 we call this "create_alloca" instead of "create_alloca_in_entry_block", because it's the general alloca mechanism. if we said, "in_entry_block", then the user would be confused as to when to use this. by not having that, it's clear that this should be the default.
+
+we create an absolutely nonusable alloca. it's a placeholder for later, in case we wish to actually use it. because we need a place to store things.
+if we don't need it, we can use eraseFromParent()
 */
-l::AllocaInst* compiler_object::create_alloca(uint64_t size) {
-	check(size > 0, "tried to create a 0-size alloca");
+l::AllocaInst* compiler_object::create_empty_alloca() {
 	l::BasicBlock& first_block = C.getBuilder().GetInsertBlock()->getParent()->getEntryBlock();
 	l::IRBuilder<> TmpB(&first_block, first_block.begin());
-
-	//we explicitly create the array type instead of allocating multiples, because that's what clang does for C++ arrays.
-	return TmpB.CreateAlloca(llvm_type(size));
+	return TmpB.CreateAlloca(llvm_type(1));
 }
 
 void compiler_object::emit_dtors(uint64_t desired_stack_size)
@@ -230,7 +230,7 @@ note that while we have a rich type system, the only types that llvm sees are in
 example: the l::Value* of an object that had stack_degree = 2 is a pointer to the memory location, where the pointer is casted to an integer.
 currently, the finish() macro takes in the array itself, not the pointer-to-array.
 */
-Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degree, l::AllocaInst* storage_location)
+Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
 #define return_code(X, Y) do { error_location = user_target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, T::null, stack_state::temp, 0, 0, 0); } while (0)
@@ -243,13 +243,17 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		if (user_target) output_AST(user_target);
 		console << "stack degree " << stack_degree;
 		console << ", storage location is ";
-		if (storage_location) storage_location->print(*llvm_console);
+		if (desired.a != nullptr)
+		{
+			desired.a->print(*llvm_console);
+			console << "offset " << desired.offset << '\n';
+		}
 		else console << "null";
 		console << '\n';
 	}
 
-	if (stack_degree == 2) check(storage_location == nullptr, "if stack degree is 2, we should have a nullptr storage_location");
-	if (stack_degree == 1) check((storage_location != nullptr) || (return_size(user_target) == 0), "if stack degree is 1, we should have a storage_location");
+	if (stack_degree == 2) check(desired.a == nullptr, "if stack degree is 2, we should have a nullptr storage location");
+	if (stack_degree == 1) check((desired.a != nullptr) || (return_size(user_target) == 0), "if stack degree is 1, we should have a storage location");
 
 	//generate_IR is allowed to take nullptr. otherwise, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
 	//check(target != nullptr, "generate_IR should never receive a nullptr target");
@@ -279,12 +283,11 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 	//NOTE: these are the set of default values.
 
+	llvm::AllocaInst* placeholder_storage_location;
+	if (stack_degree == 2) placeholder_storage_location = create_empty_alloca();
+
 	//after compiling the previous elements in the basic block, we find the lifetime of this element
 	uint64_t lifetime_of_return_value = incrementor_for_lifetime++;
-
-	uint64_t size_result = special; //note: it's only active when stack_degree = 1. otherwise, you must have special cases.
-	//-1ll is a debug choice, since having it at 0 led to invisible errors.
-	//whenever you use create_alloca(), make sure size_result is actually set.
 
 	uint64_t final_stack_position = object_stack.size();
 
@@ -303,25 +306,24 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	{
 		check(type != T::special_return, "didn't specify return type when necessary");
 
-		if (stack_degree >= 1 && size_result == special) size_result = return_size(target);
-		if (stack_degree == 2 && size_result != 0 && storage_location == nullptr)
+		uint64_t size_of_return = get_size(type);
+		if (stack_degree == 2)
 		{
-			if (storage_location == nullptr)
+			if (size_of_return >= 1)
 			{
-				storage_location = create_alloca(size_result);
-				Builder.CreateStore(return_value, storage_location);
-				return_value = storage_location;
+				if (move_to_stack) desired.store(Builder, return_value, size_of_return);
+				placeholder_storage_location->setOperand(0, llvm_integer(size_of_return));
+				return_value = placeholder_storage_location;
 			}
-			else check(move_to_stack == false, "if move_to_stack is true, then we shouldn't have already created the storage_location");
+			else placeholder_storage_location->eraseFromParent();
 		}
-		if (stack_degree == 1 && move_to_stack)
+		if (stack_degree == 1 && move_to_stack) //otherwise, do nothing.
 		{
-			if (size_result >= 1) //we don't do it for stack_degree = 2, because if storage_location =/= nullptr, we shouldn't write
+			if (size_result >= 1)
 			{
-				//RVO must happen here, before returning. because of do_after. when you call do_after, the existing things must already be put in place. you can't put them in place after returning.
+				//???RVO must happen here, before returning. because of do_after. when you call do_after, the existing things must already be put in place. you can't put them in place after returning.
 
-				Builder.CreateStore(return_value, storage_location);
-				return_value = storage_location;
+				return_value = desired.store(Builder, return_value, size_of_return);
 			}
 		}
 
