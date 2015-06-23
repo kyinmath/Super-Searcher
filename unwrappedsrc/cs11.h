@@ -14,7 +14,6 @@ extern bool TIMER;
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
-//#include "llvm/ExecutionEngine/MCJIT.h"
 #include "types.h"
 #include "ASTs.h"
 #include "orc.h"
@@ -98,11 +97,19 @@ struct Return_Info
 	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T::null), on_stack(stack_state::temp), self_lifetime(0), self_validity_guarantee(0), target_hit_contract(full_lifetime) {}
 };
 
+struct compiler_host
+{
+	SessionContext S; //seems these can't be thread_local. maybe we should split them off into a different class.
+	KaleidoscopeJIT J;
+	compiler_host() : S(thread_context), J(S) {}
+};
+extern thread_local compiler_host* c;
+
 class compiler_object
 {
 
-	SessionContext S;
-	KaleidoscopeJIT J;
+	SessionContext& S;
+	KaleidoscopeJIT& J;
 	IRGenContext C;
 
 	//lists the ASTs we're currently looking at. goal is to prevent infinite loops.
@@ -140,7 +147,7 @@ class compiler_object
 	Return_Info generate_IR(uAST* target, unsigned stack_degree, llvm::AllocaInst* storage_location = nullptr);
 
 public:
-	compiler_object();
+	compiler_object() : S(c->S), J(c->J), C(S), error_location(nullptr) {}
 	unsigned compile_AST(uAST* target); //we can't combine this with the ctor, because it needs to return an int
 	//todo: right now, compile_AST runs the function that it creates. that's not what we want.
 

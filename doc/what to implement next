@@ -35,7 +35,7 @@ I think: we have a special "concatenation" type, which is an array. the benefit 
 	but storing pointers is the same as storing numbers.
 	however, having these funny types is bad for constexpr.
 
-maybe: we can use our dynamic types as vector? then we have some kind of speedup for long repetitive types.
+maybe: we can use our dynamic types as vector? then we have some kind of speedup for long repetitive types. make sure to consider periodicity as well: ABAB, not just AAAA.
 	and what's more, we state that dynamic types don't have to necessarily reallocate. so the old reference may be still relevant, and it may not. user's job to do the appropriate locking.
 	the concatenation type being a vector really helps here.
 however, what about other full dynamic pointers, that point to the same object? if you're re-writing in place, they no longer point to the entire object, only part of it.

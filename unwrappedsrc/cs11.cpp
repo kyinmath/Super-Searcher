@@ -45,6 +45,7 @@ basic_onullstream<char> null_stream;
 std::ostream& console = std::cerr;
 l::raw_null_ostream llvm_null_stream;
 l::raw_ostream* llvm_console = &l::outs();
+thread_local compiler_host* c;
 
 
 //later: threading. create non-global contexts
@@ -65,11 +66,6 @@ uint64_t generate_exponential_dist()
 	return generate_random() & cutoff;
 }
 
-
-
-compiler_object::compiler_object() : S(thread_context), J(S), C(S), error_location(nullptr)
-{
-}
 
 template<size_t array_num> void cout_array(std::array<uint64_t, array_num> object)
 {
@@ -1091,7 +1087,7 @@ int main(int argc, char* argv[])
 	l::InitializeNativeTargetAsmPrinter();
 	l::InitializeNativeTargetAsmParser();
 
-
+	c = new compiler_host;
 
 	//these do nothing
 	//assert(0);
