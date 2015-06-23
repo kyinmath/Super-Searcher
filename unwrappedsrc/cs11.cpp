@@ -90,6 +90,7 @@ unsigned compiler_object::compile_AST(uAST* target)
 	if (VERBOSE_DEBUG) console << "Size of return is " << size_of_return << '\n';
 
 	Function *F = Function::Create(FT, Function::ExternalLinkage, "__anon_expr", &C.getM());
+	F->addFnAttr(Attribute::NoUnwind); //7% speedup
 
 	BasicBlock *BB = BasicBlock::Create(thread_context, "entry", F);
 	C.getBuilder().SetInsertPoint(BB);
