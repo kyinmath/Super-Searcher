@@ -321,7 +321,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		{
 			if (size_of_return >= 1)
 			{
-				//???RVO must happen here, before returning. because of do_after. when you call do_after, the existing things must already be put in place. you can't put them in place after returning.
+				//???RVO doesn't need to happen here, before returning. but it's probably easier, so that do_after, if(), concatenate() don't need to remember
 
 				return_value = desired.store(Builder, return_value, size_of_return);
 			}
