@@ -11,7 +11,7 @@
 #include "llvm/Support/TargetSelect.h"
 #include "console.h"
 
-//taken directly from Lang Hames' ORC
+//taken directly from Lang Hames' Orc Kaleidoscope tutorial
 
 class SessionContext
 {

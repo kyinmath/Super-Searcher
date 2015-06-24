@@ -319,7 +319,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		}
 		if (stack_degree == 1 && move_to_stack) //otherwise, do nothing.
 		{
-			if (size_result >= 1)
+			if (size_of_return >= 1)
 			{
 				//???RVO must happen here, before returning. because of do_after. when you call do_after, the existing things must already be put in place. you can't put them in place after returning.
 
