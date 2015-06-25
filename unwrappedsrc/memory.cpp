@@ -38,7 +38,7 @@ uint64_t* allocate(uint64_t size)
 	uint64_t* found_place = k->second;
 	if (k == free_memory.end())
 	{
-		abort();
+		error("OOM");
 		//we can't reallocate, since we have no way to figure out the pointers on the stack.
 		//you must have fucked up to fill up everything.
 		//that means we can either allocate another pool temporarily, or we can just give up. for now, we give up completely.

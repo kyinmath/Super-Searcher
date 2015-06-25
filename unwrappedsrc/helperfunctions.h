@@ -1,7 +1,7 @@
+#pragma once
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
 #include "debugoutput.h"
-#include "cs11.h"
 extern llvm::IntegerType* int64_type;
 extern llvm::Type* void_type;
 inline llvm::Constant* llvm_integer(uint64_t value)
@@ -20,7 +20,13 @@ inline llvm::Type* llvm_type(uint64_t size)
 	check(size != 0, "tried to get 0 size llvm type");
 	if (size > 1) return llvm_array(size);
 	else return int64_type;
+}
 
+inline llvm::Type* llvm_type_including_void(uint64_t size)
+{
+	if (size == 0) return void_type;
+	if (size > 1) return llvm_array(size);
+	else return int64_type;
 }
 
 //return type is not a llvm::Function*, because it's a pointer to a function.
@@ -48,19 +54,4 @@ inline llvm::Value* llvm_create_phi(llvm::IRBuilder<>& Builder, llvm::Value* fir
 	PN->addIncoming(first, firstBB);
 	PN->addIncoming(second, secondBB);
 	return PN;
-}
-
-//return true on success
-inline bool compile_and_run(uAST* ast)
-{
-	finiteness = FINITENESS_LIMIT;
-	compiler_object j;
-	unsigned error_code = j.compile_AST(ast);
-	if (error_code)
-	{
-		console << "Malformed AST: code " << error_code << " at AST " << j.error_location << " " << AST_descriptor[j.error_location->tag].name << " field " << j.error_field << "\n\n";
-		return 0;
-	}
-	else console << "Successful compile\n\n";
-	return true;
 }

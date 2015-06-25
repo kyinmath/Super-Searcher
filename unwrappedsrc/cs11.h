@@ -14,6 +14,7 @@ extern bool TIMER;
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
+#include <random>
 #include "types.h"
 #include "ASTs.h"
 #include "orc.h"
@@ -97,22 +98,62 @@ struct Return_Info
 	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T::null), on_stack(stack_state::temp), self_lifetime(0), self_validity_guarantee(0), target_hit_contract(full_lifetime) {}
 };
 
-
+#include "helperfunctions.h"
 struct memory_location //used for GEP.
 {
-	llvm::AllocaInst* a;
+	llvm::AllocaInst* base;
 	uint64_t offset;
-	memory_location(llvm::AllocaInst* f1, uint64_t o) : a(f1), offset(o) {}
-	llvm::Value* store(llvm::IRBuilder<>& Builder, llvm::Value* val, uint64_t size)
-	{
-		//top level AllocaInst is always originally a placeholder integer.
-		//if top level AllocaInst ends up as an integer, that's fine, because then offset = 0 and size = 1, and "location" skips both statements and also ends up as an integer AllocaInst
+	llvm::AllocaInst* spot;
+	uint64_t cached_size; //when you get this object, it caches the size, so that AllocaInst* spot can be cached. if the size is different, I need to reengineer things.
+	memory_location(llvm::AllocaInst* f1, uint64_t o) : base(f1), offset(o), spot(nullptr) {}
+	memory_location() : base(nullptr), offset(0), spot(nullptr) {}
 
+	void cast_base(uint64_t size)
+	{
+		if (size > 1)
+		{
+			base->setAllocatedType(llvm_array(size));
+			base->mutateType(llvm_array(size)->getPointerTo()); //this is potentially very very dangerous. maybe we should use ReplaceInstWithInst
+		}
+	}
+	void determine_spot(llvm::IRBuilder<>& Builder, uint64_t size)
+	{
+		//this is a caching mechanism. we find spot once, and then store it.
+		if (spot == nullptr)
+		{
+			cached_size = size;
+			spot = base;
+			if (size > 1)
+			{
+				//if offset == 0, we don't need to GEP, because it will be casted anyway.
+				if (offset) spot = llvm::cast<llvm::AllocaInst>(Builder.CreateConstInBoundsGEP2_64(base, 0, offset));
+				spot = llvm::cast<llvm::AllocaInst>(Builder.CreatePointerCast(spot, llvm_array(size)->getPointerTo()));
+			}
+			else //size is 1
+			{
+				spot = llvm::cast<llvm::AllocaInst>(Builder.CreateConstInBoundsGEP2_64(base, 0, offset));
+			}
+		}
+		check(size == cached_size, "caching mechanism failed");
+	}
+	void store(llvm::IRBuilder<>& Builder, llvm::Value* val, uint64_t size)
+	{
+		//val = int64 if size = 1, val = [int64 x size] if size > 1.
+		//AllocaInst* a = [int64 x size] for size >= 1.
+		//the reason for the difference is that we can't GEP on an integer alloca.
+		//we can't change the type halfway through either, because there are old CreateStores that relied on it being an int.
+		//seems like we basically have to know before-hand what the end type will be, since we can't convert an Int alloca into an Array alloca or vice-versa, without screwing up the GEP or lack of GEP in all the functions.
+		//thus, we need all allocas to be arrays.
+		
 		check(size != 0, "tried to store 0 size object");
-		llvm::AllocaInst* location = a;
-		if (offset) location = l::cast<l::AllocaInst>(Builder.CreateConstInBoundsGEP2_64(a, 0, offset));
-		if (size != 1) location = l::cast<l::AllocaInst>(Builder.CreatePointerCast(location, llvm_array(size)->getPointerTo(), s("cast to array")));
-		return Builder.CreateStore(val, location);
+		determine_spot(Builder, size);
+		Builder.CreateStore(val, spot);
+	}
+
+	llvm::Value* get_location(llvm::IRBuilder<>& Builder, uint64_t size)
+	{
+		determine_spot(Builder, size);
+		return spot;
 	}
 };
 
@@ -164,7 +205,7 @@ class compiler_object
 
 	llvm::AllocaInst* create_empty_alloca();
 
-	Return_Info generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired);
+	Return_Info generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired = memory_location());
 
 public:
 	compiler_object() : S(c->S), J(c->J), C(S), error_location(nullptr) {}
@@ -181,3 +222,19 @@ public:
 	Type* parameter_type = nullptr;
 };
 
+
+
+//return true on success. this is a shim, kind of messy. no module cleanup or anything.
+inline bool compile_and_run(uAST* ast)
+{
+	finiteness = FINITENESS_LIMIT;
+	compiler_object j;
+	unsigned error_code = j.compile_AST(ast);
+	if (error_code)
+	{
+		console << "Malformed AST: code " << error_code << " at AST " << j.error_location << " " << AST_descriptor[j.error_location->tag].name << " field " << j.error_field << "\n\n";
+		return 0;
+	}
+	else console << "Successful compile\n\n";
+	return true;
+}

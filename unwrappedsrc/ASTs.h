@@ -68,14 +68,14 @@ using a = AST_info;
 
 Guidelines for new ASTs:
 first field is the AST name. second field is the return type. remaining optional fields are the parameter types.
-return type is T_special if it can't be determined automatically from the AST tag. that means a deeper inspection is necessary.
+return type is T::special_return if it can't be determined automatically from the AST tag. that means a deeper inspection is necessary.
 then, write the compilation code for the AST in generate_IR().
 if you're using the heap, set final_stack_state.
-if you don't want the subfields to be compiled, use make_fields_to_compile().
-if subfields aren't actually AST pointers, but maybe some other special object like a dynamic object or integer, use make_special_fields().
+if you don't want a subfield to be compiled, use make_pointer_fields() and don't specify the parameter type.
+if subfields aren't actually AST pointers, but maybe some other special object like a dynamic object or integer, use make_special_fields() and specify the parameter type.
 
 the number of parameter types determines the number of subfields to be compiled and type-checked automatically. the instructions in these subfields are always run; there's no branching.
-if you want to compile but not type-check a field, use make_fields_to_compile() and do not list a parameter type.
+if you want to compile but not type-check a field, use T::parameter_no_type_check.
 if you want to neither compile or type-check a field, use make_pointer_fields().
 in these cases, you must handle the type-checking/compilation manually if it's not done automatically and you want it to be done.
 remember to handle null types and T::nonexistent.
@@ -97,7 +97,7 @@ constexpr AST_info AST_descriptor[] =
 	a("pointer", T::special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
 	a("load", T::special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
 	a("concatenate", T::special_return).make_pointer_fields(2),
-	{"dynamic", T::full_dynamic_pointer}, //creates dynamic storage for any kind of object. moves it to the heap.
+	{"dynamic", T::full_dynamic_pointer, T::parameter_no_type_check}, //creates dynamic storage for any kind of object. moves it to the heap.
 	a("compile", T::full_dynamic_pointer, T::AST_pointer), //compiles an AST, returning a dynamic object which is either the error object or the desired info.
 	//a("temp_generate_AST", T::AST_pointer), //hacked in, generates a random AST.
 	{"dynamic_conc", T::special_return, T::cheap_dynamic_pointer, T::cheap_dynamic_pointer}, //concatenate the interiors of two dynamic pointers
@@ -105,7 +105,7 @@ constexpr AST_info AST_descriptor[] =
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
 	a("convert_to_AST", T::AST_pointer, T::integer, T::parameter_no_type_check, T::cheap_dynamic_pointer).make_pointer_fields(4), //last branch should return AST_pointer. but don't compile it, because it needs to go in a special basic block.
 	a("store", T::null, T::parameter_no_type_check, T::parameter_no_type_check), //pointer, then value.
-	a("static_object", T::special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a static object.
+	//a("static_object", T::special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a static object. I think this is obsoleted by load_object; just load a pointer.
 	a("load_object", T::special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a constant. similar to "int x = 40". if the value ends up on the stack, it can still be modified, but any changes are temporary.
 	{"never reached", T::special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
@@ -189,23 +189,4 @@ inline uAST* copy_AST(uAST* t)
 	for (uint64_t x = 0; x < total_field_size; ++x)
 		new_home[x + 2] = t->fields[x].num;
 	return (uAST*)new_home;
-}
-
-//todo: we're just hoping that there aren't any infinite loops.
-//what's more, we're hoping that the obvious double-load doesn't occur. we really need to fix this
-//this should be healthier later. we still need to optimize concatenate and embed this along with the main loop_catcher.
-constexpr uint64_t return_size(uAST* target)
-{
-	if (target == nullptr)
-		return 0; //for example, if you try to get the size of an if statement with nullptr fields as the return object.
-	if (AST_descriptor[target->tag].return_object != T::special_return) return get_size(AST_descriptor[target->tag].return_object);
-	else if (target->tag == ASTn("if")) return return_size(target->fields[1].ptr); //todo: this isn't proper.
-	else if (target->tag == ASTn("pointer")) return 1;
-	else if (target->tag == ASTn("load")) return return_size(target->fields[0].ptr); //todo: this is almost certainly wrong.
-	else if (target->tag == ASTn("concatenate")) return return_size(target->fields[0].ptr) + return_size(target->fields[1].ptr); //todo: this is slow. takes n^2 time.
-	else if (target->tag == ASTn("static_object")) return get_size((Type*)target->fields[1].ptr);
-	else if (target->tag == ASTn("load_object")) return get_size((Type*)target->fields[1].ptr);
-	else if (target->tag == ASTn("goto")) return return_size(target->fields[1].ptr);
-	else if (target->tag == ASTn("dynamic_conc")) return get_size(T::cheap_dynamic_pointer); //future: maybe we'll want cheap and full dynamic pointers to be separate? no double indirection?
-	error(string("couldn't get size of tag in return_size(AST*), target->tag was ") + AST_descriptor[target->tag].name);
 }

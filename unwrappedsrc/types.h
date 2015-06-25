@@ -231,6 +231,7 @@ thus, a uint64 has size "1". a struct of two uint64s has size "2". etc.
 there can't be loops because Types are immut. the user doesn't have access to Type creation functions.
 	we'll mark this as the "good" function. it takes in Types that are known to be unique.
 */
+constexpr uint64_t get_size(Type* target) __attribute__((pure));
 constexpr uint64_t get_size(Type* target)
 {
 	if (target == nullptr) return 0;
