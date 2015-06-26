@@ -66,56 +66,48 @@ inline bool is_full(stack_state x)
 }
 
 constexpr uint64_t full_lifetime = -1ll;
-//every time IR is generated, this holds the relevant return info.
-struct Return_Info
-{
-	IRgen_status error_code;
 
-	llvm::Value* IR;
-
-	Type* type;
-	stack_state on_stack; //if on_stack =/= temp, the llvm type is actually a pointer. but the internal type doesn't change.
-
-	//to write an object into a pointed-to memory location, we must have guarantee of object <= hit contract of memory location
-	//there's only one hit contract value per object, which can be a problem for concatenations of many cheap pointers.
-	//however, we need concatenation only for heap objects, parameters, function return; in these cases, the memory order doesn't matter
-	uint64_t self_lifetime; //for stack objects, determines when you will fall off the stack. it's a deletion time, not a creation time.
-	//it's important that it is a deletion time, because deletion and creation are not in perfect stack configuration.
-	//because temporaries are created before the base object, and die just after.
-
-	//low number = longer life.
-	uint64_t self_validity_guarantee; //higher is less lenient (validity is shorter). the object's values must be valid for at least this time.
-	//for when an object wants to be written into a memory location
-
-	uint64_t target_hit_contract; //lower is less lenient. the reference will disappear after this time. used for pointers
-	//measures the pointer's target's lifetime, for when the pointed-to memory location wants something to be written into it.
-
-	Return_Info(IRgen_status err, llvm::Value* b, Type* t, stack_state o, uint64_t s, uint64_t u, uint64_t l)
-		: error_code(err), IR(b), type(t), on_stack(o), self_lifetime(s), self_validity_guarantee(u), target_hit_contract(l) {}
-
-	//default constructor for a null object
-	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
-	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), type(T::null), on_stack(stack_state::temp), self_lifetime(0), self_validity_guarantee(0), target_hit_contract(full_lifetime) {}
-};
-
+#include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include "helperfunctions.h"
-struct memory_location //used for GEP.
+struct memory_location //used for GEP. good for delaying emission of instructions unless they're necessary.
 {
 	llvm::AllocaInst* base;
 	uint64_t offset;
 	llvm::AllocaInst* spot;
 	uint64_t cached_size; //when you get this object, it caches the size, so that AllocaInst* spot can be cached. if the size is different, I need to reengineer things.
+	uint64_t stored_size = 0; //used if you want to embed the entire information in the memory_location. good for storing memory locations in active_objects, but without emitting instructions.
 	memory_location(llvm::AllocaInst* f1, uint64_t o) : base(f1), offset(o), spot(nullptr) {}
 	memory_location() : base(nullptr), offset(0), spot(nullptr) {}
 
+	void set_stored_size(uint64_t size)
+	{
+		stored_size = size;
+	}
+
+	llvm::Value* get_location(llvm::IRBuilder<>& Builder)
+	{
+		check(stored_size != 0, "no stored size");
+		determine_spot(Builder, stored_size);
+		return spot;
+	}
 	void cast_base(uint64_t size)
 	{
 		if (size > 1)
 		{
-			base->setAllocatedType(llvm_array(size));
-			base->mutateType(llvm_array(size)->getPointerTo()); //this is potentially very very dangerous. maybe we should use ReplaceInstWithInst
+			llvm::AllocaInst* new_alloca = new llvm::AllocaInst(llvm_array(size));
+			llvm::BasicBlock::iterator ii(base);
+			ReplaceInstWithInst(base->getParent()->getInstList(), ii, new_alloca);
+			//base->setAllocatedType(llvm_array(size));
+			//base->mutateType(llvm_array(size)->getPointerTo()); //this is potentially very very dangerous. maybe we should use ReplaceInstWithInst
+
+			//we can only do this when size > 1, because if it's smaller, we'd need to do a GetElementPtr.
+			base = new_alloca;
+			spot = base;
+			cached_size = size;
 		}
+		check(offset == 0, "this isn't expected, I'm relying on this to cache base in spot which I probably shouldn't be doing");
 	}
+	//assigns spot to be the correct pointer. i64* or [size x i64]*.
 	void determine_spot(llvm::IRBuilder<>& Builder, uint64_t size)
 	{
 		//this is a caching mechanism. we find spot once, and then store it.
@@ -127,6 +119,7 @@ struct memory_location //used for GEP.
 			{
 				//if offset == 0, we don't need to GEP, because it will be casted anyway.
 				if (offset) spot = llvm::cast<llvm::AllocaInst>(Builder.CreateConstInBoundsGEP2_64(base, 0, offset));
+				console << "tst abort"; abort();
 				spot = llvm::cast<llvm::AllocaInst>(Builder.CreatePointerCast(spot, llvm_array(size)->getPointerTo()));
 			}
 			else //size is 1
@@ -155,6 +148,44 @@ struct memory_location //used for GEP.
 		determine_spot(Builder, size);
 		return spot;
 	}
+};
+
+//every time IR is generated, this holds the relevant return info.
+struct Return_Info
+{
+	IRgen_status error_code;
+
+	//either IR or place is active, not both.
+	//if on_stack == temp, then IR is active. otherwise, place is active.
+	//place is only ever active if you passed in stack_degree >= 1, because that's when on_stack != temp.
+	llvm::Value* IR;
+	memory_location place;
+
+	Type* type;
+	stack_state on_stack; //if on_stack =/= temp, the llvm type is actually a pointer. but the internal type doesn't change.
+
+	//to write an object into a pointed-to memory location, we must have guarantee of object <= hit contract of memory location
+	//there's only one hit contract value per object, which can be a problem for concatenations of many cheap pointers.
+	//however, we need concatenation only for heap objects, parameters, function return; in these cases, the memory order doesn't matter
+	uint64_t self_lifetime; //for stack objects, determines when you will fall off the stack. it's a deletion time, not a creation time.
+	//it's important that it is a deletion time, because deletion and creation are not in perfect stack configuration.
+	//because temporaries are created before the base object, and die just after.
+
+	//low number = longer life.
+	uint64_t self_validity_guarantee; //higher is less lenient (validity is shorter). the object's values must be valid for at least this time.
+	//for when an object wants to be written into a memory location
+
+	uint64_t target_hit_contract; //lower is less lenient. the reference will disappear after this time. used for pointers
+	//measures the pointer's target's lifetime, for when the pointed-to memory location wants something to be written into it.
+
+	Return_Info(IRgen_status err, llvm::Value* b, Type* t, stack_state o, uint64_t s, uint64_t u, uint64_t l)
+		: error_code(err), IR(b), type(t), on_stack(o), self_lifetime(s), self_validity_guarantee(u), target_hit_contract(l) {}
+	Return_Info(IRgen_status err, memory_location b, Type* t, stack_state o, uint64_t s, uint64_t u, uint64_t l)
+		: error_code(err), place(b), type(t), on_stack(o), self_lifetime(s), self_validity_guarantee(u), target_hit_contract(l) {}
+
+	//default constructor for a null object
+	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
+	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), on_stack(stack_state::temp), self_lifetime(0), self_validity_guarantee(0), target_hit_contract(full_lifetime) {}
 };
 
 

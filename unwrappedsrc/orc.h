@@ -82,6 +82,8 @@ public:
 	{
 		// We need a memory manager to allocate memory and resolve symbols for this
 		// new module. Create one that resolves symbols by looking back into the JIT.
+		//later, if we want optimization, we'll need to change this back
+		//there's also something called a NullResolver now.
 		auto Resolver = llvm::orc::createLambdaResolver([&](const std::string &Name)
 		{
 			if (auto Sym = findSymbol(Name))

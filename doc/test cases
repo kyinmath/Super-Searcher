@@ -11,6 +11,19 @@ stack storage.
 [integer 30]a [print_int [load a]]
 
 [label [goto a]]a
+	produces an integer, since our loop checker is total rubbish
 
 [scope {[integer]a [scope]}] [scope {a [scope]}]
 	should compile. tests clearing old unused stack allocas
+
+
+[concatenate [integer] [integer]] [integer]
+	still causes extra cast
+
+[concatenate [integer]a [load a]]
+
+[concatenate [concatenate [integer] [integer]] [integer]]
+[concatenate [integer] [concatenate [integer] [integer]]]
+	why isn't this working? middle is not 0
+[concatenate [concatenate [concatenate [integer] [integer]] [integer]] [integer]]
+	this works.

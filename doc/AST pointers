@@ -45,6 +45,7 @@ the problem is that this will force the AST creation into two paths: one with an
 I think the problem with convert_to_AST is that we shouldn't have a backup plan. return null on failure instead?
 	because forcing the user to handle failure isn't always possible. the user has no reliable way to create ASTs anyway.
 	for example, consider a function that returns an AST. unless it stores a backup plan in a dynamic object, it has no way to guarantee that it can actually create this AST, and thus the function cannot be compiled.
+	and requiring the storage of a dynamic object has severe bootstrap problems.
 
 we need: passthrough AST, since our dynamic objects can't change types.
 does this mean we also need a passthrough Type? but both of these are actually already possible, using concatenate() in Type or AST.

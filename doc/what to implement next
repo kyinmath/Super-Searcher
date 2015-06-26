@@ -45,5 +45,7 @@ however, what about other full dynamic pointers, that point to the same object? 
 	the GC lock ensures multiple things can't be trying to change the type simultaneously.
 this system means we can't delete elements from the end of a vector...except we can, vaguely, by truncating the type. then some garbage collection would be necessary, unless the memory region has only a single pointer to it.
 
+we must always consider bootstrap issues. for example, how to make a function that returns compiled functions with fixed type?
+	such a function would need to 
 
-orcjit: I should run a diff on most recent kaleidoscope version, becuase lhames is changing orc constantly
+orcjit: I should run a diff on most recent kaleidoscope version, because lhames is changing orc constantly

@@ -200,12 +200,12 @@ namespace T
 		static constexpr Type int_{"integer"};
 		static constexpr Type nonexistent{"nonexistent"};
 		static constexpr Type missing_field{"nonexistent"};
-		static constexpr Type special_return{("integer")};
-		static constexpr Type parameter_no_type_check{("integer")};
-		static constexpr Type cheap_dynamic_pointer{("dynamic pointer")};
+		static constexpr Type special_return{"integer"};
+		static constexpr Type parameter_no_type_check{"integer"};
+		static constexpr Type cheap_dynamic_pointer{"dynamic pointer"};
 		static constexpr Type full_dynamic_pointer{"dynamic pointer", 1};
 		static constexpr Type type{"type pointer"};
-		static constexpr Type AST_pointer{("AST pointer")};
+		static constexpr Type AST_pointer{"AST pointer"};
 		//static constexpr Type error_object{concatenate_types(std::vector<Type*>{const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer), const_cast<Type* const>(&int_)})};
 		//error_object is int, pointer to AST, int. it's what is returned when compilation fails: the error code, then the AST, then the field.
 	};
