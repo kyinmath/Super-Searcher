@@ -68,8 +68,8 @@ inline uint64_t concatenate_dynamic(uint64_t first_dynamic, uint64_t second_dyna
 	if (size[0] == 0) return second_dynamic;
 	else if (size[1] == 0) return first_dynamic;
 	uint64_t* new_dynamic = allocate(size[0] + size[1]);
-	for (int idx = 0; idx < size[0]; ++idx) new_dynamic[idx] = pointer[0][idx];
-	for (int idx = 0; idx < size[1]; ++idx) new_dynamic[idx + size[0]] = pointer[1][idx];
+	for (uint64_t idx = 0; idx < size[0]; ++idx) new_dynamic[idx] = pointer[0][idx];
+	for (uint64_t idx = 0; idx < size[1]; ++idx) new_dynamic[idx + size[0]] = pointer[1][idx];
 	return make_dynamic((uint64_t)new_dynamic, (uint64_t)concatenate_types(std::vector<Type*>{type[0], type[1]}));
 }
 
@@ -89,6 +89,7 @@ inline bool is_AST_internal(uint64_t tag, Type* reference)
 
 inline bool is_AST_user_facing(uint64_t tag, uint64_t reference)
 {
+	if (tag == 0) return false; //you'll make a null AST if we return false, which is exactly as desired
 	if (tag >= ASTn("never reached")) return false;
 	return is_AST_internal(tag, (Type*)reference);
 }

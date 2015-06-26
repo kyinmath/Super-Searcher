@@ -14,7 +14,7 @@
 //problem: the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. do we really need to have special cases, just for them?
 //maybe not. in the future, we'll just make sure to wrap them in a unique() function, so that the user only ever sees GC-handled objects.
 
-constexpr const uint64_t pool_size = 100000ull;
+constexpr const uint64_t pool_size = 1000000ull;
 uint64_t big_memory_pool[pool_size];
 function function_pool[10000ull];
 //std::bitset<AST_number> AST_pool_flags; //each bit refers to a AST, which is made up of multiple slots. it's marked 1 if it's occupied

@@ -185,7 +185,7 @@ inline Type* copy_type(const Type* t)
 	uint64_t fields = total_valid_fields(t);
 	uint64_t* new_type = allocate(fields + 1);
 	uint64_t* old_type = (uint64_t*)t;
-	for (int idx = 0; idx < fields + 1; ++idx)
+	for (uint64_t idx = 0; idx < fields + 1; ++idx)
 		new_type[idx] = old_type[idx];
 	return (Type*)(new_type);
 }
@@ -264,16 +264,16 @@ inline Type* get_Type_full_type(Type* t)
 	std::vector<Type*> fields{T::integer}; //the tag
 	if (t->tag != Typen("con_vec"))
 	{
-		int number_of_pointers = Type_descriptor[t->tag].pointer_fields;
-		for (int x = 0; x < number_of_pointers; ++x) fields.push_back(T::type);
-		for (int x = 0; x < Type_descriptor[t->tag].additional_special_fields; ++x) fields.push_back(T::integer);
+		uint64_t number_of_pointers = Type_descriptor[t->tag].pointer_fields;
+		for (uint64_t x = 0; x < number_of_pointers; ++x) fields.push_back(T::type);
+		for (uint64_t x = 0; x < Type_descriptor[t->tag].additional_special_fields; ++x) fields.push_back(T::integer);
 		return concatenate_types(fields);
 	}
 	else
 	{
 		fields.push_back(T::integer);
-		int number_of_pointers = t->fields[0].num;
-		for (int x = 0; x < number_of_pointers; ++x) fields.push_back(T::type);
+		uint64_t number_of_pointers = t->fields[0].num;
+		for (uint64_t x = 0; x < number_of_pointers; ++x) fields.push_back(T::type);
 		return concatenate_types(fields);
 	}
 }

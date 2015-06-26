@@ -70,7 +70,7 @@ uint64_t generate_exponential_dist()
 template<size_t array_num> void cout_array(std::array<uint64_t, array_num> object)
 {
 	console << "Evaluated to";
-	for (int x = 0; x < array_num; ++x) console << ' ' << object[x];
+	for (uint64_t x = 0; x < array_num; ++x) console << ' ' << object[x];
 	console << '\n';
 }
 
@@ -832,7 +832,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			{
 				std::vector<l::Constant*> values;
 				values.reserve(size_of_object);
-				for (int x = 0; x < size_of_object; ++x)
+				for (uint64_t x = 0; x < size_of_object; ++x)
 				{
 					values.push_back(llvm_integer(array_of_integers[x]));
 				}
@@ -848,6 +848,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	error("fell through switches");
 }
 
+std::array<uint64_t, ASTn("never reached")> hitcount;
 /**
 The fuzztester generates random ASTs and attempts to compile them.
 the output "Malformed AST" is fine. not all randomly-generated ASTs will be well-formed.
@@ -874,7 +875,7 @@ void fuzztester(unsigned iterations)
 
 
 		int_or_ptr<uAST> fields[4]{nullptr, nullptr, nullptr, nullptr};
-		int incrementor = 0;
+		uint64_t incrementor = 0;
 		for (; incrementor < pointer_fields; ++incrementor)
 			fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous ASTs
 		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
@@ -896,6 +897,7 @@ void fuzztester(unsigned iterations)
 		{
 			AST_list.push_back(test_AST);
 			console << AST_list.size() - 1 << "\n";
+			++hitcount[tag];
 		}
 		else delete test_AST;
 		if (INTERACTIVE)
@@ -987,7 +989,7 @@ class source_reader
 		int_or_ptr<uAST> fields[max_fields_in_AST] = { nullptr, nullptr, nullptr, nullptr };
 
 		//field_num is which field we're on
-		int field_num = 0;
+		uint64_t field_num = 0;
 		for (string next_token = get_token(); next_token != "]"; next_token = get_token(), ++field_num)
 		{
 			check(field_num < max_fields_in_AST, "more fields than possible");
@@ -1063,7 +1065,7 @@ class source_reader
 	}
 
 public:
-	source_reader(std::istream& stream, char end) : input(stream) {}
+	source_reader(std::istream& stream, char end) : input(stream) {} //char end can't be used, because the char needs to go in a switch case
 	uAST* read()
 	{
 		uAST* end = create_single_basic_block();
@@ -1078,7 +1080,6 @@ public:
 		return end;
 	}
 };
-
 
 int main(int argc, char* argv[])
 {
@@ -1141,6 +1142,8 @@ int main(int argc, char* argv[])
 			std::cout << "Minitime: " << (std::clock() - ministart) / (double)CLOCKS_PER_SEC << '\n';
 		}
 		std::cout << "Overall time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
+		for (unsigned x = 0; x < ASTn("never reached"); ++x)
+			std::cout << "tag " << x << " " << AST_descriptor[x].name << ' ' << hitcount[x] << '\n';
 		return 0;
 	}
 	if (CONSOLE)
