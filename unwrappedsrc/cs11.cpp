@@ -784,17 +784,13 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			TheFunction->getBasicBlockList().push_back(FailureBB);
 			Builder.SetInsertPoint(FailureBB);
 
-			//todo: expose the error object
-			Return_Info failure_IR = generate_IR(target->fields[3].ptr, 0); //we can't pass through desired, because the other case doesn't. and we can't handle different cases where the value gets written in one branch but not the other..
-			if (failure_IR.error_code) return failure_IR;
-			if (type_check(RVO, failure_IR.type, T::AST_pointer) != type_check_result::perfect_fit) return_code(type_mismatch, 3);
 
 			Builder.CreateBr(MergeBB);
 			FailureBB = Builder.GetInsertBlock();
 			TheFunction->getBasicBlockList().push_back(MergeBB);
 			Builder.SetInsertPoint(MergeBB);
 
-				l::Value* endPN = llvm_create_phi(Builder, success_result, failure_IR.IR, T::AST_pointer, failure_IR.type, SuccessBB, FailureBB);
+				l::Value* endPN = llvm_create_phi(Builder, success_result, llvm_integer(0), T::AST_pointer, T::AST_pointer, SuccessBB, FailureBB);
 				finish(endPN);
 
 		}

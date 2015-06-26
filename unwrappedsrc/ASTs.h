@@ -72,7 +72,7 @@ return type is T::special_return if it can't be determined automatically from th
 then, write the compilation code for the AST in generate_IR().
 if you're using the heap, set final_stack_state.
 if you don't want a subfield to be compiled, use make_pointer_fields() and don't specify the parameter type.
-if subfields aren't actually AST pointers, but maybe some other special object like a dynamic object or integer, use make_special_fields() and specify the parameter type.
+if a subfield isn't actually an AST pointer, but is some other special object like a dynamic object or integer, use make_special_fields() and specify the parameter type.
 
 the number of parameter types determines the number of subfields to be compiled and type-checked automatically. the instructions in these subfields are always run; there's no branching.
 if you want to compile but not type-check a field, use T::parameter_no_type_check.
@@ -103,7 +103,7 @@ constexpr AST_info AST_descriptor[] =
 	{"dynamic_conc", T::special_return, T::cheap_dynamic_pointer, T::cheap_dynamic_pointer}, //concatenate the interiors of two dynamic pointers
 	a("goto", T::special_return).make_pointer_fields(1),
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
-	a("convert_to_AST", T::AST_pointer, T::integer, T::parameter_no_type_check, T::cheap_dynamic_pointer).make_pointer_fields(4), //last branch should return AST_pointer. but don't compile it, because it needs to go in a special basic block.
+	a("convert_to_AST", T::AST_pointer, T::integer, T::parameter_no_type_check, T::cheap_dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
 	a("store", T::null, T::parameter_no_type_check, T::parameter_no_type_check), //pointer, then value.
 	//a("static_object", T::special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a static object. I think this is obsoleted by load_object; just load a pointer.
 	a("load_object", T::special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a constant. similar to "int x = 40". if the value ends up on the stack, it can still be modified, but any changes are temporary.

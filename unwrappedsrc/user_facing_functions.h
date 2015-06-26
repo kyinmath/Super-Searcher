@@ -89,6 +89,7 @@ inline bool is_AST_internal(uint64_t tag, Type* reference)
 
 inline bool is_AST_user_facing(uint64_t tag, uint64_t reference)
 {
+	if (tag >= ASTn("never reached")) return false;
 	return is_AST_internal(tag, (Type*)reference);
 }
 

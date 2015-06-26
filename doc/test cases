@@ -27,3 +27,6 @@ stack storage.
 	why isn't this working? middle is not 0
 [concatenate [concatenate [concatenate [integer] [integer]] [integer]] [integer]]
 	this works.
+
+
+[convert_to_AST [random] [scope] [dynamic]]
