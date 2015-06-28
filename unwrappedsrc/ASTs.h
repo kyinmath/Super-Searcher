@@ -98,7 +98,7 @@ constexpr AST_info AST_descriptor[] =
 	a("load", T::special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
 	a("concatenate", T::special_return).make_pointer_fields(2),
 	{"dynamic", T::full_dynamic_pointer, T::parameter_no_type_check}, //creates dynamic storage for any kind of object. moves it to the heap.
-	a("compile", T::full_dynamic_pointer, T::AST_pointer), //compiles an AST, returning a dynamic object which is either the error object or the desired info.
+	a("compile", T::full_dynamic_pointer, T::AST_pointer).make_pointer_fields(3), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
 	//a("temp_generate_AST", T::AST_pointer), //hacked in, generates a random AST.
 	{"dynamic_conc", T::special_return, T::cheap_dynamic_pointer, T::cheap_dynamic_pointer}, //concatenate the interiors of two dynamic pointers
 	a("goto", T::special_return).make_pointer_fields(1),

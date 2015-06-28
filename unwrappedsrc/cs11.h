@@ -110,6 +110,7 @@ struct memory_location //used for GEP. good for delaying emission of instruction
 	//assigns spot to be the correct pointer. i64* or [size x i64]*.
 	void determine_spot(llvm::IRBuilder<>& Builder, uint64_t size)
 	{
+		check(size != 0, "meaningless to get a 0 size location");
 		//this is a caching mechanism. we find spot once, and then store it.
 		if (spot == nullptr)
 		{
@@ -209,7 +210,7 @@ class compiler_object
 	std::unordered_map<uAST*, uAST*> loop_catcher; //todo: this isn't the right way to map user ASTs to immuted ASTs. because they go away.
 
 	//a stack for bookkeeping lifetimes; keeps track of when objects are alive.
-	//bool is true if the object is on the stack.
+	//bool is true if the object is a memory location that can have pointers to it, instead of a temporary.
 	std::stack<std::pair<uAST*, bool>> object_stack;
 
 	//maps ASTs to their generated IR and return type.
@@ -235,6 +236,7 @@ class compiler_object
 	void emit_dtors(uint64_t desired_stack_size);
 
 	llvm::AllocaInst* create_empty_alloca();
+	llvm::AllocaInst* create_actual_alloca(uint64_t size);
 
 	Return_Info generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired = memory_location());
 
@@ -242,6 +244,8 @@ public:
 	compiler_object() : S(c->S), J(c->J), C(S), error_location(nullptr) {}
 	unsigned compile_AST(uAST* target); //we can't combine this with the ctor, because it needs to return an int
 	//todo: right now, compile_AST runs the function that it creates. that's not what we want.
+
+	void* fptr; //the end fptr.
 
 	//exists when IRgen_status has an error.
 	uAST* error_location;
@@ -251,10 +255,11 @@ public:
 	//currently, parameters are not implemented
 	Type* return_type;
 	Type* parameter_type = nullptr;
+	KaleidoscopeJIT::ModuleHandleT result_module;
 };
 
 
-
+/*
 //return true on success. this is a shim, kind of messy. no module cleanup or anything.
 inline bool compile_and_run(uAST* ast)
 {
@@ -266,6 +271,33 @@ inline bool compile_and_run(uAST* ast)
 		console << "Malformed AST: code " << error_code << " at AST " << j.error_location << " " << AST_descriptor[j.error_location->tag].name << " field " << j.error_field << "\n\n";
 		return 0;
 	}
+	if (VERBOSE_DEBUG) console << "running function:\n";
+	if (size_of_return == 1)
+	{
+		uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
+		console << "Evaluated to " << FP() << '\n';
+	}
+	else if (size_of_return > 1)
+	{
+		using std::array;
+		switch (size_of_return)
+		{
+		case 2: cout_array(((array<uint64_t, 2>(*)())(intptr_t)fptr)()); break; //theoretically, this ought to break. array<2> = {int, int}
+		case 3: cout_array(((array<uint64_t, 3>(*)())(intptr_t)fptr)()); break; //this definitely does break.
+		case 4: cout_array(((array<uint64_t, 4>(*)())(intptr_t)fptr)()); break;
+		case 5: cout_array(((array<uint64_t, 5>(*)())(intptr_t)fptr)()); break;
+		case 6: cout_array(((array<uint64_t, 6>(*)())(intptr_t)fptr)()); break;
+		case 7: cout_array(((array<uint64_t, 7>(*)())(intptr_t)fptr)()); break;
+		case 8: cout_array(((array<uint64_t, 8>(*)())(intptr_t)fptr)()); break;
+		case 9: cout_array(((array<uint64_t, 9>(*)())(intptr_t)fptr)()); break;
+		default: console << "function return size is " << size_of_return << " and C++ seems to only take static return types\n"; break;
+		}
+	}
+	else
+	{
+		void(*FP)() = (void(*)())(intptr_t)fptr;
+		FP();
+	}
 	else console << "Successful compile\n\n";
 	return true;
-}
+}*/

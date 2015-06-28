@@ -67,13 +67,6 @@ uint64_t generate_exponential_dist()
 }
 
 
-template<size_t array_num> void cout_array(std::array<uint64_t, array_num> object)
-{
-	console << "Evaluated to";
-	for (uint64_t x = 0; x < array_num; ++x) console << ' ' << object[x];
-	console << '\n';
-}
-
 #include <llvm/Transforms/Utils/Cloning.h>
 //return value is the error code, which is 0 if successful
 unsigned compiler_object::compile_AST(uAST* target)
@@ -99,7 +92,8 @@ unsigned compiler_object::compile_AST(uAST* target)
 	auto size_of_return = get_size(return_object.type);
 	FunctionType* FT = FunctionType::get(llvm_type_including_void(size_of_return), false);
 	if (VERBOSE_DEBUG) console << "Size of return is " << size_of_return << '\n';
-	Function *F = Function::Create(FT, Function::ExternalLinkage, "__anon_expr", &C.getM());
+	std::string function_name = GenerateUniqueName("_anon_expr_");
+	Function *F = Function::Create(FT, Function::ExternalLinkage, function_name, &C.getM());
 	F->addFnAttr(Attribute::NoUnwind); //7% speedup
 
 	F->getBasicBlockList().splice(F->begin(), dummy_func->getBasicBlockList());
@@ -136,42 +130,13 @@ unsigned compiler_object::compile_AST(uAST* target)
 	auto H = J.addModule(C.takeM());
 
 	// Get the address of the JIT'd function in memory.
-	auto ExprSymbol = J.findUnmangledSymbol("__anon_expr");
+	auto ExprSymbol = J.findUnmangledSymbol(function_name);
 
 	// Cast it to the right type (takes no arguments, returns a double) so we
 	// can call it as a native function.
-	void *fptr = (void*)(intptr_t)ExprSymbol.getAddress();
-	if (VERBOSE_DEBUG) console << "running function:\n";
-	if (size_of_return == 1)
-	{
-		uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
-		console <<  "Evaluated to " << FP() << '\n';
-	}
-	else if (size_of_return > 1)
-	{
-		using std::array;
-		switch (size_of_return)
-		{
-		case 2: cout_array(((array<uint64_t, 2>(*)())(intptr_t)fptr)()); break; //theoretically, this ought to break. array<2> = {int, int}
-		case 3: cout_array(((array<uint64_t, 3>(*)())(intptr_t)fptr)()); break;
-		case 4: cout_array(((array<uint64_t, 4>(*)())(intptr_t)fptr)()); break;
-		case 5: cout_array(((array<uint64_t, 5>(*)())(intptr_t)fptr)()); break;
-		case 6: cout_array(((array<uint64_t, 6>(*)())(intptr_t)fptr)()); break;
-		case 7: cout_array(((array<uint64_t, 7>(*)())(intptr_t)fptr)()); break;
-		case 8: cout_array(((array<uint64_t, 8>(*)())(intptr_t)fptr)()); break;
-		case 9: cout_array(((array<uint64_t, 9>(*)())(intptr_t)fptr)()); break;
-		default: console << "function return size is " << size_of_return << " and C++ seems to only take static return types\n"; break;
-		}
-	}
-	else
-	{
-		void(*FP)() = (void(*)())(intptr_t)fptr;
-		FP();
-	}
-
-
-	// Remove the function.
-	J.removeModule(H);
+	fptr = (void*)(intptr_t)(ExprSymbol.getAddress());
+	
+	result_module = H;
 	return 0;
 }
 
@@ -182,13 +147,20 @@ maybe scalarrepl is more useful for us.
 clang likes to allocate everything in the beginning, so we follow their lead
 we call this "create_alloca" instead of "create_alloca_in_entry_block", because it's the general alloca mechanism. if we said, "in_entry_block", then the user would be confused as to when to use this. by not having that, it's clear that this should be the default.
 
-we create an absolutely nonusable alloca. it's a placeholder for later, in case we wish to actually use it. because we need a place to store things.
+we create an alloca. it's a placeholder for dependencies, in case we need a place to store things.
 if we don't need it, we can use eraseFromParent()
+if we do need it, then we use ReplaceInstWithInst.
 */
 l::AllocaInst* compiler_object::create_empty_alloca() {
 	l::BasicBlock& first_block = C.getBuilder().GetInsertBlock()->getParent()->getEntryBlock();
 	l::IRBuilder<> TmpB(&first_block, first_block.begin());
 	return TmpB.CreateAlloca(llvm_array(1));
+}
+
+l::AllocaInst* compiler_object::create_actual_alloca(uint64_t size) {
+	l::BasicBlock& first_block = C.getBuilder().GetInsertBlock()->getParent()->getEntryBlock();
+	l::IRBuilder<> TmpB(&first_block, first_block.begin());
+	return TmpB.CreateAlloca(llvm_array(size));
 }
 
 void compiler_object::emit_dtors(uint64_t desired_stack_size)
@@ -454,10 +426,10 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	case ASTn("print_int"):
 		{
 			l::Value* printer = llvm_function(Builder, print_uint64_t, void_type, int64_type);
-			finish(Builder.CreateCall(printer, std::vector<l::Value*>{field_results[0].IR}));
+			finish(Builder.CreateCall(printer, std::vector<l::Value*>{field_results[0].IR}, s("print")));
 		}
 	case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
-		finish(Builder.CreateCall(llvm_function(Builder, generate_random, int64_type), std::vector<l::Value*>{}));
+		finish(Builder.CreateCall(llvm_function(Builder, generate_random, int64_type), std::vector<l::Value*>{}, s("random")));
 	case ASTn("if"):
 		{
 			//the condition statement
@@ -712,13 +684,14 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				l::Constant* integer_type_pointer = llvm_integer((uint64_t)type_of_dynamic_object);
 
 				l::Value* indirect_object = llvm_function(Builder, make_dynamic, int64_type, int64_type, int64_type);
-				l::Value* final_dynamic = Builder.CreateCall(indirect_object, std::vector<l::Value*>{dynamic_object_address, integer_type_pointer});
+				l::Value* final_dynamic = Builder.CreateCall(indirect_object, std::vector<l::Value*>{dynamic_object_address, integer_type_pointer}, s("make_dynamic"));
 				finish(final_dynamic);
 			}
 			else
 			{
 				//zero array, for null dynamic object.
-				finish(llvm_integer(make_dynamic(0, 0)));
+				//finish(llvm_integer(make_dynamic(0, 0)));
+				finish(llvm_integer(0));
 			}
 		}
 	case ASTn("dynamic_conc"):
@@ -741,20 +714,56 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		}
 	case ASTn("compile"):
 		{
-			l::Value* compile_function = llvm_function(Builder, compile_user_facing, int64_type, int64_type);
-			l::Value* result_of_compile = Builder.CreateCall(compile_function, std::vector<l::Value*>{field_results[0].IR}, s("compile"));
-			finish(result_of_compile);
+			l::Value* compile_function = llvm_function(Builder, compile_returning_legitimate_object, void_type, int64_type, int64_type);
+
+			llvm::AllocaInst* return_holder = create_actual_alloca(3);
+			Builder.CreateCall(compile_function, std::vector<l::Value*>{return_holder, field_results[0].IR}, s("compile"));
+			auto error_object = memory_location(return_holder, 1);
+			Type* error_type = concatenate_types(std::vector < Type* > {T::integer, T::cheap_dynamic_pointer});
+			object_stack.push({user_target, true});
+			auto insert_result = objects.insert({user_target, Return_Info(IRgen_status::no_error, error_object, error_type, final_stack_state, lifetime_of_return_value, lifetime_of_return_value, lifetime_of_return_value)});
+			if (!insert_result.second) return_code(active_object_duplication, 10);
+
+
+			auto error_code = memory_location(return_holder, 1);
+			auto condition = Builder.CreateLoad(error_code.get_location(Builder, 1));
+
+
+			l::Value* comparison = Builder.CreateICmpNE(condition, l::ConstantInt::getFalse(thread_context), s("if() condition"));
+			l::Function *TheFunction = Builder.GetInsertBlock()->getParent();
+			l::BasicBlock *SuccessBB = l::BasicBlock::Create(thread_context, s("success"), TheFunction);
+			l::BasicBlock *FailureBB = l::BasicBlock::Create(thread_context, s("failure"));
+			l::BasicBlock *MergeBB = l::BasicBlock::Create(thread_context, s("merge"));
+			Builder.CreateCondBr(comparison, SuccessBB, FailureBB);
+			Builder.SetInsertPoint(SuccessBB);
+
+
+			Return_Info success_branch = generate_IR(target->fields[1].ptr, 0);
+			if (success_branch.error_code) return success_branch;
+
+			Builder.CreateBr(MergeBB);
+			SuccessBB = Builder.GetInsertBlock();
+			TheFunction->getBasicBlockList().push_back(FailureBB);
+			Builder.SetInsertPoint(FailureBB);
+
+			Return_Info error_branch = generate_IR(target->fields[2].ptr, 0);
+			if (error_branch.error_code) return error_branch;
+
+			Builder.CreateBr(MergeBB);
+			FailureBB = Builder.GetInsertBlock();
+			TheFunction->getBasicBlockList().push_back(MergeBB);
+			Builder.SetInsertPoint(MergeBB);
+
+
+			clear_stack(final_stack_position);
+			auto return_location = memory_location(return_holder, 0);
+			auto return_object = Builder.CreateLoad(return_location.get_location(Builder, 1));
+			finish(return_object);
 		}
-	case ASTn("convert_to_AST"):
+	case ASTn("convert_to_AST"): //todo: make this guaranteed success
 		{
 			l::IntegerType* boolean = l::IntegerType::get(thread_context, 1);
-			l::Value* checker_function = llvm_function(Builder, is_AST_user_facing, boolean, int64_type, int64_type);
-
-			l::AllocaInst* pointer_reconstitution = l::cast<l::AllocaInst>(Builder.CreateIntToPtr(field_results[2].IR, llvm_array(2)->getPointerTo()));
-			l::Value* pair_value = Builder.CreateLoad(pointer_reconstitution);
-
-			l::Value* pointer = Builder.CreateExtractValue(pair_value, std::vector < unsigned > {0}, s("fields of hopeful AST"));
-			l::Value* type = Builder.CreateExtractValue(pair_value, std::vector < unsigned > {1}, s("type of hopeful AST"));
+			l::Value* converter = llvm_function(Builder, dynamic_to_AST, int64_type, int64_type, int64_type, int64_type);
 
 			l::Value* previous_AST;
 			if (type_check(RVO, field_results[1].type, nullptr) == type_check_result::perfect_fit) //previous AST is nullptr.
@@ -763,35 +772,10 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				previous_AST = field_results[1].IR;
 			else return_code(type_mismatch, 1);
 
-			std::vector<l::Value*> arguments{field_results[0].IR, type};
-			l::Value* check_result = Builder.CreateCall(checker_function, arguments, s("checker"));
+			std::vector<l::Value*> arguments{field_results[0].IR, previous_AST, field_results[2].IR};
+			l::Value* AST_result = Builder.CreateCall(converter, arguments, s("converter"));
 
-
-			l::Value* comparison = Builder.CreateICmpNE(check_result, l::ConstantInt::getFalse(thread_context), s("if() condition"));
-			l::Function *TheFunction = Builder.GetInsertBlock()->getParent();
-			l::BasicBlock *SuccessBB = l::BasicBlock::Create(thread_context, s("success"), TheFunction);
-			l::BasicBlock *FailureBB = l::BasicBlock::Create(thread_context, s("failure"));
-			l::BasicBlock *MergeBB = l::BasicBlock::Create(thread_context, s("merge"));
-			Builder.CreateCondBr(comparison, SuccessBB, FailureBB);
-			Builder.SetInsertPoint(SuccessBB);
-
-			l::Value* converter_function = llvm_function(Builder, make_AST_pointer_from_dynamic, int64_type, int64_type, int64_type, int64_type);
-			std::vector<l::Value*> arguments2{field_results[0].IR, previous_AST, pointer};
-			l::Value* success_result = Builder.CreateCall(converter_function, arguments2, s("AST pointer conversion"));
-
-			Builder.CreateBr(MergeBB);
-			SuccessBB = Builder.GetInsertBlock();
-			TheFunction->getBasicBlockList().push_back(FailureBB);
-			Builder.SetInsertPoint(FailureBB);
-
-
-			Builder.CreateBr(MergeBB);
-			FailureBB = Builder.GetInsertBlock();
-			TheFunction->getBasicBlockList().push_back(MergeBB);
-			Builder.SetInsertPoint(MergeBB);
-
-				l::Value* endPN = llvm_create_phi(Builder, success_result, llvm_integer(0), T::AST_pointer, T::AST_pointer, SuccessBB, FailureBB);
-				finish(endPN);
+			finish(AST_result);
 
 		}
 		/*
@@ -892,9 +876,12 @@ void fuzztester(unsigned iterations)
 		if (OLD_AST_OUTPUT) output_AST_and_previous(test_AST);
 		output_AST_console_version a(test_AST);
 
-		bool result = compile_and_run(test_AST);
-		if (result)
+		uint64_t result[3];
+		compile_returning_legitimate_object(result, (uint64_t)test_AST);
+		//auto func = (function*)result[0];
+		if (result[1] == 0)
 		{
+			run_null_parameter_function(result[0]);
 			AST_list.push_back(test_AST);
 			console << AST_list.size() - 1 << "\n";
 			++hitcount[tag];
@@ -910,6 +897,7 @@ void fuzztester(unsigned iterations)
 }
 
 
+bool READER_VERBOSE_DEBUG = false;
 
 #ifdef NDEBUG
 panic time!
@@ -983,7 +971,7 @@ class source_reader
 		string tag = get_token();
 
 		uint64_t AST_type = ASTn(tag.c_str());
-		if (VERBOSE_DEBUG) console << "AST tag was " << AST_type << "\n";
+		if (READER_VERBOSE_DEBUG) console << "AST tag was " << AST_type << "\n";
 		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
 
 		int_or_ptr<uAST> fields[max_fields_in_AST] = { nullptr, nullptr, nullptr, nullptr };
@@ -1015,7 +1003,7 @@ class source_reader
 		//check(next_token == "]", "failed to have ]");
 		uAST* new_type = new(new_type_location) uAST(AST_type, previous_AST, fields[0], fields[1], fields[2], fields[3]);
 
-		if (VERBOSE_DEBUG)
+		if (READER_VERBOSE_DEBUG)
 			output_AST_console_version a(new_type);
 
 		//get an AST name if any.
@@ -1030,7 +1018,7 @@ class source_reader
 			}
 		}
 
-		if (VERBOSE_DEBUG)
+		if (READER_VERBOSE_DEBUG)
 		{
 			console << "next char is" << (char)input.peek() << input.peek();
 			console << '\n';
@@ -1153,7 +1141,7 @@ int main(int argc, char* argv[])
 			source_reader k(std::cin, '\n'); //have to reinitialize to clear the ASTmap
 			console << "Input AST:\n";
 			uAST* end = k.read();
-			if (VERBOSE_DEBUG) console << "Done reading.\n";
+			if (READER_VERBOSE_DEBUG) console << "Done reading.\n";
 			if (end == nullptr)
 			{
 				console << "it's nullptr\n";
@@ -1161,8 +1149,14 @@ int main(int argc, char* argv[])
 				continue;
 			}
 			output_AST_and_previous(end);
-			compile_and_run(end);
+			uint64_t result[3];
+			compile_returning_legitimate_object(result, (uint64_t)end);
+			if (result[1] == 0)
+			{
+				run_null_parameter_function(result[0]);
 			}
+			else std::cout << "wrong!\n";
+		}
 	}
 
 	fuzztester(-1);

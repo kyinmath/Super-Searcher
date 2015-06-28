@@ -16,7 +16,7 @@ problem with pointer_to_AST: is that we can't exactly have ownership.
 for example, if we want to create an AST, we pass in a dynamic type. but can we really create a reference to that type as an AST?
 	generally, no. so we'd have to make a new copy.
 
-benefit of pointer_to_AST: fixed size.
+benefit of pointer_to_AST: variable size.
 %the compilation function knows it can just immute the AST. otherwise, it would need to create a copy
 %AST pointers do need to be pointers when used. we can only compile full objects. so we'd have to make full objects eventually; it's good to bake the fullness into the type.
 

@@ -1,6 +1,5 @@
 #pragma once
 #include <cstdint>
-#include "llvm/ADT/ArrayRef.h"
 uint64_t* allocate(uint64_t size);
 
 template<typename... Args> inline void write_single(uint64_t* memory_location) {}

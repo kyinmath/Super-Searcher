@@ -46,6 +46,11 @@ however, what about other full dynamic pointers, that point to the same object? 
 this system means we can't delete elements from the end of a vector...except we can, vaguely, by truncating the type. then some garbage collection would be necessary, unless the memory region has only a single pointer to it.
 
 we must always consider bootstrap issues. for example, how to make a function that returns compiled functions with fixed type?
-	such a function would need to 
+	if there's no guaranteed mechanism, then such a function would need a static object to substitute. and it's unlikely the judgment function is able to construct these dynamic objects on the fly.
 
 orcjit: I should run a diff on most recent kaleidoscope version, because lhames is changing orc constantly
+
+is it possible for the second branch of a do-after to look at values from the first branch?
+	no, it's not possible. you'd have to go in and edit it afterwards.
+
+try marking check() as constexpr
