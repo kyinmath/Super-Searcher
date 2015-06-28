@@ -30,3 +30,6 @@ stack storage.
 
 
 [convert_to_AST [random] [scope] [dynamic]]
+	usually ought to fail. random > highest possible tag
+[convert_to_AST [integer 8/7?] [scope] [dynamic]]
+	should produce a [random] AST

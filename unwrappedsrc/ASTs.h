@@ -84,7 +84,6 @@ keep AST names to one word only, because our console input takes a single word f
 */
 constexpr AST_info AST_descriptor[] =
 {
-	{"null_AST", T::null}, //tag is 0. used when you create an AST and want nullptr. this AST doesn't actually exist.
 	a("integer", T::integer, T::integer).make_special_fields(1), //first argument is an integer, which is the returned value.
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
 	//{"hello", T::null},
@@ -127,6 +126,9 @@ constexpr AST_info AST_descriptor[] =
 	{ "bitwise not", 1 },
 	{ "bitwise and", 2 },
 	{ "bitwise or", 2 },
+
+	//{"null_AST", T::null}, //tag is 0. used when you create an AST and want nullptr. this AST doesn't actually exist.
+	//since we have guaranteed success, it's super easy for the user to make null ASTs by letting tag >= "never reached"
 	{ "bitwise xor", 2 },*/
 };
 
@@ -148,11 +150,11 @@ struct uAST
 	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };
 
-//pass in a valid AST tag, 1 <= x < "never reached"
+//pass in a valid AST tag, 0 <= x < "never reached"
 inline Type* get_AST_fields_type(uint64_t tag)
 {
 	std::vector<Type*> fields;
-	check(tag != 0, "this is so that some functions like marky_mark() don't need special cases for null objects");
+	//check(tag != 0, "this is so that some functions like marky_mark() don't need special cases for null objects"); //this isn't necessary anymore, because no more null ASTs
 	check(tag < ASTn("never reached"), "get_AST_type is a sandboxed function, use the user facing version instead");
 	int number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
 	for (int x = 0; x < number_of_AST_pointers; ++x) fields.push_back(T::AST_pointer);

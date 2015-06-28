@@ -86,7 +86,7 @@ unsigned compiler_object::compile_AST(uAST* target)
 	auto return_object = generate_IR(target, false);
 	if (return_object.error_code) return return_object.error_code; //error
 
-	return_type = get_unique_type(return_object.type, false); //maybe in the future, we'll mandate that generate_IR uniques it automatically.
+	check(return_type == get_unique_type(return_object.type, false), "compilation returned a non-unique type");
 	//can't be T::nonexistent, because goto can't go forward past the end of a function.
 
 	auto size_of_return = get_size(return_object.type);
@@ -426,7 +426,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	case ASTn("print_int"):
 		{
 			l::Value* printer = llvm_function(Builder, print_uint64_t, void_type, int64_type);
-			finish(Builder.CreateCall(printer, std::vector<l::Value*>{field_results[0].IR}, s("print")));
+			finish(Builder.CreateCall(printer, std::vector<l::Value*>{field_results[0].IR})); //, s("print"). can't give name to void-return functions
 		}
 	case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
 		finish(Builder.CreateCall(llvm_function(Builder, generate_random, int64_type), std::vector<l::Value*>{}, s("random")));
@@ -762,7 +762,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		}
 	case ASTn("convert_to_AST"): //todo: make this guaranteed success
 		{
-			l::IntegerType* boolean = l::IntegerType::get(thread_context, 1);
 			l::Value* converter = llvm_function(Builder, dynamic_to_AST, int64_type, int64_type, int64_type, int64_type);
 
 			l::Value* previous_AST;
@@ -851,7 +850,7 @@ void fuzztester(unsigned iterations)
 	while (iterations--)
 	{
 		//create a random AST
-		unsigned tag = mersenne() % (ASTn("never reached") - 1) + 1; //we skip 0 because that's a null AST
+		unsigned tag = mersenne() % ASTn("never reached");
 		unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
 		unsigned prev_AST = generate_exponential_dist() % AST_list.size(); //perhaps: prove that exponential_dist is desired.
 		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
