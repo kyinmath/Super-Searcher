@@ -6,14 +6,12 @@
 namespace T
 {
 	constexpr Type internal::int_;
-	constexpr Type internal::nonexistent;
-	constexpr Type internal::missing_field;
-	constexpr Type internal::special_return;
-	constexpr Type internal::parameter_no_type_check;
+	constexpr Type internal::does_not_return;
 	constexpr Type internal::cheap_dynamic_pointer;
 	constexpr Type internal::full_dynamic_pointer;
 	constexpr Type internal::type;
 	constexpr Type internal::AST_pointer;
+	constexpr Type internal::function_pointer;
 };
 
 /* this checks if a new reference can be bound to an old reference.
@@ -39,13 +37,13 @@ with RVO, first must be smaller than fields[0]. with reference, it's the opposit
 */
 
 //this ensures that the static variable address is the same across translation units.
-//call it with T::nonexistent from a different translation unit
+//call it with T::does_not_return from a different translation unit, not u::does_not_return
 void debugtypecheck(Type* test)
 {
-	if (test != T::nonexistent)
+	if (test != T::does_not_return)
 	{
 		console << "constexpr address error.\n";
-		output_type(T::nonexistent);
+		output_type(T::does_not_return);
 		output_type(test);
 		abort();
 	}
@@ -70,7 +68,7 @@ type_check_result type_check(type_status version, Type* existing_reference, Type
 		else return type_check_result::new_reference_too_large;
 	}
 	if (iter[0] == iter[1]) return type_check_result::perfect_fit; //easy way out, if lucky. we can't do this later, because our stack might have extra things to look at.
-	if (existing_reference == T::nonexistent) return type_check_result::perfect_fit; //nonexistent means that the code path is never seen.
+	if (existing_reference == u::does_not_return) return type_check_result::perfect_fit; //nonexistent means that the code path is never seen.
 	if (existing_reference->tag != Typen("con_vec")) //not a concatenation
 	{
 		if (new_reference->tag != Typen("con_vec"))
@@ -113,9 +111,9 @@ type_check_result type_check(type_status version, Type* existing_reference, Type
 type_check_result type_check_once(type_status version, Type* existing_reference, Type* new_reference)
 {
 	std::array<Type*, 2> iter{{existing_reference, new_reference}};
-	//T::nonexistent is a special value. we can't be handling it here.
-	check(iter[0] != T::nonexistent, "can't handle nonexistent types in type_check()");
-	check(iter[1] != T::nonexistent, "can't handle nonexistent types in type_check()");
+	//u::does_not_return is a special value. we can't be handling it here.
+	check(iter[0] != u::does_not_return, "can't handle nonexistent types in type_check()");
+	check(iter[1] != u::does_not_return, "can't handle nonexistent types in type_check()");
 
 	
 	/*if fully immut + immut, the new reference can't change the object

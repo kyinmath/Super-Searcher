@@ -14,12 +14,15 @@
 //problem: the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. do we really need to have special cases, just for them?
 //maybe not. in the future, we'll just make sure to wrap them in a unique() function, so that the user only ever sees GC-handled objects.
 
+bool BENCHMARK_GC = true;
+bool VERBOSE_GC = true;
+
 constexpr const uint64_t pool_size = 1000000ull;
 constexpr const uint64_t function_pool_size = 2000ull * 64;
 uint64_t big_memory_pool[pool_size];
 
 function function_pool[function_pool_size]; //some of the items in here can be casted to doubly_linked_lists.
-uint64_t function_pool_flags[function_pool_size / 64]; //each bit is marked 0 if free, 1 if occupied
+uint64_t function_pool_flags[function_pool_size / 64] = {0}; //each bit is marked 0 if free, 1 if occupied. the {0} is necessary by https://stackoverflow.com/questions/629017/how-does-array100-0-set-the-entire-array-to-0#comment441685_629023
 uint64_t* sweep_function_pool_flags; //we need this to be able to run finalizers on the functions.
 
 //todo: a lock on these things. maybe using Lo<>
@@ -33,9 +36,10 @@ void marky_mark(uint64_t* memory, Type* t);
 void initialize_roots();
 void sweepy_sweep();
 
+constexpr uint64_t header_size = 1;
+
 uint64_t* allocate(uint64_t size)
 {
-	constexpr uint64_t header_size = 1;
 	uint64_t true_size = size + header_size;
 	auto k = free_memory.upper_bound(true_size);
 	if (k == free_memory.end())
@@ -79,7 +83,7 @@ function* allocate_function()
 			int offset = __builtin_ctzll(mask);
 			uint64_t bit_mask = 1 << offset;
 			function_pool_flags[x] |= bit_mask;
-			if (VERBOSE_DEBUG) console << "returning allocation " << &function_pool[x * 64 + mask];
+			if (VERBOSE_DEBUG) console << "returning allocation " << &function_pool[x * 64 + mask] << " with number " << x * 64 + mask << '\n';
 			return &function_pool[x * 64 + mask];
 		}
 	}
@@ -88,20 +92,74 @@ function* allocate_function()
 
 void start_GC()
 {
-	sweep_function_pool_flags = new uint64_t[function_pool_size / 64];
+	if (BENCHMARK_GC)
+	{
+		uint64_t total_memory_use = 0;
+		for (auto& x : free_memory)
+		{
+			console << "memory slot " << x.second << " size " << x.first << '\n';
+			total_memory_use += x.first;
+		}
+		console << "total free before GC " << total_memory_use << '\n';
+	}
+	sweep_function_pool_flags = new uint64_t[function_pool_size / 64]();
+	living_objects.clear();
 	initialize_roots();
 	while (!to_be_marked.empty())
 	{
 		auto k = to_be_marked.top();
+		if (VERBOSE_GC)
+		{
+			console << "GC marking " << k.first << " ";
+			output_type(k.second);
+			console << "as a type, it is "; output_type(*(Type**)k.first);
+		}
 		marky_mark(k.first, k.second);
+		to_be_marked.pop();
+	}
+	if (VERBOSE_GC)
+	{
+		for (auto& x : living_objects)
+		{
+			console << "memory slot " << x.first << " size " << x.second << '\n';
+		}
 	}
 
 	sweepy_sweep();
 	delete[] sweep_function_pool_flags;
+
+	if (BENCHMARK_GC)
+	{
+		uint64_t total_memory_use = 0;
+		for (auto& x : free_memory)
+		{
+			console << "memory slot " << x.second << " size " << x.first << '\n';
+			total_memory_use += x.first;
+		}
+		console << "total free after GC " << total_memory_use << '\n';
+	}
 }
+
+extern type_htable_t type_hash_table; //a hash table of all the unique types. don't touch this unless you're the memory allocation
 void initialize_roots()
 {
-	//add in the special types which we need to know about
+	type_hash_table.clear();
+	type_hash_table.insert(u::does_not_return);
+	type_hash_table.insert(u::integer);
+	type_hash_table.insert(u::cheap_dynamic_pointer);
+	type_hash_table.insert(u::full_dynamic_pointer);
+	type_hash_table.insert(u::type);
+	type_hash_table.insert(u::AST_pointer);
+	type_hash_table.insert(u::function_pointer);
+	to_be_marked.push(std::make_pair((uint64_t*)&u::does_not_return, u::type));
+	to_be_marked.push(std::make_pair((uint64_t*)&u::integer, u::type));
+	to_be_marked.push(std::make_pair((uint64_t*)&u::cheap_dynamic_pointer, u::type));
+	to_be_marked.push(std::make_pair((uint64_t*)&u::full_dynamic_pointer, u::type));
+	to_be_marked.push(std::make_pair((uint64_t*)&u::type, u::type));
+	to_be_marked.push(std::make_pair((uint64_t*)&u::AST_pointer, u::type));
+	to_be_marked.push(std::make_pair((uint64_t*)&u::function_pointer, u::type));
+
+
 	//add in the thread ASTs
 }
 
@@ -125,6 +183,8 @@ void marky_mark(uint64_t* memory, Type* t)
 
 void mark_single_element(uint64_t* memory, Type* t)
 {
+	check(memory != nullptr, "passed 0 memory pointer to mark_single");
+	check(t != nullptr, "passed 0 type pointer to mark_single");
 	switch (t->tag)
 	{
 	case Typen("con_vec"):
@@ -140,7 +200,7 @@ void mark_single_element(uint64_t* memory, Type* t)
 			if (living_objects.find(*(uint64_t**)memory) != living_objects.end()) break;
 			living_objects.insert({*(uint64_t**)memory, 2});
 			to_be_marked.push({*(uint64_t**)memory, *(Type**)(memory + 1)}); //pushing the object
-			to_be_marked.push({*(uint64_t**)(memory + 1), T::type}); //pushing the type
+			to_be_marked.push({*(uint64_t**)(memory + 1), u::type}); //pushing the type
 		}
 		break;
 	case Typen("AST pointer"):
@@ -159,11 +219,11 @@ void mark_single_element(uint64_t* memory, Type* t)
 			to_be_marked.push({*(uint64_t**)memory, type_of_type});
 		}
 		break;
-	case Typen("function in clouds"):
+	case Typen("function pointer"):
 		uint64_t number = (function*)memory - function_pool;
 		sweep_function_pool_flags[number / 64] |= (1 << number % 64);
-		mark_single_element(*(uint64_t**)memory, T::AST_pointer); //mark_single is good. don't use marky_mark, because that will attempt to add the function to the existing-items list
-		mark_single_element(*(uint64_t**)(memory+1), T::type);
+		mark_single_element(*(uint64_t**)memory, u::AST_pointer); //mark_single is good. don't use marky_mark, because that will attempt to add the function to the existing-items list
+		mark_single_element(*(uint64_t**)(memory+1), u::type);
 		//future: maybe the parameter
 		break;
 	}
@@ -173,11 +233,13 @@ void sweepy_sweep()
 {
 	free_memory.clear(); //we're constructing the free memory set all over again.
 	uint64_t* memory_incrementor = big_memory_pool; //we're trying to find the first bit of memory that is free
+
 	while (1)
 	{
 		auto next_memory = living_objects.upper_bound(memory_incrementor);
-		if (next_memory->first != memory_incrementor)
-			free_memory.insert({next_memory->first - memory_incrementor, memory_incrementor});
+		uint64_t* ending_location = next_memory->first - header_size;
+		if (ending_location != memory_incrementor)
+			free_memory.insert({ending_location - memory_incrementor, memory_incrementor});
 		memory_incrementor = next_memory->first + next_memory->second;
 		if (next_memory == living_objects.end())
 			break;
@@ -191,10 +253,13 @@ void sweepy_sweep()
 		uint64_t diffmask = function_pool_flags[x] - sweep_function_pool_flags[x];
 		if (diffmask)
 		{
+			console << "diffmask " << diffmask << '\n';
 			for (unsigned offset = 0; offset < 64; ++offset)
-				if (diffmask | (1 << offset))
+				if (diffmask & (1ull << offset))
 				{
-					function_pool[x * 64 + offset].J->removeModule(function_pool[x * 64 + offset].result_module);
+					console << "offset is " << offset << '\n';
+					//function_pool[x * 64 + offset].result_module
+					function_pool[x * 64 + offset].erase(); //we're literally 1 away from the correct function. why are we offset by one?
 				}
 			function_pool_flags[x] = sweep_function_pool_flags[x];
 		}

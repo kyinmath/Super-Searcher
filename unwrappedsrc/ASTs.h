@@ -1,6 +1,13 @@
 #pragma once
 #include "types.h"
 
+enum special_type
+{
+	normal, //the return type is correctly specified in the constexpr array. get it from there
+	missing_field, //the parameter field is entirely missing
+	parameter_no_type_check, //the parameter type is not to be type checked using the default mechanism
+	special_return //indicates that a return type is to be handled differently
+};
 
 /**
 this attaches information to enums.
@@ -13,12 +20,16 @@ struct AST_info
 {
 	const char* name;
 
-	//in ASTs, this is the size of the return object. it's special (= -1ll) if it must be handled in a special way.
-	//in the case of types, the size of the actual object.
-	const int size_of_return;
-
-	Type* return_object; //if this type is null, do not check it using the generic method - check it specially.
-	Type* parameter_types[max_fields_in_AST];
+	struct compile_time_typeinfo
+	{
+		special_type state;
+		Type* const type;
+		constexpr compile_time_typeinfo(Type* t) : state(normal), type(t) {}
+		constexpr compile_time_typeinfo(special_type s) : state(s), type(0) {}
+	};
+	typedef compile_time_typeinfo ctt;
+	ctt return_object; //if this type is null, do not check it using the generic method - check it specially.
+	ctt parameter_types[max_fields_in_AST];
 
 	unsigned pointer_fields; //how many field elements are pointers.
 	//for ASTs, this means pointers to other ASTs. for Types, this means pointers to other Types.
@@ -46,20 +57,20 @@ struct AST_info
 		return new_copy.make_pointer_fields(pointer_fields - x);
 	}
 
-	constexpr int field_count(Type* f1, Type* f2, Type* f3, Type* f4)
+	constexpr int field_count(ctt f1, ctt f2, ctt f3, ctt f4)
 	{
 		int number_of_fields = max_fields_in_AST; //by default, both pointer_fields and number_of_fields will be equal to this.
-		if (f4 == T::missing_field) number_of_fields = 3;
-		if (f3 == T::missing_field) number_of_fields = 2;
-		if (f2 == T::missing_field) number_of_fields = 1;
-		if (f1 == T::missing_field) number_of_fields = 0;
+		if (f4.state == missing_field) number_of_fields = 3;
+		if (f3.state == missing_field) number_of_fields = 2;
+		if (f2.state == missing_field) number_of_fields = 1;
+		if (f1.state == missing_field) number_of_fields = 0;
 		return number_of_fields;
 	};
 
 	//in AST_descriptor[], fields_to_compile and pointer_fields are normally set to the number of parameter types specified.
 	//	however, they can be overridden by make_fields_to_compile() and make_pointer_fields()
-	constexpr AST_info(const char a[], Type* r, Type* f1 = T::missing_field, Type* f2 = T::missing_field, Type* f3 = T::missing_field, Type* f4 = T::missing_field)
-		: name(a), size_of_return(get_size(r)), return_object(r), parameter_types{f1, f2, f3, f4}, pointer_fields(field_count(f1, f2, f3, f4)), fields_to_compile(field_count(f1, f2, f3, f4)){ }
+	constexpr AST_info(const char a[], ctt r, ctt f1 = missing_field, ctt f2 = missing_field, ctt f3 = missing_field, ctt f4 = missing_field)
+		: name(a), return_object(r), parameter_types{f1, f2, f3, f4}, pointer_fields(field_count(f1, f2, f3, f4)), fields_to_compile(field_count(f1, f2, f3, f4)){ }
 
 };
 
@@ -68,17 +79,17 @@ using a = AST_info;
 
 Guidelines for new ASTs:
 first field is the AST name. second field is the return type. remaining optional fields are the parameter types.
-return type is T::special_return if it can't be determined automatically from the AST tag. that means a deeper inspection is necessary.
+return type is "special_return" if it can't be determined automatically from the AST tag. that means a deeper inspection is necessary.
 then, write the compilation code for the AST in generate_IR().
 if you're using the heap, set final_stack_state.
 if you don't want a subfield to be compiled, use make_pointer_fields() and don't specify the parameter type.
 if a subfield isn't actually an AST pointer, but is some other special object like a dynamic object or integer, use make_special_fields() and specify the parameter type.
 
 the number of parameter types determines the number of subfields to be compiled and type-checked automatically. the instructions in these subfields are always run; there's no branching.
-if you want to compile but not type-check a field, use T::parameter_no_type_check.
+if you want to compile but not type-check a field, use parameter_no_type_check.
 if you want to neither compile or type-check a field, use make_pointer_fields().
 in these cases, you must handle the type-checking/compilation manually if it's not done automatically and you want it to be done.
-remember to handle null types and T::nonexistent.
+remember to handle null types and u::does_not_return
 if the AST branches, then make sure to clear temporaries from the stack list before running the other branch.
 keep AST names to one word only, because our console input takes a single word for the name.
 */
@@ -88,25 +99,25 @@ constexpr AST_info AST_descriptor[] =
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
 	//{"hello", T::null},
 	{"print_int", T::null, T::integer},
-	a("if", T::special_return).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
-	{"scope", T::null, T::parameter_no_type_check}, //fulfills the purpose of {} from C++
+	a("if", special_return).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
+	{"scope", T::null, parameter_no_type_check}, //fulfills the purpose of {} from C++
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
 	{"subtract", T::integer, T::integer, T::integer},
 	{"random", T::integer}, //returns a random integer
-	a("pointer", T::special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
-	a("load", T::special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
-	a("concatenate", T::special_return).make_pointer_fields(2),
-	{"dynamic", T::full_dynamic_pointer, T::parameter_no_type_check}, //creates dynamic storage for any kind of object. moves it to the heap.
-	a("compile", T::full_dynamic_pointer, T::AST_pointer).make_pointer_fields(3), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
+	a("pointer", special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
+	a("load", special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
+	a("concatenate", special_return).make_pointer_fields(2),
+	{"dynamic", T::full_dynamic_pointer, parameter_no_type_check}, //creates dynamic storage for any kind of object. moves it to the heap.
+	a("compile", T::function_pointer, T::AST_pointer).make_pointer_fields(3), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
 	//a("temp_generate_AST", T::AST_pointer), //hacked in, generates a random AST.
-	{"dynamic_conc", T::special_return, T::cheap_dynamic_pointer, T::cheap_dynamic_pointer}, //concatenate the interiors of two dynamic pointers
-	a("goto", T::special_return).make_pointer_fields(1),
+	{"dynamic_conc", special_return, T::cheap_dynamic_pointer, T::cheap_dynamic_pointer}, //concatenate the interiors of two dynamic pointers
+	a("goto", special_return).make_pointer_fields(1),
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
-	a("convert_to_AST", T::AST_pointer, T::integer, T::parameter_no_type_check, T::cheap_dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
-	a("store", T::null, T::parameter_no_type_check, T::parameter_no_type_check), //pointer, then value.
+	a("convert_to_AST", T::AST_pointer, T::integer, parameter_no_type_check, T::cheap_dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
+	a("store", T::null, parameter_no_type_check, parameter_no_type_check), //pointer, then value.
 	//a("static_object", T::special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a static object. I think this is obsoleted by load_object; just load a pointer.
-	a("load_object", T::special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a constant. similar to "int x = 40". if the value ends up on the stack, it can still be modified, but any changes are temporary.
-	{"never reached", T::special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
+	a("load_object", special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a constant. similar to "int x = 40". if the value ends up on the stack, it can still be modified, but any changes are temporary.
+	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
 	{ "mul", 2 },
 	{ "divuu", 3 }, //2x int, subAST* on failure
@@ -150,6 +161,7 @@ struct uAST
 	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };
 
+#include "unique_type_creator.h"
 //pass in a valid AST tag, 0 <= x < "never reached"
 inline Type* get_AST_fields_type(uint64_t tag)
 {
@@ -157,15 +169,17 @@ inline Type* get_AST_fields_type(uint64_t tag)
 	//check(tag != 0, "this is so that some functions like marky_mark() don't need special cases for null objects"); //this isn't necessary anymore, because no more null ASTs
 	check(tag < ASTn("never reached"), "get_AST_type is a sandboxed function, use the user facing version instead");
 	int number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
-	for (int x = 0; x < number_of_AST_pointers; ++x) fields.push_back(T::AST_pointer);
-	for (int x = 0; x < AST_descriptor[tag].additional_special_fields; ++x) fields.push_back(AST_descriptor[tag].parameter_types[number_of_AST_pointers + x]);
+	for (int x = 0; x < number_of_AST_pointers; ++x)
+		fields.push_back(u::AST_pointer);
+	for (int x = 0; x < AST_descriptor[tag].additional_special_fields; ++x)
+		fields.push_back(get_unique_type(AST_descriptor[tag].parameter_types[number_of_AST_pointers + x].type, false));
 	return concatenate_types(fields);
 }
 
 
 inline Type* get_AST_full_type(uint64_t tag)
 {
-	return concatenate_types(std::vector<Type*>{T::integer, T::AST_pointer, get_AST_fields_type(tag)});
+	return concatenate_types(std::vector<Type*>{u::integer, u::AST_pointer, get_AST_fields_type(tag)});
 }
 
 #include "memory.h"

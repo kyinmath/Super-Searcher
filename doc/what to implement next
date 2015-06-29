@@ -1,4 +1,6 @@
 0. garbage collector.
+	cleaning up the AST descriptor so that types are all clean
+	then, registering type GC roots
 1. dynamic_get_type(object)
 2. dynamic_assert(object, Type, number)
 3. dynamic_assert_pointer

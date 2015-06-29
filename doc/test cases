@@ -7,6 +7,8 @@ stack storage.
 [label {[hello] [compile [convert_to_AST [integer 2] [scope] [dynamic] [goto a]]]}]a
 	should succeed. prints hello
 
+[compile [convert_to_AST [random] [scope] [dynamic [integer 0]]]0x337e790 [load_object 0] 0x337e790]
+
 
 [integer 30]a [print_int [load a]]
 

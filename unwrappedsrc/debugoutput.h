@@ -42,14 +42,13 @@ private:
 
 //only call on a non-nullptr target. outputs a single Type. doesn't have the right number of fields, but that's probably ok.
 //for debug purposes, we don't want to limit it to the number of pointer fields.
-inline void output_type(Type* target)
+inline void output_type(const Type* target)
 {
 	if (target == nullptr)
 	{
 		console << "null type\n";
 		return;
 	}
-	if (target == T::special_return) { console << "special\n"; return; }
 	console << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), addr " << target << ", ";
 	console << "fields";
 	for (auto& x : Type_everything_range(target))

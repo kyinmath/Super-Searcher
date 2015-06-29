@@ -18,7 +18,7 @@ What AST_descriptor[] does is utilize this constructor to build a rich descripti
 Type_descriptor[] works similarly, using the enum-like class Type_info. Looking at the constructor for Type_info, we see that the first argument is the type name, the second type is the number of pointer fields each Type requires, and the third type is the size of the object that the Type describes.
 For example, { "cheap pointer", 1, 1 } tells us that there is a Type that has name "cheap pointer" (the first argument), and its first field is a pointer to a Type that describes the object that is being pointed to (the second argument), and the size of the pointer is 1 (the third argument).
 
-The class AST_info has some other functions, which are mainly for special cases. For example, the "if" AST should not have its fields automatically converted to IR, because it needs to build basic blocks before it can emit the IR in the correct basic block. Moreover, its return value is not known beforehand - it depends on its "then" and "else" fields. Therefore, its return value is "T::special_return", indicating that it cannot be treated in the usual way. Since its fields cannot be automatically compiled, its parameter types are left blank, and the function "make_pointer_fields" is applied instead. This says that the fields are there, but that IR should not be automatically generated for them.
+The class AST_info has some other functions, which are mainly for special cases. For example, the "if" AST should not have its fields automatically converted to IR, because it needs to build basic blocks before it can emit the IR in the correct basic block. Moreover, its return value is not known beforehand - it depends on its "then" and "else" fields. Therefore, its return value is "special_return", indicating that it cannot be treated in the usual way. Since its fields cannot be automatically compiled, its parameter types are left blank, and the function "make_pointer_fields" is applied instead. This says that the fields are there, but that IR should not be automatically generated for them.
 
 Later, we'll have some ASTs that let the user actually query this information.
 */
@@ -79,27 +79,27 @@ struct Type_info
 	constexpr Type_info(const char a[], uint64_t n, uint64_t s) : name(a), pointer_fields(n), size(s) {}
 };
 
-constexpr uint64_t special = -1ll; //note that a -1 literal, without specifying ll, can either be int32 or int64, so we could be in great trouble.
+constexpr uint64_t minus_one = -1ll; //note that a -1 literal, without specifying ll, can either be int32 or int64, so we could be in great trouble.
 
 using _t = Type_info;
 /* Guidelines for new Types:
 you must create an entry in type_check.
-full_validity.
+is_full, if the Type is inherently a cheap pointer.
 marky_mark.
 
 todo: fill in types in type_check()
 */
 constexpr Type_info Type_descriptor[] =
 {
-	{"con_vec", special, special}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types.
+	{"con_vec", minus_one, minus_one}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types.
 	{"integer", 0, 1}, //64-bit integer
 	_t("pointer", 1, 1).make_special_fields(1), //pointer to anything, except the target type must be non-nullptr. second field is 1 if it's a full pointer, and 0 otherwise
 	_t("dynamic pointer", 0, 1).make_special_fields(1), //dynamic pointer. a double-indirection. points to two elements: first field is the pointer, second field is a pointer to the type. the purpose of double indirection is lock safety. if the type will be null, then the very first pointer is nullptr.
 	{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
 	//the actual object has 2+fields: tag, then previous, then some fields.
 	{"type pointer", 0, 1},
-	{"function in clouds", 2, 2}, //points to: return AST, then parameter AST, then compiled area. we don't embed the AST along with the function signature, in order to keep them separate.
-	{"nonexistent", 0, 0}, //a special value
+	{"function pointer", 2, 2}, //points to: return AST, then parameter AST, then compiled area. we don't embed the AST along with the function signature, in order to keep them separate.
+	{"does not return", 0, 0}, //a special value
 	{"never reached", 0, 0},
 	//we want the parameter AST to be before everything that might use it, so having it as a first_pointer is not good, since the beginning of the function might change.
 };
@@ -155,7 +155,7 @@ struct Type_pointer_range
 struct Type_everything_range
 {
 	Type* t;
-	Type_everything_range(Type* t_) : t(t_) {}
+	Type_everything_range(const Type* t_) : t((Type*)t_) {}
 	uint64_t tag;
 	Type* fields;
 	Type** begin() { return &(t->fields[0].ptr); }
@@ -191,38 +191,53 @@ inline Type* copy_type(const Type* t)
 	return (Type*)(new_type);
 }
 
-//when creating a new element here, remember to instantiate it in types.cpp.
-//the reason these are static members of struct internal is so that the address is the same across translation units.
-//otherwise, it's not. see https://stackoverflow.com/questions/7368330/static-members-and-the-default-constructor-c
+/*when creating a new element here:
+1. instantiate it in types.cpp.
+2. make a u:: version just below
+3. instantiate the u::version in unique_type_creator.cpp
+4. add the u::version to the gc roots in memory.cpp
+the reason these are static members of struct internal is so that the address is the same across translation units.
+otherwise, it's not. see https://stackoverflow.com/questions/7368330/static-members-and-the-default-constructor-c
+
+T::type are all internal types to fill out the constexpr vector. don't let the user see any T::type! instead, use the u::type versions, which are uniqued versions.
+*/
 namespace T
 {
 	struct internal
 	{
 		static constexpr Type int_{"integer"};
-		static constexpr Type nonexistent{"nonexistent"};
-		static constexpr Type missing_field{"nonexistent"};
-		static constexpr Type special_return{"integer"};
-		static constexpr Type parameter_no_type_check{"integer"};
+		static constexpr Type does_not_return{"does not return"};
 		static constexpr Type cheap_dynamic_pointer{"dynamic pointer"};
 		static constexpr Type full_dynamic_pointer{"dynamic pointer", 1};
 		static constexpr Type type{"type pointer"};
 		static constexpr Type AST_pointer{"AST pointer"};
+		static constexpr Type function_pointer{"function pointer"};
 		//static constexpr Type error_object{concatenate_types(std::vector<Type*>{const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer), const_cast<Type* const>(&int_)})};
 		//error_object is int, pointer to AST, int. it's what is returned when compilation fails: the error code, then the AST, then the field.
 	};
 	typedef internal i;
-	constexpr Type* nonexistent = const_cast<Type* const>(&i::nonexistent); //nothing at all. used for goto. effectively disables type checking for that field.
-	constexpr Type* missing_field = const_cast<Type* const>(&i::missing_field); //used to say that a parameter field is missing
-	constexpr Type* special_return = const_cast<Type* const>(&i::special_return); //indicates that a return type is to be handled differently
-	constexpr Type* parameter_no_type_check = const_cast<Type* const>(&i::parameter_no_type_check); //indicates that a parameter type is not to be type checked using the default mechanism
+	constexpr Type* does_not_return = const_cast<Type* const>(&i::does_not_return);  //the field can't return. used for goto. effectively makes type checking always pass.
 	constexpr Type* integer = const_cast<Type* const>(&i::int_); //describes an integer type
 	constexpr Type* cheap_dynamic_pointer = const_cast<Type* const>(&i::cheap_dynamic_pointer);
 	constexpr Type* full_dynamic_pointer = const_cast<Type* const>(&i::full_dynamic_pointer);
-	constexpr Type* null = nullptr;
 	constexpr Type* type = const_cast<Type* const>(&i::type);
 	constexpr Type* AST_pointer = const_cast<Type* const>(&i::AST_pointer);
+	constexpr Type* function_pointer = const_cast<Type* const>(&i::function_pointer);
+	constexpr Type* null = nullptr;
 };
 
+//the actual objects are placed in unique_type_creator.cpp, to avoid static initialization fiasco
+namespace u
+{
+	extern Type* does_not_return;
+	extern Type* integer;
+	extern Type* cheap_dynamic_pointer;
+	extern Type* full_dynamic_pointer;
+	extern Type* type;
+	extern Type* AST_pointer;
+	extern Type* function_pointer;
+	constexpr Type* null = nullptr;
+};
 Type* concatenate_types(llvm::ArrayRef<Type*> components);
 
 /*
@@ -236,7 +251,7 @@ constexpr uint64_t get_size(Type* target) __attribute__((pure));
 constexpr uint64_t get_size(Type* target)
 {
 	if (target == nullptr) return 0;
-	else if (Type_descriptor[target->tag].size != special) return Type_descriptor[target->tag].size;
+	else if (Type_descriptor[target->tag].size != minus_one) return Type_descriptor[target->tag].size;
 	else if (target->tag == Typen("con_vec"))
 	{
 		uint64_t total_size = 0;
@@ -250,7 +265,7 @@ enum type_status { RVO, reference }; //distinguishes between RVOing an object, o
 
 
 //from experience, we can't have the return value automatically work as a bool, because that causes errors.
-//note that if it's a perfect fit, the sizes may still be different, because of T::nonexistent.
+//note that if it's a perfect fit, the sizes may still be different, because of u::nonexistent.
 enum class type_check_result
 {
 	different,
@@ -262,19 +277,19 @@ enum class type_check_result
 //includes the tag in the result type.
 inline Type* get_Type_full_type(Type* t)
 {
-	std::vector<Type*> fields{T::integer}; //the tag
+	std::vector<Type*> fields{u::integer}; //the tag
 	if (t->tag != Typen("con_vec"))
 	{
 		uint64_t number_of_pointers = Type_descriptor[t->tag].pointer_fields;
-		for (uint64_t x = 0; x < number_of_pointers; ++x) fields.push_back(T::type);
-		for (uint64_t x = 0; x < Type_descriptor[t->tag].additional_special_fields; ++x) fields.push_back(T::integer);
+		for (uint64_t x = 0; x < number_of_pointers; ++x) fields.push_back(u::type);
+		for (uint64_t x = 0; x < Type_descriptor[t->tag].additional_special_fields; ++x) fields.push_back(u::integer);
 		return concatenate_types(fields);
 	}
 	else
 	{
-		fields.push_back(T::integer);
+		fields.push_back(u::integer);
 		uint64_t number_of_pointers = t->fields[0].num;
-		for (uint64_t x = 0; x < number_of_pointers; ++x) fields.push_back(T::type);
+		for (uint64_t x = 0; x < number_of_pointers; ++x) fields.push_back(u::type);
 		return concatenate_types(fields);
 	}
 }

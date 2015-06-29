@@ -42,7 +42,7 @@ inline uint64_t compile_user_facing(uint64_t target)
 		//todo: make this actually work.
 
 		//Type* function_return_type = a.return_type;
-		return_type_pointer = new_type(Typen("function in clouds"), std::vector<Type*>{a.return_type, a.parameter_type});
+		return_type_pointer = new_type(Typen("function pointer"), std::vector<Type*>{a.return_type, a.parameter_type});
 	}
 	return make_dynamic((uint64_t)return_object_pointer, (uint64_t)return_type_pointer);
 }

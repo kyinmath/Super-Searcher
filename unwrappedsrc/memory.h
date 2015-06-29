@@ -16,3 +16,6 @@ template<typename... Args> inline uint64_t* new_object(Args... args)
 	write_single(new_memory_slot, args...);
 	return new_memory_slot;
 }
+
+
+void start_GC();

@@ -86,8 +86,9 @@ unsigned compiler_object::compile_AST(uAST* target)
 	auto return_object = generate_IR(target, false);
 	if (return_object.error_code) return return_object.error_code; //error
 
-	check(return_type == get_unique_type(return_object.type, false), "compilation returned a non-unique type");
-	//can't be T::nonexistent, because goto can't go forward past the end of a function.
+	return_type = return_object.type;
+	check(return_type == get_unique_type(return_type, false), "compilation returned a non-unique type");
+	//can't be u::does_not_return, because goto can't go forward past the end of a function.
 
 	auto size_of_return = get_size(return_object.type);
 	FunctionType* FT = FunctionType::get(llvm_type_including_void(size_of_return), false);
@@ -213,7 +214,7 @@ currently, the finish() macro takes in the array itself, not the pointer-to-arra
 Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
-#define return_code(X, Y) do { error_location = user_target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, T::null, stack_state::temp, 0, 0, 0); } while (0)
+#define return_code(X, Y) do { error_location = user_target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, u::null, stack_state::temp, 0, 0, 0); } while (0)
 
 	llvm::IRBuilder<>& Builder = C.getBuilder();
 
@@ -286,9 +287,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	//if stack_degree >= 1, this will ignore return_value and use "memory_location desired" instead
 	auto finish_internal = [&](l::Value* return_value, Type* type, uint64_t self_validity_guarantee, uint64_t target_hit_contract, bool move_to_stack) -> Return_Info
 	{
-		check(type != T::special_return, "didn't specify return type when necessary");
-
-
+		check(type == get_unique_type(type, false), "returned non unique type in finish()");
 		if (VERBOSE_DEBUG && return_value != nullptr)
 		{
 			console << "finish() in generate_IR, called value is ";
@@ -367,10 +366,10 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 #define finish_special_stack_handled_pointer(X, type, u, l) do { return finish_internal(X, type, u, l, false); } while (0)
 
 	//make sure not to duplicate X in the expression.
-#define finish_pointer(X, u, l) do {finish_special_pointer(X, AST_descriptor[target->tag].return_object, u, l); } while (0)
+#define finish_pointer(X, u, l) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special_pointer(X, get_unique_type(AST_descriptor[target->tag].return_object.type, false), u, l); } while (0)
 #define finish(X) do { finish_pointer(X, 0, -1ll); } while (0)
-#define finish_stack_handled(X) do { return finish_internal(X, AST_descriptor[target->tag].return_object, 0, -1ll, false); } while (0)
-#define finish_stack_handled_pointer(X, u, l) do { return finish_internal(X, AST_descriptor[target->tag].return_object, u, l, false); } while (0)
+#define finish_stack_handled(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); return finish_internal(X, get_unique_type(AST_descriptor[target->tag].return_object.type, false), 0, -1ll, false); } while (0)
+#define finish_stack_handled_pointer(X, u, l) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); return finish_internal(X, get_unique_type(AST_descriptor[target->tag].return_object.type, false), u, l, false); } while (0)
 
 
 	for (unsigned x = 0; x < AST_descriptor[target->tag].fields_to_compile; ++x)
@@ -387,17 +386,17 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			console << "type checking. result type is \n";
 			output_type_and_previous(result.type);
 			console << "desired type is \n";
-			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x]);
+			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x].type);
 		}
 
 		//check that the type matches.
-		if (AST_descriptor[target->tag].parameter_types[x] != T::parameter_no_type_check) //for fields that are compiled but not type checked
+		if (AST_descriptor[target->tag].parameter_types[x].state != parameter_no_type_check) //for fields that are compiled but not type checked
 		{
-			if (AST_descriptor[target->tag].parameter_types[x] == T::nonexistent)
-				finish_special(nullptr, T::nonexistent); //just get out of here, since we're never going to run the current command anyway.
+			if (get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false) == u::does_not_return)
+				finish_special(nullptr, u::does_not_return); //just get out of here, since we're never going to run the current command anyway.
 			//this is fine with labels even though labels require emission whether reached or not, because labels don't compile using the default mechanism
 			//even if there are labels skipped over by this escape, nobody can see them because of our try-catch goto scheme.
-			if (type_check(RVO, result.type, AST_descriptor[target->tag].parameter_types[x]) != type_check_result::perfect_fit) return_code(type_mismatch, x);
+			if (type_check(RVO, result.type, get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false)) != type_check_result::perfect_fit) return_code(type_mismatch, x);
 		}
 
 		field_results.push_back(result);
@@ -437,7 +436,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			auto condition = generate_IR(target->fields[0].ptr, 0);
 			if (condition.error_code) return condition;
 
-			if (type_check(RVO, condition.type, T::integer) != type_check_result::perfect_fit) return_code(type_mismatch, 0);
+			if (type_check(RVO, condition.type, u::integer) != type_check_result::perfect_fit) return_code(type_mismatch, 0);
 
 
 			//since the fields are conditionally executed, the temporaries generated in each branch are not necessarily referenceable.
@@ -490,9 +489,9 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			// Emit merge block.
 			TheFunction->getBasicBlockList().push_back(MergeBB);
 			Builder.SetInsertPoint(MergeBB);
-			if (else_IR.type == T::nonexistent)
+			if (else_IR.type == u::does_not_return)
 				finish_special_stack_handled_pointer(then_IR.IR, then_IR.type, then_IR.self_validity_guarantee, then_IR.target_hit_contract);
-			else if (then_IR.type == T::nonexistent)
+			else if (then_IR.type == u::does_not_return)
 				finish_special_stack_handled_pointer(else_IR.IR, else_IR.type, else_IR.self_validity_guarantee, else_IR.target_hit_contract);
 
 			uint64_t result_self_validity_guarantee = std::max(then_IR.self_validity_guarantee, else_IR.self_validity_guarantee);
@@ -545,7 +544,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				l::BasicBlock *JunkBB = l::BasicBlock::Create(thread_context, s("never reached"), Builder.GetInsertBlock()->getParent());
 				Builder.SetInsertPoint(JunkBB);
 
-				finish_special(nullptr, T::nonexistent);
+				finish_special(nullptr, u::does_not_return);
 			}
 
 			//check finiteness
@@ -624,12 +623,12 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			{
 				half[x] = generate_IR(target->fields[x].ptr, 1, desired);
 				if (half[x].error_code) return half[x];
-				if (half[x].type == T::nonexistent) finish_special(nullptr, T::nonexistent);
+				if (half[x].type == u::does_not_return) finish_special(nullptr, u::does_not_return);
 				desired.offset += get_size(half[x].type);
 			}
 			uint64_t final_size = desired.offset - original_offset;
 			desired.offset -= final_size;
-			if (final_size == 0) finish_special(nullptr, T::null);
+			if (final_size == 0) finish_special(nullptr, u::null);
 			l::Value* final_value;
 			if (stack_degree == 0)
 			{
@@ -714,12 +713,13 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		}
 	case ASTn("compile"):
 		{
-			l::Value* compile_function = llvm_function(Builder, compile_returning_legitimate_object, void_type, int64_type, int64_type);
+			l::Value* compile_function = llvm_function(Builder, compile_returning_legitimate_object, void_type, int64_type->getPointerTo(), int64_type);
 
 			llvm::AllocaInst* return_holder = create_actual_alloca(3);
-			Builder.CreateCall(compile_function, std::vector<l::Value*>{return_holder, field_results[0].IR}, s("compile"));
+			llvm::Value* forcing_return_type = Builder.CreatePointerCast(return_holder, int64_type->getPointerTo(), "forcing return type");
+			Builder.CreateCall(compile_function, std::vector<l::Value*>{forcing_return_type, field_results[0].IR}); //, s("compile"). void type means no name allowed
 			auto error_object = memory_location(return_holder, 1);
-			Type* error_type = concatenate_types(std::vector < Type* > {T::integer, T::cheap_dynamic_pointer});
+			Type* error_type = concatenate_types(std::vector < Type* > {u::integer, u::cheap_dynamic_pointer});
 			object_stack.push({user_target, true});
 			auto insert_result = objects.insert({user_target, Return_Info(IRgen_status::no_error, error_object, error_type, final_stack_state, lifetime_of_return_value, lifetime_of_return_value, lifetime_of_return_value)});
 			if (!insert_result.second) return_code(active_object_duplication, 10);
@@ -729,7 +729,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			auto condition = Builder.CreateLoad(error_code.get_location(Builder, 1));
 
 
-			l::Value* comparison = Builder.CreateICmpNE(condition, l::ConstantInt::getFalse(thread_context), s("if() condition"));
+			l::Value* comparison = Builder.CreateICmpNE(condition, llvm_integer(0), s("compile branching"));
 			l::Function *TheFunction = Builder.GetInsertBlock()->getParent();
 			l::BasicBlock *SuccessBB = l::BasicBlock::Create(thread_context, s("success"), TheFunction);
 			l::BasicBlock *FailureBB = l::BasicBlock::Create(thread_context, s("failure"));
@@ -767,7 +767,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			l::Value* previous_AST;
 			if (type_check(RVO, field_results[1].type, nullptr) == type_check_result::perfect_fit) //previous AST is nullptr.
 				previous_AST = llvm_integer(0);
-			else if (type_check(RVO, field_results[1].type, T::AST_pointer) == type_check_result::perfect_fit) //previous AST actually exists
+			else if (type_check(RVO, field_results[1].type, u::AST_pointer) == type_check_result::perfect_fit) //previous AST actually exists
 				previous_AST = field_results[1].IR;
 			else return_code(type_mismatch, 1);
 
@@ -863,7 +863,7 @@ void fuzztester(unsigned iterations)
 			fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous ASTs
 		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
 		{
-			if (AST_descriptor[tag].parameter_types[incrementor] == T::integer)
+			if (AST_descriptor[tag].parameter_types[incrementor].type == u::integer)
 				fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields
 			else
 			{
@@ -892,6 +892,7 @@ void fuzztester(unsigned iterations)
 			std::cin.get();
 		}
 		console << "\n";
+		start_GC();
 	}
 }
 
@@ -1076,6 +1077,8 @@ int main(int argc, char* argv[])
 	l::InitializeNativeTargetAsmParser();
 
 	c = new compiler_host;
+	console << "compiler host is at " << c << '\n';
+	console << "its JIT is at " << &(c->J) << '\n';
 
 	//these do nothing
 	//assert(0);
@@ -1105,7 +1108,7 @@ int main(int argc, char* argv[])
 	}
 
 	test_unique_types();
-	debugtypecheck(T::nonexistent);
+	debugtypecheck(T::does_not_return);
 
 	/*
 	AST get1("integer", nullptr, 1); //get the integer 1
