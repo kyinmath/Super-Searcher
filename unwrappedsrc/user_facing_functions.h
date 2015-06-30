@@ -5,48 +5,6 @@
 //warning: array<uint64_t, 2> becomes {i64, i64}
 //using our current set of optimization passes, the undef+insertvalue operations aren't optimized to anything better.
 
-inline uint64_t make_dynamic(uint64_t pointer_to_object, uint64_t pointer_to_type)
-{
-	return (uint64_t)(new_object(pointer_to_object, pointer_to_type));
-}
-
-
-/* this is a function that the compile() AST will call.
-returns a pointer to the return object, which is either:
-1. a working fptr
-2. a failure object to be read
-the bool is TRUE if the compilation is successful, and FALSE if not.
-this determines what the type of the pointer is.
-
-the type of target is actually of type AST*. it's stated as uint64_t for current convenience
-
-NOTE: std::array<2> becomes {uint64_t, uint64_t}. but array<4> becomes [i64 x 4].
-*/
-inline uint64_t compile_user_facing(uint64_t target)
-{
-	compiler_object a;
-	unsigned error = a.compile_AST((uAST*)target);
-
-	void* return_object_pointer;
-	Type* return_type_pointer;
-	if (error)
-	{
-		uint64_t* error_return = new_object(error, (uint64_t)a.error_location, a.error_field);
-
-		return_object_pointer = error_return;
-		return_type_pointer = concatenate_types(std::vector < Type* > {T::integer, T::AST_pointer, T::integer});
-	}
-	else
-	{
-		return_object_pointer = nullptr;
-		//todo: make this actually work.
-
-		//Type* function_return_type = a.return_type;
-		return_type_pointer = new_type(Typen("function pointer"), std::vector<Type*>{a.return_type, a.parameter_type});
-	}
-	return make_dynamic((uint64_t)return_object_pointer, (uint64_t)return_type_pointer);
-}
-
 #include "function.h"
 /*first argument is the location of the return object. if we didn't do this, we'd be forced to anyway, by http://www.uclibc.org/docs/psABI-i386.pdf P13. that's the way structs are returned, when 3 or larger.
 takes in AST.
@@ -117,14 +75,14 @@ inline uint64_t run_null_parameter_function(uint64_t func_int)
 	return 923913;
 }
 
-//each parameter is an int64[2]*
-inline uint64_t concatenate_dynamic(uint64_t first_dynamic, uint64_t second_dynamic)
+//each parameter is a pointer
+inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_pointer, uint64_t first_type, uint64_t second_pointer, uint64_t second_type)
 {
+	uint64_t* pointer[2] = {(uint64_t*)first_pointer, (uint64_t*)second_pointer};
+	Type* type[2] = {(Type*)first_type, (Type*)second_type};
 
-	if (first_dynamic == 0) return second_dynamic;
-	else if (second_dynamic == 0) return first_dynamic;
-	uint64_t* pointer[2] = {((uint64_t**)first_dynamic)[0], ((uint64_t**)second_dynamic)[0]};
-	Type* type[2] = {((Type**)first_dynamic)[1], ((Type**)second_dynamic)[1]};
+	if (type[0] == 0) return std::array<uint64_t, 2>{{second_pointer, second_type}};
+	else if (type[1] == 0) return std::array<uint64_t, 2>{{first_pointer, first_type}};
 	uint64_t size[2];
 	for (int x : { 0, 1 })
 	{
@@ -134,7 +92,7 @@ inline uint64_t concatenate_dynamic(uint64_t first_dynamic, uint64_t second_dyna
 	uint64_t* new_dynamic = allocate(size[0] + size[1]);
 	for (uint64_t idx = 0; idx < size[0]; ++idx) new_dynamic[idx] = pointer[0][idx];
 	for (uint64_t idx = 0; idx < size[1]; ++idx) new_dynamic[idx + size[0]] = pointer[1][idx];
-	return make_dynamic((uint64_t)new_dynamic, (uint64_t)concatenate_types(std::vector<Type*>{type[0], type[1]}));
+	return std::array<uint64_t, 2>{{(uint64_t)new_dynamic, (uint64_t)concatenate_types(std::vector<Type*>{type[0], type[1]})}};
 }
 
 #include "memory.h"
@@ -145,10 +103,10 @@ inline uint64_t user_allocate_memory(uint64_t size)
 }
 
 //returns pointer-to-AST
-inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t dynamic)
+inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t object, uint64_t type)
 {
 	if (tag >= ASTn("never reached")) return 0; //you make a null AST if the tag is too high
-	if (dynamic == 0)
+	if (type == 0)
 	{
 		if (type_check(RVO, 0, get_AST_fields_type(tag)) != type_check_result::perfect_fit)
 			return 0;
@@ -156,8 +114,8 @@ inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t dynamic
 	}
 	else
 	{
-		uAST* object = *(uAST**)(dynamic);
-		Type* dyn_type = *((Type**)(dynamic) + 1);
+		uAST* object = (uAST*)object;
+		Type* dyn_type = (Type*)type;
 		if (type_check(RVO, dyn_type, get_AST_fields_type(tag)) != type_check_result::perfect_fit) //this is RVO because we're copying the dynamic object over.
 			return 0;
 		return (uint64_t)new_AST(tag, (uAST*)previous, object);

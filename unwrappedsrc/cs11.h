@@ -120,7 +120,6 @@ struct memory_location //used for GEP. good for delaying emission of instruction
 			{
 				//if offset == 0, we don't need to GEP, because it will be casted anyway.
 				if (offset) spot = llvm::cast<llvm::AllocaInst>(Builder.CreateConstInBoundsGEP2_64(base, 0, offset));
-				console << "tst abort"; abort();
 				spot = llvm::cast<llvm::AllocaInst>(Builder.CreatePointerCast(spot, llvm_array(size)->getPointerTo()));
 			}
 			else //size is 1
@@ -243,7 +242,6 @@ class compiler_object
 public:
 	compiler_object() : S(c->S), J(c->J), C(S), error_location(nullptr) {}
 	unsigned compile_AST(uAST* target); //we can't combine this with the ctor, because it needs to return an int
-	//todo: right now, compile_AST runs the function that it creates. that's not what we want.
 
 	void* fptr; //the end fptr.
 

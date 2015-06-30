@@ -638,10 +638,8 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			else
 			{
 				final_value = nullptr;
-				desired.set_stored_size(final_size); //automatically becomes the proper return value, likre a hidden parameter to finish()
+				desired.set_stored_size(final_size); //automatically becomes the proper return value, like a hidden parameter to finish()
 			}
-			//get_location is bad because it will emit a pointer bitcast since we haven't yet casted the base.
-			//however, get_location does the GEP we need for single-width allocas.
 
 			uint64_t result_target_life_guarantee = std::max(half[0].self_validity_guarantee, half[1].self_validity_guarantee);
 			uint64_t result_target_hit_contract = std::min(half[0].target_hit_contract, half[1].target_hit_contract);
@@ -682,34 +680,62 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				Type* type_of_dynamic_object = get_unique_type(field_results[0].type, false);
 				l::Constant* integer_type_pointer = llvm_integer((uint64_t)type_of_dynamic_object);
 
-				l::Value* indirect_object = llvm_function(Builder, make_dynamic, int64_type, int64_type, int64_type);
-				l::Value* final_dynamic = Builder.CreateCall(indirect_object, std::vector<l::Value*>{dynamic_object_address, integer_type_pointer}, s("make_dynamic"));
-				finish(final_dynamic);
+				//we now serialize both objects to become integers.
+				l::Value* undef_value = l::UndefValue::get(llvm_array(2));
+				l::Value* first_value = Builder.CreateInsertValue(undef_value, dynamic_object_address, std::vector < unsigned > { 0 });
+				l::Value* full_value = Builder.CreateInsertValue(first_value, integer_type_pointer, std::vector < unsigned > { 1 });
+				finish(full_value);
 			}
 			else
 			{
 				//zero array, for null dynamic object.
-				//finish(llvm_integer(make_dynamic(0, 0)));
-				finish(llvm_integer(0));
+				finish(l::ConstantArray::get(llvm_array(2), std::vector<l::Constant*>{llvm_integer(0), llvm_integer(0)}));
 			}
 		}
 	case ASTn("dynamic_conc"):
 		{
-			std::vector<l::Type*> argument_types{int64_type, int64_type};
-			l::FunctionType* dynamic_conc_type = l::FunctionType::get(int64_type, argument_types, false);
+			l::Value* pointer[2];
+			l::Value* type[2];
+			for (int x : {0, 1})
+			{
+				//can't gep because it's not in memory
+				pointer[x] = Builder.CreateExtractValue(field_results[x].IR, std::vector<unsigned>{0}, s("object pointer of dynamic"));
+				type[x] = Builder.CreateExtractValue(field_results[x].IR, std::vector<unsigned>{1}, s("type pointer of dynamic"));
+			}
+
+			std::vector<l::Type*> argument_types{int64_type, int64_type, int64_type, int64_type};
+			//l::Type* return_type = llvm_array(2);
+
+			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
+			//if ever the optimization changes, we might be in trouble.
+			std::vector<l::Type*> return_types{int64_type, int64_type};
+			l::Type* return_type = l::StructType::get(thread_context, return_types);
+			l::FunctionType* dynamic_conc_type = l::FunctionType::get(return_type, argument_types, false);
 
 			l::PointerType* dynamic_conc_type_pointer = dynamic_conc_type->getPointerTo();
 			l::Constant *twister_address = llvm_integer((uint64_t)&concatenate_dynamic);
 			l::Value* dynamic_conc_function = Builder.CreateIntToPtr(twister_address, dynamic_conc_type_pointer, s("convert integer address to actual function"));
 
-			std::vector<l::Value*> arguments{field_results[0].IR, field_results[1].IR};
+			std::vector<l::Value*> arguments{pointer[0], type[0], pointer[1], type[1]};
 			l::Value* result_of_compile = Builder.CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
 
-			//we're creating it in heap memory, but if we're copying pointers, we're in trouble.
+
+
+
+			//this transformation is necessary because array<uint64_t, 2> becomes {i64, i64}
+			//using our current set of optimization passes, this operation isn't optimized to anything better.
+			l::Value* undef_value = l::UndefValue::get(llvm_array(2));
+
+			l::Value* first_return = Builder.CreateExtractValue(result_of_compile, std::vector<unsigned>{0});
+			l::Value* first_value = Builder.CreateInsertValue(undef_value, first_return, std::vector<unsigned>{0});
+
+			l::Value* second_return = Builder.CreateExtractValue(result_of_compile, std::vector<unsigned>{1});
+			l::Value* full_value = Builder.CreateInsertValue(first_value, second_return, std::vector<unsigned>{1});
+
 			bool is_full_dynamic = is_full(field_results[0].type) && is_full(field_results[1].type);
 			Type* dynamic_type = get_non_convec_unique_type(Type(Typen("dynamic pointer"), is_full_dynamic));
 
-			finish_special(result_of_compile, dynamic_type);
+			finish_special(full_value, dynamic_type);
 		}
 	case ASTn("compile"):
 		{
@@ -760,9 +786,9 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			auto return_object = Builder.CreateLoad(return_location.get_location(Builder, 1));
 			finish(return_object);
 		}
-	case ASTn("convert_to_AST"): //todo: make this guaranteed success
+	case ASTn("convert_to_AST"):
 		{
-			l::Value* converter = llvm_function(Builder, dynamic_to_AST, int64_type, int64_type, int64_type, int64_type);
+			l::Value* converter = llvm_function(Builder, dynamic_to_AST, int64_type, int64_type, int64_type, int64_type, int64_type);
 
 			l::Value* previous_AST;
 			if (type_check(RVO, field_results[1].type, nullptr) == type_check_result::perfect_fit) //previous AST is nullptr.
@@ -771,7 +797,11 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				previous_AST = field_results[1].IR;
 			else return_code(type_mismatch, 1);
 
-			std::vector<l::Value*> arguments{field_results[0].IR, previous_AST, field_results[2].IR};
+
+			l::Value* pointer = Builder.CreateExtractValue(field_results[2].IR, std::vector < unsigned > {0}, s("fields of hopeful AST"));
+			l::Value* type = Builder.CreateExtractValue(field_results[2].IR, std::vector < unsigned > {1}, s("type of hopeful AST"));
+
+			std::vector<l::Value*> arguments{field_results[0].IR, previous_AST, pointer, type};
 			l::Value* AST_result = Builder.CreateCall(converter, arguments, s("converter"));
 
 			finish(AST_result);
@@ -843,6 +873,7 @@ each remaining field is chosen randomly according to an exponential distribution
 finally, if the created AST successfully compiles, it is added to the vector of working ASTs.
 
 todo: this scheme can't produce forward references, which are necessary for goto. that is, a goto points to an AST that's created after it.
+and, it can't produce [concatenate [int]a [load a]]
 */
 void fuzztester(unsigned iterations)
 {
@@ -892,7 +923,8 @@ void fuzztester(unsigned iterations)
 			std::cin.get();
 		}
 		console << "\n";
-		start_GC();
+		if ((generate_random() % 4) == 0)
+			start_GC();
 	}
 }
 

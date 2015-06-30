@@ -112,7 +112,8 @@ void start_GC()
 		{
 			console << "GC marking " << k.first << " ";
 			output_type(k.second);
-			console << "as a type, it is "; output_type(*(Type**)k.first);
+			console << "as a type pointer, it represents "; output_type((Type*)(k.first));
+			console << "the size of the marking stack before marking is " << to_be_marked.size() << '\n';
 		}
 		marky_mark(k.first, k.second);
 		to_be_marked.pop();
@@ -121,7 +122,7 @@ void start_GC()
 	{
 		for (auto& x : living_objects)
 		{
-			console << "memory slot " << x.first << " size " << x.second << '\n';
+			console << "living object " << x.first << " size " << x.second << '\n';
 		}
 	}
 
@@ -151,13 +152,13 @@ void initialize_roots()
 	type_hash_table.insert(u::type);
 	type_hash_table.insert(u::AST_pointer);
 	type_hash_table.insert(u::function_pointer);
-	to_be_marked.push(std::make_pair((uint64_t*)&u::does_not_return, u::type));
-	to_be_marked.push(std::make_pair((uint64_t*)&u::integer, u::type));
-	to_be_marked.push(std::make_pair((uint64_t*)&u::cheap_dynamic_pointer, u::type));
-	to_be_marked.push(std::make_pair((uint64_t*)&u::full_dynamic_pointer, u::type));
-	to_be_marked.push(std::make_pair((uint64_t*)&u::type, u::type));
-	to_be_marked.push(std::make_pair((uint64_t*)&u::AST_pointer, u::type));
-	to_be_marked.push(std::make_pair((uint64_t*)&u::function_pointer, u::type));
+	to_be_marked.push(std::make_pair((uint64_t*)u::does_not_return, get_Type_full_type(u::does_not_return)));
+	to_be_marked.push(std::make_pair((uint64_t*)u::integer, get_Type_full_type(u::integer)));
+	to_be_marked.push(std::make_pair((uint64_t*)u::cheap_dynamic_pointer, get_Type_full_type(u::cheap_dynamic_pointer)));
+	to_be_marked.push(std::make_pair((uint64_t*)u::full_dynamic_pointer, get_Type_full_type(u::full_dynamic_pointer)));
+	to_be_marked.push(std::make_pair((uint64_t*)u::type, get_Type_full_type(u::type)));
+	to_be_marked.push(std::make_pair((uint64_t*)u::AST_pointer, get_Type_full_type(u::AST_pointer)));
+	to_be_marked.push(std::make_pair((uint64_t*)u::function_pointer, get_Type_full_type(u::function_pointer)));
 
 
 	//add in the thread ASTs
@@ -198,9 +199,8 @@ void mark_single_element(uint64_t* memory, Type* t)
 		if (*memory != 0)
 		{
 			if (living_objects.find(*(uint64_t**)memory) != living_objects.end()) break;
-			living_objects.insert({*(uint64_t**)memory, 2});
-			to_be_marked.push({*(uint64_t**)memory, *(Type**)(memory + 1)}); //pushing the object
-			to_be_marked.push({*(uint64_t**)(memory + 1), u::type}); //pushing the type
+			to_be_marked.push({*(uint64_t**)memory, (Type*)(memory + 1)}); //pushing the object
+			to_be_marked.push({*(uint64_t**)(memory + 1), get_Type_full_type(*(Type**)(memory + 1))}); //pushing the type
 		}
 		break;
 	case Typen("AST pointer"):
@@ -215,6 +215,7 @@ void mark_single_element(uint64_t* memory, Type* t)
 		if (*memory != 0)
 		{
 			Type* the_type = *(Type**)memory;
+			get_unique_type(the_type, true); //put it in the type hash table.
 			Type* type_of_type = get_Type_full_type(the_type);
 			to_be_marked.push({*(uint64_t**)memory, type_of_type});
 		}
@@ -237,15 +238,16 @@ void sweepy_sweep()
 	while (1)
 	{
 		auto next_memory = living_objects.upper_bound(memory_incrementor);
+		if (next_memory == living_objects.end())
+			break;
 		uint64_t* ending_location = next_memory->first - header_size;
+		if (VERBOSE_GC) console << "memory available from " << memory_incrementor << " to " << ending_location << '\n';
 		if (ending_location != memory_incrementor)
 			free_memory.insert({ending_location - memory_incrementor, memory_incrementor});
 		memory_incrementor = next_memory->first + next_memory->second;
-		if (next_memory == living_objects.end())
-			break;
 	}
-	if (memory_incrementor != big_memory_pool + pool_size) //the final bit of memory at the end
-		free_memory.insert({big_memory_pool + pool_size - memory_incrementor, memory_incrementor});
+	if (memory_incrementor != &big_memory_pool[pool_size]) //the final bit of memory at the end
+		free_memory.insert({&big_memory_pool[pool_size] - memory_incrementor, memory_incrementor});
 	living_objects.clear();
 
 	for (uint64_t x = 0; x < function_pool_size / 64; ++x)
@@ -265,7 +267,6 @@ void sweepy_sweep()
 		}
 	}
 	first_possible_empty_function_block = 0;
-	//todo: clearing of the unique type hash table. we can't just clear it, because the user probably relies on it for equality testing a lot.
 }
 
 //future: test suite for GC.
