@@ -242,10 +242,35 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	if (user_target == nullptr) return Return_Info();
 
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
-	if (this->loop_catcher.find(user_target) != this->loop_catcher.end()) return_code(infinite_loop, 10); //for now, 10 is a special value, and means not any of the fields
-	uAST* target = copy_AST(user_target); //make a copy. todo: this is definitely not the right thing to do, because our new pointers should point to the new objects.
-	loop_catcher.insert({user_target, target}); //we've seen this AST now.
-	
+	if (loop_catcher.find(user_target) != loop_catcher.end()) return_code(infinite_loop, 10); //for now, 10 is a special value, and means not any of the fields
+	loop_catcher.insert(user_target); //we've seen this AST now.
+
+	//handle the copying of the AST.
+	auto search_for_copy = copy_mapper.find(user_target);
+	uAST* target;
+	bool made_a_copy;
+	if (search_for_copy == copy_mapper.end())
+	{
+		if (VERBOSE_GC) console << "copying AST\n";
+		target = copy_AST(user_target); //make a bit copy. the fields will still point to the old ASTs; that will be corrected in finish().
+		//this relies on loads in x64 being atomic.
+		copy_mapper.insert({user_target, target});
+		made_a_copy = true;
+	}
+	else
+	{
+		target = search_for_copy->second;
+		made_a_copy = false;
+	}
+
+	//we'll need to eventually replace the fields in our copy with their correct versions. this does that for us.
+	auto replace_field_pointer_with_immut_version = [&](uAST*& pointer)
+	{
+		if (pointer == nullptr) return;
+		auto immut_pointer = copy_mapper.find(pointer);
+		check(immut_pointer != copy_mapper.end(), "where did my pointer go");
+		pointer = immut_pointer->second;
+	};
 
 	//after we're done with this AST, we remove it from loop_catcher.
 	struct loop_catcher_destructor_cleanup
@@ -289,6 +314,14 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	auto finish_internal = [&](l::Value* return_value, Type* type, uint64_t self_validity_guarantee, uint64_t target_hit_contract, bool move_to_stack) -> Return_Info
 	{
 		check(type == get_unique_type(type, false), "returned non unique type in finish()");
+
+		if (made_a_copy)
+		{
+			replace_field_pointer_with_immut_version(target->preceding_BB_element);
+			for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
+				replace_field_pointer_with_immut_version(target->fields[x].ptr);
+		}
+
 		if (VERBOSE_DEBUG && return_value != nullptr)
 		{
 			console << "finish() in generate_IR, called value is ";
@@ -863,6 +896,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 }
 
 std::array<uint64_t, ASTn("never reached")> hitcount;
+extern std::vector< std::pair<uint64_t*, Type*>> fuzztester_roots; //for use in garbage collecting. each valid AST that the fuzztester has a reference to must be kept in here
 /**
 The fuzztester generates random ASTs and attempts to compile them.
 the output "Malformed AST" is fine. not all randomly-generated ASTs will be well-formed.
@@ -889,44 +923,47 @@ void fuzztester(unsigned iterations)
 		//but does exponential falloff solve this problem in the way we want?
 
 
-		int_or_ptr<uAST> fields[4]{nullptr, nullptr, nullptr, nullptr};
+		std::vector<uAST*> fields;
 		uint64_t incrementor = 0;
 		for (; incrementor < pointer_fields; ++incrementor)
-			fields[incrementor] = AST_list.at(mersenne() % AST_list.size()); //get pointers to previous ASTs
+			fields.push_back(AST_list.at(mersenne() % AST_list.size())); //get pointers to previous ASTs
 		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
 		{
-			if (AST_descriptor[tag].parameter_types[incrementor].type == u::integer)
-				fields[incrementor] = generate_exponential_dist(); //get random integers and fill in the remaining fields
-			else
+			if (AST_descriptor[tag].parameter_types[incrementor].type == T::integer) //we're working with the AST_descriptor type directly. use T::types.
+				fields.push_back((uAST*)generate_exponential_dist()); //get random integers and fill in the remaining fields
+			else if (AST_descriptor[tag].parameter_types[incrementor].type == T::full_dynamic_pointer)
 			{
-				console << "fuzztester doesn't know how to make this special type, so it's going to be 0's.\n";
-				check(incrementor == pointer_fields + AST_descriptor[tag].additional_special_fields - 1, "egads! I need to build functionality for tracking the current parameter field offset and the current parameter type separately, because there are extra fields after the special field, and the special field may have size different from 1\n");
+				fields.push_back(nullptr);
+				fields.push_back(nullptr); //make a zero dynamic object
 			}
+			else error("fuzztester doesn't know how to make this special type, so I'm going to panic");
 		}
-		uAST* test_AST = new uAST(tag, AST_list.at(prev_AST), fields[0], fields[1], fields[2], fields[3]);
+		uAST* test_AST = new_AST(tag, AST_list.at(prev_AST), fields);
 		if (OLD_AST_OUTPUT) output_AST_and_previous(test_AST);
 		output_AST_console_version a(test_AST);
 
 		uint64_t result[3];
 		compile_returning_legitimate_object(result, (uint64_t)test_AST);
-		//auto func = (function*)result[0];
+		auto func = (function*)result[0];
 		if (result[1] == 0)
 		{
 			run_null_parameter_function(result[0]);
-			AST_list.push_back(test_AST);
+			AST_list.push_back((uAST*)func->the_AST); //we need the cast to get rid of the const
+			fuzztester_roots.push_back(std::make_pair((uint64_t*)func->the_AST, get_AST_full_type(tag)));
 			console << AST_list.size() - 1 << "\n";
 			++hitcount[tag];
 		}
-		else delete test_AST;
+		//else delete test_AST;
 		if (INTERACTIVE)
 		{
 			console << "Press enter to continue\n";
 			std::cin.get();
 		}
 		console << "\n";
-		if ((generate_random() % 30) == 0)
+		if ((generate_random() % 1) == 0)
 			start_GC();
 	}
+	fuzztester_roots.clear();
 }
 
 

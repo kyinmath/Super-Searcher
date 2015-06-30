@@ -1,0 +1,21 @@
+is there really no point to success branch?
+
+suppose we are trying to compile.
+naturally, we want the compile result to end up on the stack, directly. ='ing it is a pain.
+then if we succeed, we do one thing. if we fail, we do another thing.
+	thus, the failure branch has to skip over the success case. that means there must be a label.
+	however, this label will then kill off the compiled function? no way to keep the function on the stack?
+I think that's right. if you're in the superdependency of a function, and you want to get out, then the result of the function is doomed.
+	so, when does this become a problem? when you know the function will succeed anyway?
+	when the object is built before the success/failure.
+
+compile
+	-> success
+	-> failure
+auto merge
+
+
+compile
+	-> failure
+success
+label

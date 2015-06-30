@@ -205,8 +205,10 @@ class compiler_object
 	IRGenContext C;
 
 	//lists the ASTs we're currently looking at. goal is to prevent infinite loops.
-	//and maps user ASTs to copied ASTs.
-	std::unordered_map<uAST*, uAST*> loop_catcher; //todo: this isn't the right way to map user ASTs to immuted ASTs. because they go away.
+	std::unordered_set<uAST*> loop_catcher;
+
+	//maps user ASTs to copied ASTs. note that it won't handle 0
+	std::unordered_map<uAST*, uAST*> copy_mapper;
 
 	//a stack for bookkeeping lifetimes; keeps track of when objects are alive.
 	//bool is true if the object is a memory location that can have pointers to it, instead of a temporary.

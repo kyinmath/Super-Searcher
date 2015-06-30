@@ -8,30 +8,30 @@
 #include "user_functions.h"
 #include "function.h"
 
-//todo: replace all new()
 
 //todo: actually figure out memory size according to the computer specs
-//problem: the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. do we really need to have special cases, just for them?
-//maybe not. in the future, we'll just make sure to wrap them in a unique() function, so that the user only ever sees GC-handled objects.
+//the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. 
+//thus, we wrap them in a unique() function, so that the user only ever sees GC-handled objects.
 
-bool BENCHMARK_GC = true;
+bool DEBUG_GC = true; //do some really strict checking. slow. mainly: whenever GCing or creating, it sets memory locations to special values.
 bool VERBOSE_GC = true;
 
-constexpr const uint64_t pool_size = 1000000ull;
+constexpr const uint64_t pool_size = 100000ull;
 constexpr const uint64_t function_pool_size = 2000ull * 64;
-uint64_t big_memory_pool[pool_size];
+constexpr const uint64_t initial_special_value = 21212121ull;
+constexpr const uint64_t collected_special_value = 1234567ull;
+uint64_t big_memory_pool[pool_size] = {[0 ... (pool_size - 1)] = initial_special_value}; //designated initializers
 
-char backing_function_pool[function_pool_size * sizeof(function)];
-function* function_pool = (function*)backing_function_pool; //we use a backing char pool to prevent the array from running dtors at the end of execution
+uint64_t backing_function_pool[function_pool_size * sizeof(function) / sizeof(uint64_t)] = {[0 ... (function_pool_size * sizeof(function) / sizeof(uint64_t) - 1)] = initial_special_value};
+function* function_pool = (function*)backing_function_pool; //we use a backing memory pool to prevent the array from running dtors at the end of execution
 uint64_t function_pool_flags[function_pool_size / 64] = {0}; //each bit is marked 0 if free, 1 if occupied. the {0} is necessary by https://stackoverflow.com/questions/629017/how-does-array100-0-set-the-entire-array-to-0#comment441685_629023
 uint64_t* sweep_function_pool_flags; //we need this to be able to run finalizers on the functions.
 
 //todo: a lock on these things. maybe using Lo<>
-//first value = size of slot. second value = address.
-std::multimap<uint64_t, uint64_t*> free_memory = {{pool_size, big_memory_pool}};
-std::map<uint64_t*, uint64_t> living_objects;
-uint64_t first_possible_empty_function_block;
-std::stack < std::pair<uint64_t*, Type*>> to_be_marked;
+std::multimap<uint64_t, uint64_t*> free_memory = {{pool_size, big_memory_pool}}; //first value = size of slot. second value = address
+std::map<uint64_t*, uint64_t> living_objects; //first value = address of user-seen memory. second slot = size of user-seen memory. ignores headers.
+uint64_t first_possible_empty_function_block; //where to start looking for an empty function block.
+std::stack < std::pair<uint64_t*, Type*>> to_be_marked; //stack of things to be marked.
 
 void marky_mark(uint64_t* memory, Type* t);
 void initialize_roots();
@@ -69,7 +69,20 @@ uint64_t* allocate(uint64_t size)
 	}
 	else error("what damn kind of allocated object did I just find");
 
-	*found_place = 0; //mark and sweep allocator, so just mark it 0. we never use this though.
+	if (DEBUG_GC)
+	{
+		for (uint64_t* check_value = found_place; check_value < found_place + header_size; ++check_value)
+		{
+			if ((*check_value != collected_special_value) && (*check_value != initial_special_value))
+			{
+				console << "tried to allocate still-living memory with value " << *check_value << " at " << check_value << '\n';
+				error("");
+			}
+		}
+	}
+	*found_place = 6666666ull; //mark and sweep allocator, so mark it. we never use this though.
+
+	if (VERBOSE_GC) console << "allocating region " << found_place << " true size incl header " << true_size << '\n';
 	return found_place + header_size;
 }
 
@@ -89,7 +102,7 @@ function* allocate_function()
 		if (mask != -1ull)
 		{
 			int offset = first_zero(mask);
-			uint64_t bit_mask = 1ull << offset; //warning: we need to shift 1ull, not 1. this has a high potential for bugs (bitten twice now).
+			uint64_t bit_mask = 1ull << offset; //we need to shift 1ull, not 1. this has a high potential for bugs (bitten twice now).
 			function_pool_flags[x] |= bit_mask;
 			if (VERBOSE_GC)
 			{
@@ -106,18 +119,18 @@ function* allocate_function()
 
 void start_GC()
 {
-	if (BENCHMARK_GC)
+	if (VERBOSE_GC)
 	{
 		uint64_t total_memory_use = 0;
 		for (auto& x : free_memory)
 		{
-			console << "memory slot " << x.second << " size " << x.first << '\n';
+			console << "before GC: memory slot " << x.second << " size " << x.first << '\n';
 			total_memory_use += x.first;
 		}
 		console << "total free before GC " << total_memory_use << '\n';
 	}
 	sweep_function_pool_flags = new uint64_t[function_pool_size / 64]();
-	living_objects.clear();
+	check(living_objects.empty(), "need to start GC with an empty tree");
 	initialize_roots();
 	while (!to_be_marked.empty())
 	{
@@ -126,7 +139,6 @@ void start_GC()
 		{
 			console << "GC marking " << k.first << " ";
 			output_type(k.second);
-			console << "as a type pointer, it represents "; output_type((Type*)(k.first));
 			console << "the size of the marking stack before marking is " << to_be_marked.size() << '\n';
 		}
 		marky_mark(k.first, k.second);
@@ -143,18 +155,18 @@ void start_GC()
 	sweepy_sweep();
 	delete[] sweep_function_pool_flags;
 
-	if (BENCHMARK_GC)
+	if (VERBOSE_GC)
 	{
 		uint64_t total_memory_use = 0;
 		for (auto& x : free_memory)
 		{
-			console << "memory slot " << x.second << " size " << x.first << '\n';
+			console << "after GC: memory slot " << x.second << " size " << x.first << '\n';
 			total_memory_use += x.first;
 		}
 		console << "total free after GC " << total_memory_use << '\n';
 	}
 }
-
+std::vector< std::pair<uint64_t*, Type*>> fuzztester_roots;
 extern type_htable_t type_hash_table; //a hash table of all the unique types. don't touch this unless you're the memory allocation
 void initialize_roots()
 {
@@ -174,6 +186,10 @@ void initialize_roots()
 	to_be_marked.push(std::make_pair((uint64_t*)u::AST_pointer, get_Type_full_type(u::AST_pointer)));
 	to_be_marked.push(std::make_pair((uint64_t*)u::function_pointer, get_Type_full_type(u::function_pointer)));
 
+	for (auto& x : fuzztester_roots)
+	{
+		to_be_marked.push(x);
+	}
 
 	//add in the thread ASTs
 }
@@ -255,13 +271,31 @@ void sweepy_sweep()
 		if (next_memory == living_objects.end())
 			break;
 		uint64_t* ending_location = next_memory->first - header_size;
-		if (VERBOSE_GC) console << "memory available from " << memory_incrementor << " to " << ending_location << '\n';
+		if (VERBOSE_GC)
+		{
+			if (memory_incrementor != ending_location)
+				console << "memory available from " << memory_incrementor << " to " << ending_location << '\n';
+			else console << "no mem available at " << memory_incrementor << '\n';
+		}
 		if (ending_location != memory_incrementor)
+		{
+			if (DEBUG_GC)
+				for (uint64_t* x = memory_incrementor; x < ending_location; ++x)
+					*x = collected_special_value; //any empty fields are set to a special value
 			free_memory.insert({ending_location - memory_incrementor, memory_incrementor});
+		}
 		memory_incrementor = next_memory->first + next_memory->second;
 	}
 	if (memory_incrementor != &big_memory_pool[pool_size]) //the final bit of memory at the end
+	{
+		if (VERBOSE_GC)
+			console << "last memory available starting from " << memory_incrementor << '\n';
+		if (DEBUG_GC)
+			for (uint64_t* x = memory_incrementor; x < &big_memory_pool[pool_size]; ++x)
+				*x = collected_special_value; //any empty fields are set to a special value
 		free_memory.insert({&big_memory_pool[pool_size] - memory_incrementor, memory_incrementor});
+	}
+	else if (VERBOSE_GC) error("no mem available at the end. what is wrong?");
 	living_objects.clear();
 
 	for (uint64_t x = 0; x < function_pool_size / 64; ++x)
@@ -273,9 +307,8 @@ void sweepy_sweep()
 			for (unsigned offset = 0; offset < 64; ++offset)
 				if (diffmask & (1ull << offset))
 				{
-					console << "offset is " << offset << '\n';
+					console << "offset is " << offset << ' ';
 					function_pool[x * 64 + offset].~function();
-					console << "address is " << &function_pool[x * 64 + offset] << '\n';
 				}
 			function_pool_flags[x] = sweep_function_pool_flags[x];
 		}
