@@ -1,7 +1,6 @@
 #pragma once
 #include <cstdint>
 uint64_t* allocate(uint64_t size);
-constexpr bool MEMORY_VERBOSE_DEBUG = false;
 
 template<typename... Args> inline void write_single(uint64_t* memory_location) {}
 template<typename... Args> inline void write_single(uint64_t* memory_location, uint64_t x, Args... args)

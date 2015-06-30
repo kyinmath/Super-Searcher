@@ -25,7 +25,7 @@ inline void compile_returning_legitimate_object(uint64_t* memory_location, uint6
 	else
 	{
 		function* new_location = new(allocate_function()) function(target, a.return_type, a.parameter_type, a.fptr, &c->J, a.result_module);
-		if (MEMORY_VERBOSE_DEBUG) console << "new location is " << new_location << '\n';
+		if (VERBOSE_GC) console << "new location is " << new_location << '\n';
 		*return_location = std::array < uint64_t, 3 > {{(uint64_t)new_location, error, 0ull}};
 		return;
 	}
@@ -44,7 +44,7 @@ inline uint64_t run_null_parameter_function(uint64_t func_int)
 {
 	auto func = (function*)func_int;
 	void* fptr = func->fptr;
-	if (MEMORY_VERBOSE_DEBUG) console << "fptr is " << fptr << '\n';
+	if (VERBOSE_GC) console << "fptr is " << fptr << '\n';
 	uint64_t size_of_return = get_size(func->return_type);
 	if (size_of_return == 1)
 	{

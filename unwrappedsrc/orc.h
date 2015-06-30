@@ -67,13 +67,14 @@ public:
 	typedef llvm::orc::IRCompileLayer<ObjLayerT> CompileLayerT;
 	typedef CompileLayerT::ModuleSetHandleT ModuleHandleT;
 
-	KaleidoscopeJIT(SessionContext &Session) : Mang(Session.getTarget().getDataLayout()), CompileLayer(ObjectLayer, llvm::orc::SimpleCompiler(Session.getTarget())) {}
+
+	KaleidoscopeJIT(SessionContext &Session) : DL(*Session.getTarget().getDataLayout()), CompileLayer(ObjectLayer, llvm::orc::SimpleCompiler(Session.getTarget())) {}
 
 	std::string mangle(const std::string &Name) {
 		std::string MangledName;
 		{
 			llvm::raw_string_ostream MangledNameStream(MangledName);
-			Mang.getNameWithPrefix(MangledNameStream, Name);
+			llvm::Mangler::getNameWithPrefix(MangledNameStream, Name, DL);
 		}
 		return MangledName;
 	}
@@ -101,7 +102,7 @@ public:
 
 private:
 
-	llvm::Mangler Mang;
+	const llvm::DataLayout &DL;
 	ObjLayerT ObjectLayer;
 	CompileLayerT CompileLayer;
 };

@@ -23,7 +23,7 @@ extern bool TIMER;
 #define thread_local
 #endif
 extern thread_local llvm::LLVMContext& thread_context;
-extern std::mt19937_64 mersenne;
+extern thread_local std::mt19937_64 mersenne;
 extern thread_local uint64_t finiteness;
 constexpr uint64_t FINITENESS_LIMIT = 10;
 uint64_t generate_exponential_dist();

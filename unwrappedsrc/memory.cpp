@@ -21,7 +21,8 @@ constexpr const uint64_t pool_size = 1000000ull;
 constexpr const uint64_t function_pool_size = 2000ull * 64;
 uint64_t big_memory_pool[pool_size];
 
-function function_pool[function_pool_size]; //some of the items in here can be casted to doubly_linked_lists.
+char backing_function_pool[function_pool_size * sizeof(function)];
+function* function_pool = (function*)backing_function_pool; //we use a backing char pool to prevent the array from running dtors at the end of execution
 uint64_t function_pool_flags[function_pool_size / 64] = {0}; //each bit is marked 0 if free, 1 if occupied. the {0} is necessary by https://stackoverflow.com/questions/629017/how-does-array100-0-set-the-entire-array-to-0#comment441685_629023
 uint64_t* sweep_function_pool_flags; //we need this to be able to run finalizers on the functions.
 
@@ -72,6 +73,13 @@ uint64_t* allocate(uint64_t size)
 	return found_place + header_size;
 }
 
+int first_zero(uint64_t mask)
+{
+	for (int x = 0; x < 64; ++x)
+		if (((mask >> x) % 2) == 0) return x;
+	error("no zeros found");
+}
+
 function* allocate_function()
 {
 	//future: lock
@@ -80,10 +88,17 @@ function* allocate_function()
 		uint64_t mask = function_pool_flags[x];
 		if (mask != -1ull)
 		{
-			int offset = __builtin_ctzll(mask);
+			//int offset = __builtin_ctzll(mask);
+			int offset = first_zero(mask);
 			uint64_t bit_mask = 1 << offset;
 			function_pool_flags[x] |= bit_mask;
-			if (VERBOSE_DEBUG) console << "returning allocation " << &function_pool[x * 64 + mask] << " with number " << x * 64 + mask << '\n';
+			if (VERBOSE_GC)
+			{
+				console << "returning allocation " << &function_pool[x * 64 + mask] << " with number " << x * 64 + mask << '\n';
+				console << "the bit mask was " << bit_mask << '\n';
+				console << "the mask was " << mask << '\n';
+				console << "offset was " << offset << '\n';
+			}
 			return &function_pool[x * 64 + mask];
 		}
 	}
@@ -260,8 +275,9 @@ void sweepy_sweep()
 				if (diffmask & (1ull << offset))
 				{
 					console << "offset is " << offset << '\n';
-					//function_pool[x * 64 + offset].result_module
-					function_pool[x * 64 + offset].erase(); //we're literally 1 away from the correct function. why are we offset by one?
+					//function_pool[x * 64 + offset].~function(); todo: reenable.
+					console << "address is " << &function_pool[x * 64 + offset] << '\n';
+					function_pool[x * 64 + offset].thread_jit->removeModule(function_pool[x * 64 + offset].result_module);
 				}
 			function_pool_flags[x] = sweep_function_pool_flags[x];
 		}

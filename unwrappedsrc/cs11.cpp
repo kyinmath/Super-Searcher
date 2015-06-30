@@ -54,8 +54,8 @@ thread_local uint64_t finiteness;
 
 #include <chrono>
 #include <random>
-unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
-std::mt19937_64 mersenne(seed); //this should probably be thread_local
+unsigned seed = std::chrono::system_clock::now().time_since_epoch().count(); //one seed for everything is a bad idea
+thread_local std::mt19937_64 mersenne(seed);
 uint64_t generate_random() { return mersenne(); }
 
 //generates an approximately exponential distribution using bit twiddling
@@ -93,8 +93,8 @@ unsigned compiler_object::compile_AST(uAST* target)
 	auto size_of_return = get_size(return_object.type);
 	FunctionType* FT = FunctionType::get(llvm_type_including_void(size_of_return), false);
 	if (VERBOSE_DEBUG) console << "Size of return is " << size_of_return << '\n';
-	std::string function_name = GenerateUniqueName("_anon_expr_");
-	Function *F = Function::Create(FT, Function::ExternalLinkage, function_name, &C.getM());
+	std::string function_name = GenerateUniqueName("");
+	Function *F = Function::Create(FT, Function::ExternalLinkage, function_name, &C.getM()); //marking this private linkage seems to fail
 	F->addFnAttr(Attribute::NoUnwind); //7% speedup
 
 	F->getBasicBlockList().splice(F->begin(), dummy_func->getBasicBlockList());
@@ -131,6 +131,7 @@ unsigned compiler_object::compile_AST(uAST* target)
 	auto H = J.addModule(C.takeM());
 
 	// Get the address of the JIT'd function in memory.
+	//this seems unreasonably expensive. even having a few functions around makes it cost 5% total run time.
 	auto ExprSymbol = J.findUnmangledSymbol(function_name);
 
 	// Cast it to the right type (takes no arguments, returns a double) so we
@@ -923,7 +924,7 @@ void fuzztester(unsigned iterations)
 			std::cin.get();
 		}
 		console << "\n";
-		if ((generate_random() % 4) == 0)
+		if ((generate_random() % 1) == 0)
 			start_GC();
 	}
 }
@@ -1109,8 +1110,9 @@ int main(int argc, char* argv[])
 	l::InitializeNativeTargetAsmParser();
 
 	c = new compiler_host;
-	console << "compiler host is at " << c << '\n';
-	console << "its JIT is at " << &(c->J) << '\n';
+	
+	//console << "compiler host is at " << c << '\n';
+	//console << "its JIT is at " << &(c->J) << '\n';
 
 	//these do nothing
 	//assert(0);
