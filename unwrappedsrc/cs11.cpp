@@ -896,7 +896,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 }
 
 std::array<uint64_t, ASTn("never reached")> hitcount;
-extern std::vector< std::pair<uint64_t*, Type*>> fuzztester_roots; //for use in garbage collecting. each valid AST that the fuzztester has a reference to must be kept in here
+extern std::vector< uAST*> fuzztester_roots; //for use in garbage collecting. each valid AST that the fuzztester has a reference to must be kept in here
 /**
 The fuzztester generates random ASTs and attempts to compile them.
 the output "Malformed AST" is fine. not all randomly-generated ASTs will be well-formed.
@@ -949,7 +949,7 @@ void fuzztester(unsigned iterations)
 		{
 			run_null_parameter_function(result[0]);
 			AST_list.push_back((uAST*)func->the_AST); //we need the cast to get rid of the const
-			fuzztester_roots.push_back(std::make_pair((uint64_t*)func->the_AST, get_AST_full_type(tag)));
+			fuzztester_roots.push_back((uAST*)func->the_AST); //we absolutely shouldn't keep the type here, because it gets removed.
 			console << AST_list.size() - 1 << "\n";
 			++hitcount[tag];
 		}

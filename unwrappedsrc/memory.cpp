@@ -166,29 +166,22 @@ void start_GC()
 		console << "total free after GC " << total_memory_use << '\n';
 	}
 }
-std::vector< std::pair<uint64_t*, Type*>> fuzztester_roots;
+std::vector< uAST*> fuzztester_roots;
 extern type_htable_t type_hash_table; //a hash table of all the unique types. don't touch this unless you're the memory allocation
 void initialize_roots()
 {
-	type_hash_table.clear();
-	type_hash_table.insert(u::does_not_return);
-	type_hash_table.insert(u::integer);
-	type_hash_table.insert(u::cheap_dynamic_pointer);
-	type_hash_table.insert(u::full_dynamic_pointer);
-	type_hash_table.insert(u::type);
-	type_hash_table.insert(u::AST_pointer);
-	type_hash_table.insert(u::function_pointer);
-	to_be_marked.push(std::make_pair((uint64_t*)u::does_not_return, get_Type_full_type(u::does_not_return)));
-	to_be_marked.push(std::make_pair((uint64_t*)u::integer, get_Type_full_type(u::integer)));
-	to_be_marked.push(std::make_pair((uint64_t*)u::cheap_dynamic_pointer, get_Type_full_type(u::cheap_dynamic_pointer)));
-	to_be_marked.push(std::make_pair((uint64_t*)u::full_dynamic_pointer, get_Type_full_type(u::full_dynamic_pointer)));
-	to_be_marked.push(std::make_pair((uint64_t*)u::type, get_Type_full_type(u::type)));
-	to_be_marked.push(std::make_pair((uint64_t*)u::AST_pointer, get_Type_full_type(u::AST_pointer)));
-	to_be_marked.push(std::make_pair((uint64_t*)u::function_pointer, get_Type_full_type(u::function_pointer)));
+	//can't place this in global memory, because of static initialization fiasco
+	std::vector< Type* > unique_type_roots{u::does_not_return, u::integer, u::cheap_dynamic_pointer, u::full_dynamic_pointer, u::type, u::AST_pointer, u::function_pointer};
 
-	for (auto& x : fuzztester_roots)
+	type_hash_table.clear();
+	for (auto& root_type : unique_type_roots)
 	{
-		to_be_marked.push(x);
+		type_hash_table.insert(root_type);
+		to_be_marked.push(std::make_pair((uint64_t*)root_type, get_Type_full_type(root_type)));
+	}
+	for (auto& root_AST : fuzztester_roots)
+	{
+		to_be_marked.push(std::make_pair((uint64_t*)root_AST, get_AST_full_type(root_AST->tag)));
 	}
 
 	//add in the thread ASTs
@@ -197,16 +190,16 @@ void initialize_roots()
 void mark_single_element(uint64_t* memory, Type* t);
 void marky_mark(uint64_t* memory, Type* t)
 {
-	if (t == nullptr) return; //handle a null type. this might appear from dynamic objects. although later we might require dynamic objects to have non-null type?
+	check(t != nullptr, "no null types in GC allowed");
+	check(memory != nullptr, "no null pointers in GC allowed");
 	if (living_objects.find(memory) != living_objects.end()) return; //it's already there. nothing needs to be done, if we assume that full pointers point to the entire object. todo.
 	living_objects.insert({memory, get_size(t)});
 	if (t->tag == Typen("con_vec"))
 	{
-		uint64_t* current_pointer = memory;
-		for (auto& t : Type_pointer_range(t))
+		for (auto& subt : Type_pointer_range(t))
 		{
-			mark_single_element(current_pointer, t);
-			current_pointer += get_size(t);
+			mark_single_element(memory, subt);
+			memory += get_size(subt);
 		}
 	}
 	else mark_single_element(memory, t);
@@ -280,8 +273,11 @@ void sweepy_sweep()
 		if (ending_location != memory_incrementor)
 		{
 			if (DEBUG_GC)
+			{
+				check(ending_location - memory_incrementor < pool_size, "more free memory than exists");
 				for (uint64_t* x = memory_incrementor; x < ending_location; ++x)
 					*x = collected_special_value; //any empty fields are set to a special value
+			}
 			free_memory.insert({ending_location - memory_incrementor, memory_incrementor});
 		}
 		memory_incrementor = next_memory->first + next_memory->second;
@@ -291,8 +287,11 @@ void sweepy_sweep()
 		if (VERBOSE_GC)
 			console << "last memory available starting from " << memory_incrementor << '\n';
 		if (DEBUG_GC)
+		{
+			check(memory_incrementor < &big_memory_pool[pool_size], "memory incrementor past the end");
 			for (uint64_t* x = memory_incrementor; x < &big_memory_pool[pool_size]; ++x)
 				*x = collected_special_value; //any empty fields are set to a special value
+		}
 		free_memory.insert({&big_memory_pool[pool_size] - memory_incrementor, memory_incrementor});
 	}
 	else if (VERBOSE_GC) error("no mem available at the end. what is wrong?");
