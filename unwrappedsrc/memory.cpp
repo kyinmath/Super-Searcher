@@ -13,7 +13,7 @@
 //the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. 
 //thus, we wrap them in a unique() function, so that the user only ever sees GC-handled objects.
 
-bool DEBUG_GC = true; //do some really strict checking. slow. mainly: whenever GCing or creating, it sets memory locations to special values.
+bool DEBUG_GC = true; //do some really strict checking to make sure GC is working properly. slow. mainly: whenever GCing or creating, it sets memory locations to special values.
 bool VERBOSE_GC = true;
 
 constexpr const uint64_t pool_size = 100000ull;

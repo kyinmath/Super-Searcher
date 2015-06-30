@@ -253,7 +253,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	{
 		if (VERBOSE_GC) console << "copying AST\n";
 		target = copy_AST(user_target); //make a bit copy. the fields will still point to the old ASTs; that will be corrected in finish().
-		//this relies on loads in x64 being atomic.
+		//this relies on loads in x64 being atomic, which may not be wholly true.
 		copy_mapper.insert({user_target, target});
 		made_a_copy = true;
 	}
@@ -597,9 +597,12 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			//if there are already commands inside the "Then" basic block, we would be in trouble
 			Builder.SetInsertPoint(SuccessBB);
 
-			//decrease finiteness.
+			//decrease finiteness. this comes before emission of the success branch.
 			l::Value* finiteness_minus_one = Builder.CreateSub(current_finiteness, llvm_integer(1));
 			Builder.CreateStore(finiteness_minus_one, finiteness_pointer);
+
+			Return_Info Success_IR = generate_IR(target->fields[1].ptr, 0);
+			if (Success_IR.error_code) return Success_IR;
 
 			emit_dtors(info.stack_size);
 			Builder.CreateBr(labelsearch->second.block);
@@ -609,7 +612,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			TheFunction->getBasicBlockList().push_back(FailureBB);
 			Builder.SetInsertPoint(FailureBB);
 
-			Return_Info Failure_IR = generate_IR(target->fields[1].ptr, stack_degree != 0, desired);
+			Return_Info Failure_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, desired);
 			if (Failure_IR.error_code) return Failure_IR;
 
 			finish_special_stack_handled_pointer(Failure_IR.IR, Failure_IR.type, Failure_IR.self_validity_guarantee, Failure_IR.target_hit_contract);
@@ -950,6 +953,7 @@ void fuzztester(unsigned iterations)
 			run_null_parameter_function(result[0]);
 			AST_list.push_back((uAST*)func->the_AST); //we need the cast to get rid of the const
 			fuzztester_roots.push_back((uAST*)func->the_AST); //we absolutely shouldn't keep the type here, because it gets removed.
+			//theoretically, this action is disallowed. these ASTs are pointing to already-immuted ASTs, which can't happen. however, it's safe as long as we isolate these ASTs from the user
 			console << AST_list.size() - 1 << "\n";
 			++hitcount[tag];
 		}
@@ -960,7 +964,7 @@ void fuzztester(unsigned iterations)
 			std::cin.get();
 		}
 		console << "\n";
-		if ((generate_random() % 1) == 0)
+		if ((generate_random() % 30) == 0)
 			start_GC();
 	}
 	fuzztester_roots.clear();

@@ -241,10 +241,19 @@ bool is_full(Type* t)
 			return true;
 		}
 	case Typen("pointer"):
+		{
+			unsigned full_indicator = 1;
+			if (t->fields[full_indicator].num != 0 && t->fields[full_indicator].num != 1)
+				error("dynamic pointer case we haven't considered" + std::to_string(t->fields[full_indicator].num));
+			return t->fields[full_indicator].num == 1;
+		}
 	case Typen("dynamic pointer"):
-		if (t->fields[1].num != 0 && t->fields[1].num != 1)
-			error("cases we haven't considered");
-		return t->fields[1].num == 1;
+		{
+			unsigned full_indicator = 0;
+			if (t->fields[full_indicator].num != 0 && t->fields[full_indicator].num != 1)
+				error("dynamic pointer case we haven't considered" + std::to_string(t->fields[full_indicator].num));
+			return t->fields[full_indicator].num == 1;
+		}
 	default: return true;
 	}
 }
