@@ -25,7 +25,10 @@ inline void compile_returning_legitimate_object(uint64_t* memory_location, uint6
 	else
 	{
 		function* new_location = new(allocate_function()) function(target, a.return_type, a.parameter_type, a.fptr, &c->J, a.result_module);
-		if (VERBOSE_GC) console << "new location is " << new_location << '\n';
+		if (VERBOSE_GC)
+		{
+			console << *new_location;
+		}
 		*return_location = std::array < uint64_t, 3 > {{(uint64_t)new_location, error, 0ull}};
 		return;
 	}
@@ -114,11 +117,11 @@ inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t object,
 	}
 	else
 	{
-		uAST* object = (uAST*)object;
+		uAST* dyn_object = (uAST*)object;
 		Type* dyn_type = (Type*)type;
 		if (type_check(RVO, dyn_type, get_AST_fields_type(tag)) != type_check_result::perfect_fit) //this is RVO because we're copying the dynamic object over.
 			return 0;
-		return (uint64_t)new_AST(tag, (uAST*)previous, object);
+		return (uint64_t)new_AST(tag, (uAST*)previous, dyn_object);
 	}
 }
 

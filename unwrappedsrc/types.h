@@ -194,7 +194,7 @@ inline Type* copy_type(const Type* t)
 /*when creating a new element here:
 1. instantiate it in types.cpp.
 2. make a u:: version just below
-3. instantiate the u::version in unique_type_creator.cpp
+3. instantiate the u::version in type_creator.cpp
 4. add the u::version to the gc roots in memory.cpp
 the reason these are static members of struct internal is so that the address is the same across translation units.
 otherwise, it's not. see https://stackoverflow.com/questions/7368330/static-members-and-the-default-constructor-c
@@ -226,7 +226,7 @@ namespace T
 	constexpr Type* null = nullptr;
 };
 
-//the actual objects are placed in unique_type_creator.cpp, to avoid static initialization fiasco
+//the actual objects are placed in type_creator.cpp, to avoid static initialization fiasco
 namespace u
 {
 	extern Type* does_not_return;

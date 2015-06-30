@@ -7,7 +7,7 @@ Then, it checks type_hash_table if there is already a unique type that is the sa
 
 #include "types.h"
 #include "debugoutput.h"
-#include "unique_type_creator.h" //this line must exist to find the hash function
+#include "type_creator.h" //this line must exist to find the hash function
 #include "cs11.h"
 
 bool UNIQUE_VERBOSE_DEBUG = false;

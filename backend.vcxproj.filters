@@ -24,13 +24,13 @@
     <ClCompile Include="unwrappedsrc\testdriver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="unwrappedsrc\unique_type_creator.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="unwrappedsrc\helperfunctions.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="unwrappedsrc\memory.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="unwrappedsrc\type_creator.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -44,13 +44,7 @@
     <ClInclude Include="unwrappedsrc\cs11.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="unwrappedsrc\unique_type_creator.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="unwrappedsrc\helperfunctions.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\user_facing_functions.h">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="unwrappedsrc\lock.h">
@@ -69,6 +63,12 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="unwrappedsrc\orc.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unwrappedsrc\type_creator.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unwrappedsrc\user_functions.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

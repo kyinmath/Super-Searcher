@@ -161,7 +161,7 @@ struct uAST
 	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
 };
 
-#include "unique_type_creator.h"
+#include "type_creator.h"
 //pass in a valid AST tag, 0 <= x < "never reached"
 inline Type* get_AST_fields_type(uint64_t tag)
 {

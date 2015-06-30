@@ -2,7 +2,8 @@ http://www.di.ens.fr/~zappa/projects/cmmtest/ for concurrency bugs
 clang
 	use "scan-build-3.7 --use-analyzer /usr/lib/llvm-3.7/bin/clang make"
 valgrind
-	valgrind --tool=memcheck --leak-check=yes -v ./toy timer quiet
+	valgrind --leak-check=yes ./toy timer quiet
+	valgrind ./toy timer quiet
 	found memory errors! very useful. search for "==" and read-error or whatever.
 cppcheck
 	cppcheck ../unwrappedsrc/
@@ -18,6 +19,6 @@ viva64
 
 
 
-Doesn't work: I added <thread> and no change.
+iwyu doesn't work: I added <thread> and no change.
 sudo apt-get install iwyu
 make -k CXX=/usr/bin/iwyu

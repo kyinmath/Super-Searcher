@@ -5,7 +5,7 @@
 #include <stack>
 #include "console.h"
 #include "types.h"
-#include "user_facing_functions.h"
+#include "user_functions.h"
 #include "function.h"
 
 //todo: replace all new()
@@ -88,18 +88,17 @@ function* allocate_function()
 		uint64_t mask = function_pool_flags[x];
 		if (mask != -1ull)
 		{
-			//int offset = __builtin_ctzll(mask);
 			int offset = first_zero(mask);
-			uint64_t bit_mask = 1 << offset;
+			uint64_t bit_mask = 1ull << offset; //warning: we need to shift 1ull, not 1. this has a high potential for bugs (bitten twice now).
 			function_pool_flags[x] |= bit_mask;
 			if (VERBOSE_GC)
 			{
-				console << "returning allocation " << &function_pool[x * 64 + mask] << " with number " << x * 64 + mask << '\n';
-				console << "the bit mask was " << bit_mask << '\n';
+				console << "returning allocation " << &function_pool[x * 64 + offset] << " with number " << x * 64 + offset << '\n';
 				console << "the mask was " << mask << '\n';
+				console << "the bit mask was " << bit_mask << '\n';
 				console << "offset was " << offset << '\n';
 			}
-			return &function_pool[x * 64 + mask];
+			return &function_pool[x * 64 + offset];
 		}
 	}
 	error("OOM function");
@@ -237,7 +236,7 @@ void mark_single_element(uint64_t* memory, Type* t)
 		break;
 	case Typen("function pointer"):
 		uint64_t number = (function*)memory - function_pool;
-		sweep_function_pool_flags[number / 64] |= (1 << number % 64);
+		sweep_function_pool_flags[number / 64] |= (1ull << (number % 64));
 		mark_single_element(*(uint64_t**)memory, u::AST_pointer); //mark_single is good. don't use marky_mark, because that will attempt to add the function to the existing-items list
 		mark_single_element(*(uint64_t**)(memory+1), u::type);
 		//future: maybe the parameter
@@ -275,9 +274,8 @@ void sweepy_sweep()
 				if (diffmask & (1ull << offset))
 				{
 					console << "offset is " << offset << '\n';
-					//function_pool[x * 64 + offset].~function(); todo: reenable.
+					function_pool[x * 64 + offset].~function();
 					console << "address is " << &function_pool[x * 64 + offset] << '\n';
-					function_pool[x * 64 + offset].thread_jit->removeModule(function_pool[x * 64 + offset].result_module);
 				}
 			function_pool_flags[x] = sweep_function_pool_flags[x];
 		}

@@ -25,8 +25,8 @@ generate_IR() is the main AST conversion tool. it turns ASTs into l::Values, rec
 #include "types.h"
 #include "debugoutput.h"
 #include "helperfunctions.h"
-#include "unique_type_creator.h"
-#include "user_facing_functions.h"
+#include "type_creator.h"
+#include "user_functions.h"
 #include "cs11.h"
 #include "orc.h"
 
@@ -924,7 +924,7 @@ void fuzztester(unsigned iterations)
 			std::cin.get();
 		}
 		console << "\n";
-		if ((generate_random() % 1) == 0)
+		if ((generate_random() % 30) == 0)
 			start_GC();
 	}
 }
