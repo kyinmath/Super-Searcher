@@ -20,10 +20,12 @@ constexpr const uint64_t pool_size = 100000ull;
 constexpr const uint64_t function_pool_size = 2000ull * 64;
 constexpr const uint64_t initial_special_value = 21212121ull;
 constexpr const uint64_t collected_special_value = 1234567ull;
-uint64_t big_memory_pool[pool_size] = {[0 ... (pool_size - 1)] = initial_special_value}; //designated initializers
+std::vector<uint64_t> big_memory_allocation(pool_size, initial_special_value);
+uint64_t* big_memory_pool = big_memory_allocation.data();
+//designated initializers don't work, because they add 7MB memory to the executable
 
-uint64_t backing_function_pool[function_pool_size * sizeof(function) / sizeof(uint64_t)] = {[0 ... (function_pool_size * sizeof(function) / sizeof(uint64_t) - 1)] = initial_special_value};
-function* function_pool = (function*)backing_function_pool; //we use a backing memory pool to prevent the array from running dtors at the end of execution
+std::vector<uint64_t> function_memory_allocation(function_pool_size * sizeof(function) / sizeof(uint64_t), initial_special_value);
+function* function_pool = (function*)function_memory_allocation.data(); //we use a backing memory pool to prevent the array from running dtors at the end of execution
 uint64_t function_pool_flags[function_pool_size / 64] = {0}; //each bit is marked 0 if free, 1 if occupied. the {0} is necessary by https://stackoverflow.com/questions/629017/how-does-array100-0-set-the-entire-array-to-0#comment441685_629023
 uint64_t* sweep_function_pool_flags; //we need this to be able to run finalizers on the functions.
 
