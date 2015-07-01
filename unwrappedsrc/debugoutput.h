@@ -176,20 +176,11 @@ struct output_AST_console_version
 		}
 
 		//any additional fields that aren't pointers
-		for (; x < AST_descriptor[target->tag].pointer_fields + AST_descriptor[target->tag].additional_special_fields; ++x)
+		//pulling in both get_size and get_AST_full_type might make this debug function vulnerable to errors, which can be bad.
+		for (; x < get_size(get_AST_fields_type(target->tag)); ++x)
 		{
 			console << ' ' << target->fields[x].num;
 		}
-		unsigned first_zero_field = x;
-		for (unsigned check_further_nonzero_fields = x + 1; check_further_nonzero_fields < max_fields_in_AST; ++check_further_nonzero_fields)
-			if (target->fields[check_further_nonzero_fields].num) first_zero_field = check_further_nonzero_fields;
-		for (; x < first_zero_field; ++x)
-		{
-			console << ' ';
-			console << target->fields[x].num;
-		}
-		//console << "final x is " << x << '\n';
-		//console << "final nonzero is " << first_zero_field << '\n';
 		console << ']';
 
 		if (reference_necessary.find(target) != reference_necessary.end()) console << target;

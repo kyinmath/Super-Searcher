@@ -39,6 +39,7 @@ bool VERBOSE_DEBUG = false;
 bool INTERACTIVE = false;
 bool CONSOLE = false;
 bool TIMER = false;
+bool CONTINUOUS = false;
 bool OLD_AST_OUTPUT = false;
 
 basic_onullstream<char> null_stream;
@@ -1172,6 +1173,7 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "optimize") == 0) OPTIMIZE = true;
 		else if (strcmp(argv[x], "console") == 0) CONSOLE = true;
 		else if (strcmp(argv[x], "timer") == 0) TIMER = true;
+		else if (strcmp(argv[x], "continuous") == 0) CONTINUOUS = true;
 		else if (strcmp(argv[x], "oldoutput") == 0) OLD_AST_OUTPUT = false;
 		else if (strcmp(argv[x], "quiet") == 0)
 		{
@@ -1197,6 +1199,20 @@ int main(int argc, char* argv[])
 	compiler_object compiler;
 	compiler.compile_AST(&helloworld);
 	*/
+
+	if (CONTINUOUS)
+	{
+		while (1)
+		{
+			std::clock_t start = std::clock();
+			for (int x = 0; x < 400; ++x) fuzztester(100);
+			std::cout << "400/100 time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
+			for (unsigned x = 0; x < ASTn("never reached"); ++x)
+				std::cout << "tag " << x << " " << AST_descriptor[x].name << ' ' << hitcount[x] << '\n';
+		}
+		return 0;
+	}
+
 	if (TIMER)
 	{
 		std::clock_t start = std::clock();

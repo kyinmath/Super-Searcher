@@ -113,4 +113,7 @@ void test_unique_types()
 
 	check(u::integer == get_unique_type(u::integer, false), "u::types aren't unique");
 	check(u::integer == get_unique_type(T::integer, false), "u::types don't come from T::types");
+
+	Type* unique_full_dynamic = get_non_convec_unique_type(Type("pointer", &dynamic, 1));
+	check(unique_pointer_dynamic != unique_full_dynamic, "dynamic fullness not considered");
 }

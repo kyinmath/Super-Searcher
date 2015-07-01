@@ -29,23 +29,22 @@ namespace std {
 		{
 			if (UNIQUE_VERBOSE_DEBUG)
 			{
-				console << "testing equal.\n";
+				console << "testing equal: await \"true\" response \n";
 				output_type(l);
 				output_type(r);
 			}
 			if ((l == nullptr) != (r == nullptr)) return false;
 			if ((l == nullptr) && (r == nullptr)) return true;
+
 			if (l->tag != r->tag)
 				return false;
 
 			uint64_t no_of_fields = total_valid_fields(l);
-			uint64_t* left = (uint64_t*)l;
-			uint64_t* right = (uint64_t*)r;
 			for (int x = 0; x < no_of_fields; ++x)
-				if (left[x] != right[x])
+				if (l->fields[x].num != r->fields[x].num)
 					return false;
 
-			if (UNIQUE_VERBOSE_DEBUG) console << "true\n";
+			if (UNIQUE_VERBOSE_DEBUG) console << "equal to returned true\n";
 			return true;
 		}
 	};

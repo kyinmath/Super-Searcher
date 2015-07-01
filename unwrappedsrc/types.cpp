@@ -199,6 +199,7 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 }
 
 //this takes a vector of types, and then puts them in concatenation. none of them is allowed to be a concatenation.
+//automatically uses get_unique_type()
 Type* concatenate_types(llvm::ArrayRef<Type*> components)
 {
 	std::vector<Type*> true_components{0}; //every Type here is a single element, not a concatenation. except: the very first element of the vector is the total number of components.
@@ -225,7 +226,7 @@ Type* concatenate_types(llvm::ArrayRef<Type*> components)
 
 	if (true_components.size() == 1) return nullptr; //only thing in the vector is the size
 	if (true_components.size() == 2) return true_components[1]; //one element in the vector.
-	else return new_type(Typen("con_vec"), true_components);
+	else return get_unique_type(new_type(Typen("con_vec"), true_components), true);
 }
 
 bool is_full(Type* t)

@@ -14,7 +14,7 @@
 //thus, we wrap them in a unique() function, so that the user only ever sees GC-handled objects.
 
 bool DEBUG_GC = true; //do some really strict checking to make sure GC is working properly. slow. mainly: whenever GCing or creating, it sets memory locations to special values.
-bool VERBOSE_GC = true;
+bool VERBOSE_GC = false;
 
 constexpr const uint64_t pool_size = 100000ull;
 constexpr const uint64_t function_pool_size = 2000ull * 64;

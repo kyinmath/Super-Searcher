@@ -181,7 +181,8 @@ struct Return_Info
 	Return_Info(IRgen_status err, llvm::Value* b, Type* t, stack_state o, uint64_t s, uint64_t u, uint64_t l)
 		: error_code(err), IR(b), type(t), on_stack(o), self_lifetime(s), self_validity_guarantee(u), target_hit_contract(l) {}
 	Return_Info(IRgen_status err, memory_location b, Type* t, stack_state o, uint64_t s, uint64_t u, uint64_t l)
-		: error_code(err), place(b), type(t), on_stack(o), self_lifetime(s), self_validity_guarantee(u), target_hit_contract(l) {}
+		: error_code(err), IR(0), place(b), type(t), on_stack(o), self_lifetime(s), self_validity_guarantee(u), target_hit_contract(l) {}
+	//IR should be initialized to 0 in this ctor to avoid uninitialized-value errors from valgrind. however, it is otherwise unnecessary as the uninitialized value is never used except when trying to output it for debug purposes.
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.

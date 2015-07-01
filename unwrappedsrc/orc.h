@@ -27,7 +27,7 @@ private:
 #include <sstream>
 inline std::string GenerateUniqueName(const std::string &Root)
 {
-	thread_local static int i = 0;
+	thread_local static uint64_t i = 0;
 	std::ostringstream NameStream;
 	NameStream << Root << ++i;
 	return NameStream.str();
