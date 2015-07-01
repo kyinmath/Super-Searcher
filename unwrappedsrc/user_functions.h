@@ -49,31 +49,34 @@ inline uint64_t run_null_parameter_function(uint64_t func_int)
 	void* fptr = func->fptr;
 	if (VERBOSE_GC) console << "fptr is " << fptr << '\n';
 	uint64_t size_of_return = get_size(func->return_type);
-	if (size_of_return == 1)
+	if (!DONT_ADD_MODULE_TO_ORC && !DELETE_MODULE_IMMEDIATELY)
 	{
-		uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
-		console << "Evaluated to " << FP() << '\n';
-	}
-	else if (size_of_return > 1)
-	{
-		using std::array;
-		switch (size_of_return)
+		if (size_of_return == 1)
 		{
-		case 2: cout_array(((array<uint64_t, 2>(*)())(intptr_t)fptr)()); break; //theoretically, this ought to break. array<2> = {int, int}
-		case 3: cout_array(((array<uint64_t, 3>(*)())(intptr_t)fptr)()); break; //this definitely does break.
-		case 4: cout_array(((array<uint64_t, 4>(*)())(intptr_t)fptr)()); break;
-		case 5: cout_array(((array<uint64_t, 5>(*)())(intptr_t)fptr)()); break;
-		case 6: cout_array(((array<uint64_t, 6>(*)())(intptr_t)fptr)()); break;
-		case 7: cout_array(((array<uint64_t, 7>(*)())(intptr_t)fptr)()); break;
-		case 8: cout_array(((array<uint64_t, 8>(*)())(intptr_t)fptr)()); break;
-		case 9: cout_array(((array<uint64_t, 9>(*)())(intptr_t)fptr)()); break;
-		default: console << "function return size is " << size_of_return << " and C++ seems to only take static return types\n"; break;
+			uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
+			console << "Evaluated to " << FP() << '\n';
 		}
-	}
-	else
-	{
-		void(*FP)() = (void(*)())(intptr_t)fptr;
-		FP();
+		else if (size_of_return > 1)
+		{
+			using std::array;
+			switch (size_of_return)
+			{
+			case 2: cout_array(((array<uint64_t, 2>(*)())(intptr_t)fptr)()); break; //theoretically, this ought to break. array<2> = {int, int}
+			case 3: cout_array(((array<uint64_t, 3>(*)())(intptr_t)fptr)()); break; //this definitely does break.
+			case 4: cout_array(((array<uint64_t, 4>(*)())(intptr_t)fptr)()); break;
+			case 5: cout_array(((array<uint64_t, 5>(*)())(intptr_t)fptr)()); break;
+			case 6: cout_array(((array<uint64_t, 6>(*)())(intptr_t)fptr)()); break;
+			case 7: cout_array(((array<uint64_t, 7>(*)())(intptr_t)fptr)()); break;
+			case 8: cout_array(((array<uint64_t, 8>(*)())(intptr_t)fptr)()); break;
+			case 9: cout_array(((array<uint64_t, 9>(*)())(intptr_t)fptr)()); break;
+			default: console << "function return size is " << size_of_return << " and C++ seems to only take static return types\n"; break;
+			}
+		}
+		else
+		{
+			void(*FP)() = (void(*)())(intptr_t)fptr;
+			FP();
+		}
 	}
 	return 923913;
 }

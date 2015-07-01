@@ -9,3 +9,7 @@ with S4 up, super unscientific, doing things in the background:
 ./toy timer quiet optimize
 	6.62
 	6.72
+
+
+./toy fuzznocompile continuous quiet
+	to check for GC leaks that don't involve llvm

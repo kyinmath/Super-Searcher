@@ -39,6 +39,9 @@ bool CONSOLE = false;
 bool TIMER = false;
 bool CONTINUOUS = false;
 bool OLD_AST_OUTPUT = false;
+bool FUZZTESTER_NO_COMPILE = false;
+bool DONT_ADD_MODULE_TO_ORC = false;
+bool DELETE_MODULE_IMMEDIATELY = false;
 
 basic_onullstream<char> null_stream;
 std::ostream& console = std::cerr;
@@ -125,19 +128,27 @@ unsigned compiler_object::compile_AST(uAST* target)
 		C.getM().print(*llvm_console, nullptr);
 	}
 
-	if (VERBOSE_DEBUG) console << "finalizing object...\n";
+	if (!DONT_ADD_MODULE_TO_ORC)
+	{
+		if (VERBOSE_DEBUG) console << "adding module...\n";
+		auto H = J.addModule(C.takeM());
 
-	auto H = J.addModule(C.takeM());
+		// Get the address of the JIT'd function in memory.
+		//this seems unreasonably expensive. even having a few functions around makes it cost 5% total run time.
+		auto ExprSymbol = J.findUnmangledSymbol(function_name);
 
-	// Get the address of the JIT'd function in memory.
-	//this seems unreasonably expensive. even having a few functions around makes it cost 5% total run time.
-	auto ExprSymbol = J.findUnmangledSymbol(function_name);
+		fptr = (void*)(intptr_t)(ExprSymbol.getAddress());
 
-	// Cast it to the right type (takes no arguments, returns a double) so we
-	// can call it as a native function.
-	fptr = (void*)(intptr_t)(ExprSymbol.getAddress());
-	
-	result_module = H;
+		if (DELETE_MODULE_IMMEDIATELY)
+			J.removeModule(H);
+		else
+			result_module = H;
+	}
+	else
+	{
+		fptr = (void*)2222222ull;
+		//std::unique_ptr<llvm::Module> a(C.takeM()); //delete the module
+	}
 	return 0;
 }
 
@@ -944,15 +955,27 @@ void fuzztester(unsigned iterations)
 		if (OLD_AST_OUTPUT) output_AST_and_previous(test_AST);
 		output_AST_console_version a(test_AST);
 
-		uint64_t result[3];
-		compile_returning_legitimate_object(result, (uint64_t)test_AST);
-		auto func = (function*)result[0];
-		if (result[1] == 0)
+
+		if (!FUZZTESTER_NO_COMPILE)
 		{
-			run_null_parameter_function(result[0]);
-			AST_list.push_back((uAST*)func->the_AST); //we need the cast to get rid of the const
-			fuzztester_roots.push_back((uAST*)func->the_AST); //we absolutely shouldn't keep the type here, because it gets removed.
-			//theoretically, this action is disallowed. these ASTs are pointing to already-immuted ASTs, which can't happen. however, it's safe as long as we isolate these ASTs from the user
+			uint64_t result[3];
+			compile_returning_legitimate_object(result, (uint64_t)test_AST);
+			auto func = (function*)result[0];
+			if (result[1] == 0)
+			{
+				run_null_parameter_function(result[0]);
+				AST_list.push_back((uAST*)func->the_AST); //we need the cast to get rid of the const
+				fuzztester_roots.push_back((uAST*)func->the_AST); //we absolutely shouldn't keep the type here, because it gets removed.
+				//theoretically, this action is disallowed. these ASTs are pointing to already-immuted ASTs, which can't happen. however, it's safe as long as we isolate these ASTs from the user
+				console << AST_list.size() - 1 << "\n";
+				++hitcount[tag];
+			}
+		}
+		else
+		{
+			//don't bother compiling. just shove everything in there.
+			AST_list.push_back(test_AST);
+			fuzztester_roots.push_back(test_AST);
 			console << AST_list.size() - 1 << "\n";
 			++hitcount[tag];
 		}
@@ -1150,6 +1173,7 @@ int main(int argc, char* argv[])
 	l::InitializeNativeTargetAsmParser();
 
 	c = new compiler_host;
+	thread_local std::unique_ptr<compiler_host> c_holder(c); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
 	
 	//console << "compiler host is at " << c << '\n';
 	//console << "its JIT is at " << &(c->J) << '\n';
@@ -1172,7 +1196,10 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "console") == 0) CONSOLE = true;
 		else if (strcmp(argv[x], "timer") == 0) TIMER = true;
 		else if (strcmp(argv[x], "continuous") == 0) CONTINUOUS = true;
-		else if (strcmp(argv[x], "oldoutput") == 0) OLD_AST_OUTPUT = false;
+		else if (strcmp(argv[x], "oldoutput") == 0) OLD_AST_OUTPUT = true;
+		else if (strcmp(argv[x], "fuzznocompile") == 0) FUZZTESTER_NO_COMPILE = true;
+		else if (strcmp(argv[x], "noaddmodule") == 0)  DONT_ADD_MODULE_TO_ORC = true;
+		else if (strcmp(argv[x], "deletemodule") == 0)  DELETE_MODULE_IMMEDIATELY = true;
 		else if (strcmp(argv[x], "quiet") == 0)
 		{
 			console.setstate(std::ios_base::failbit);

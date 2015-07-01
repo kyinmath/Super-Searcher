@@ -11,3 +11,10 @@ extern bool VERBOSE_DEBUG;
 
 //the condition is true when the program behaves normally.
 inline void check(bool condition, const string& Str) { if (!condition) error(Str); }
+
+extern bool OPTIMIZE;
+extern bool INTERACTIVE;
+extern bool CONSOLE;
+extern bool TIMER;
+extern bool DONT_ADD_MODULE_TO_ORC;
+extern bool DELETE_MODULE_IMMEDIATELY;

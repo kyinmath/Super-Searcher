@@ -1,8 +1,4 @@
 #pragma once
-extern bool OPTIMIZE;
-extern bool INTERACTIVE;
-extern bool CONSOLE;
-extern bool TIMER;
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
 #include <unordered_set>
@@ -15,6 +11,7 @@ extern bool TIMER;
 #include "types.h"
 #include "ASTs.h"
 #include "orc.h"
+#include "globalinfo.h"
 
 #ifdef _MSC_VER
 #define thread_local
