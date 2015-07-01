@@ -12,9 +12,7 @@ generate_IR() is the main AST conversion tool. it turns ASTs into l::Values, rec
 	to do this, generate_IR first runs itself on a target's dependencies. then, it looks at the target's tag, and then uses a switch-case to determine how it should use those dependencies.
 */
 #include <cstdint>
-#include <iostream>
 #include <array>
-#include <stack>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Transforms/Scalar.h>

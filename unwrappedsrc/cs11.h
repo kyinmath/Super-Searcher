@@ -1,11 +1,8 @@
 #pragma once
 extern bool OPTIMIZE;
-extern bool VERBOSE_DEBUG;
 extern bool INTERACTIVE;
 extern bool CONSOLE;
 extern bool TIMER;
-#include <iostream>
-
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/IRBuilder.h>
 #include <unordered_set>

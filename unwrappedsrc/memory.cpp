@@ -1,6 +1,5 @@
 #include <array>
 #include <map>
-#include <bitset>
 #include <memory>
 #include <stack>
 #include "console.h"
