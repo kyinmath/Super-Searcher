@@ -38,3 +38,4 @@ extern bool DELETE_MODULE_IMMEDIATELY;
 //otherwise, everything using them would have to carry around references to them. and then when you wanted to use llvm_array, you'd need to bind references to it.
 extern thread_local llvm::LLVMContext* context;
 extern thread_local llvm::IRBuilder<>* builder;
+extern std::unique_ptr<llvm::TargetMachine> TM;
