@@ -73,7 +73,8 @@ uint64_t generate_exponential_dist()
 unsigned compiler_object::compile_AST(uAST* target)
 {
 	//todo: the context should be moved.
-	std::unique_ptr<llvm::LLVMContext> new_context(new llvm::LLVMContext); //must live longer than the module
+	//std::unique_ptr<llvm::LLVMContext> new_context(new llvm::LLVMContext); //must live longer than the module
+	llvm::LLVMContext* new_context(new llvm::LLVMContext); //must live longer than the module
 	llvm::IRBuilder<> new_builder(*new_context);
 	std::unique_ptr<llvm::Module> M(new llvm::Module(GenerateUniqueName("jit_module_"), *new_context)); //should be unique ptr because ownership will be transferred
 	struct builder_context_stack
@@ -89,7 +90,7 @@ unsigned compiler_object::compile_AST(uAST* target)
 			context = old_context;
 		}
 	}
-	builder_context_stack(&new_builder, new_context.get());
+	builder_context_stack(&new_builder, new_context);
 
 	if (VERBOSE_DEBUG) console << "starting compilation\ntarget is " << target << '\n'; //necessary in case it crashes here
 	if (target == nullptr) return IRgen_status::null_AST;
