@@ -36,6 +36,7 @@ extern thread_local compiler_host* c;
 
 class compiler_object
 {
+
 	KaleidoscopeJIT& J;
 
 	//lists the ASTs we're currently looking at. goal is to prevent infinite loops.
@@ -75,7 +76,7 @@ class compiler_object
 	Return_Info generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired = memory_location());
 
 public:
-	compiler_object() : J(c->J), error_location(nullptr), new_context(new llvm::LLVMContext()) {}
+	compiler_object() : J(c->J), error_location(nullptr) {}
 	unsigned compile_AST(uAST* target); //we can't combine this with the ctor, because it needs to return an int
 
 	void* fptr; //the end fptr.
@@ -91,7 +92,6 @@ public:
 	KaleidoscopeJIT::ModuleHandleT result_module;
 
 
-	std::unique_ptr<llvm::LLVMContext> new_context;
 
 
 };
