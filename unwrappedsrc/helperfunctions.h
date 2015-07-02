@@ -228,3 +228,27 @@ struct Return_Info
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
 	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), on_stack(stack_state::temp), self_lifetime(0), self_validity_guarantee(0), target_hit_contract(full_lifetime) {}
 };
+
+
+
+/** mem-to-reg only works on entry block variables.
+thus, this function builds llvm::Allocas in the entry block. it should be preferred over trying to create allocas directly.
+maybe scalarrepl is more useful for us.
+clang likes to allocate everything in the beginning, so we follow their lead
+we call this "create_alloca" instead of "create_alloca_in_entry_block", because it's the general alloca mechanism. if we said, "in_entry_block", then the user would be confused as to when to use this. by not having that, it's clear that this should be the default.
+
+we create an alloca. it's a placeholder for dependencies, in case we need a place to store things.
+if we don't need it, we can use eraseFromParent()
+if we do need it, then we use ReplaceInstWithInst.
+*/
+inline llvm::AllocaInst* create_empty_alloca() {
+	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
+	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
+	return TmpB.CreateAlloca(llvm_array(1));
+}
+
+inline llvm::AllocaInst* create_actual_alloca(uint64_t size) {
+	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
+	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
+	return TmpB.CreateAlloca(llvm_array(size));
+}

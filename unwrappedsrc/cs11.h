@@ -71,9 +71,6 @@ class compiler_object
 	//this runs the dtors. it's called by clear_stack, but also called by goto, which jumps stacks.
 	void emit_dtors(uint64_t desired_stack_size);
 
-	llvm::AllocaInst* create_empty_alloca();
-	llvm::AllocaInst* create_actual_alloca(uint64_t size);
-
 
 
 	Return_Info generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired = memory_location());
