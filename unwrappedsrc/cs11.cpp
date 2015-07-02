@@ -92,11 +92,11 @@ unsigned compiler_object::compile_AST(uAST* target)
 	if (VERBOSE_DEBUG) console << "starting compilation\ntarget is " << target << '\n'; //necessary in case it crashes here
 	if (target == nullptr) return IRgen_status::null_AST;
 	using namespace llvm;
-	FunctionType *dummy_type = FunctionType::get(void_type(), false);;
+	FunctionType *dummy_type(FunctionType::get(void_type(), false));
 
-	Function *dummy_func = Function::Create(dummy_type, Function::ExternalLinkage, "dummy_func");
+	Function *dummy_func(Function::Create(dummy_type, Function::ExternalLinkage, "dummy_func"));
 
-	BasicBlock *BB = BasicBlock::Create(*context, "entry", dummy_func);
+	BasicBlock *BB(BasicBlock::Create(*context, "entry", dummy_func));
 	new_builder.SetInsertPoint(BB);
 
 	auto return_object = generate_IR(target, false);
@@ -107,10 +107,10 @@ unsigned compiler_object::compile_AST(uAST* target)
 	//can't be u::does_not_return, because goto can't go forward past the end of a function.
 
 	auto size_of_return = get_size(return_object.type);
-	FunctionType* FT = FunctionType::get(llvm_type_including_void(size_of_return), false);
+	FunctionType* FT(FunctionType::get(llvm_type_including_void(size_of_return), false));
 	if (VERBOSE_DEBUG) console << "Size of return is " << size_of_return << '\n';
 	std::string function_name = GenerateUniqueName("");
-	Function *F = Function::Create(FT, Function::ExternalLinkage, function_name, M.get()); //marking this private linkage seems to fail
+	Function *F(Function::Create(FT, Function::ExternalLinkage, function_name, M.get())); //marking this private linkage seems to fail
 	F->addFnAttr(Attribute::NoUnwind); //7% speedup
 
 	F->getBasicBlockList().splice(F->begin(), dummy_func->getBasicBlockList());

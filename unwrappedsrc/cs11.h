@@ -30,7 +30,7 @@ uint64_t generate_exponential_dist();
 struct compiler_host
 {
 	KaleidoscopeJIT J;
-	compiler_host() : J(llvm::EngineBuilder().selectTarget()) {}
+	compiler_host() : J(TM.get()) {}
 };
 extern thread_local compiler_host* c;
 
