@@ -27,7 +27,7 @@ Later, we'll have some ASTs that let the user actually query this information.
 #include <cstdint>
 #include <array>
 #include <llvm/ADT/ArrayRef.h>
-#include "console.h"
+#include "globalinfo.h"
 
 #ifdef NDEBUG
 #undef NDEBUG

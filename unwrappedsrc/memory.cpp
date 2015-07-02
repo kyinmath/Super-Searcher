@@ -2,7 +2,7 @@
 #include <map>
 #include <memory>
 #include <stack>
-#include "console.h"
+#include "globalinfo.h"
 #include "types.h"
 #include "user_functions.h"
 #include "function.h"

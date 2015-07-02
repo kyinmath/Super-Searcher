@@ -9,20 +9,9 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TargetSelect.h"
-#include "console.h"
+#include "globalinfo.h"
 
 //taken directly from Lang Hames' Orc Kaleidoscope tutorial
-
-class SessionContext
-{
-public:
-	SessionContext(llvm::LLVMContext &C) : Context(C), TM(llvm::EngineBuilder().selectTarget()) {}
-	llvm::LLVMContext& getLLVMContext() const { return Context; }
-	llvm::TargetMachine& getTarget() { return *TM; }
-private:
-	llvm::LLVMContext &Context;
-	std::unique_ptr<llvm::TargetMachine> TM;
-};
 
 #include <sstream>
 inline std::string GenerateUniqueName(const std::string &Root)
@@ -34,22 +23,6 @@ inline std::string GenerateUniqueName(const std::string &Root)
 }
 
 
-class IRGenContext
-{
-public:
-	IRGenContext(SessionContext &S) : Session(S), M(new llvm::Module(GenerateUniqueName("jit_module_"), Session.getLLVMContext())), Builder(Session.getLLVMContext())
-	{ M->setDataLayout(*Session.getTarget().getDataLayout()); }
-
-	SessionContext& getSession() { return Session; }
-	llvm::Module& getM() const { return *M; }
-	std::unique_ptr<llvm::Module> takeM() { return std::move(M); }
-	llvm::IRBuilder<>& getBuilder() { return Builder; }
-	llvm::LLVMContext& getLLVMContext() { return Session.getLLVMContext(); }
-private:
-	SessionContext &Session;
-	std::unique_ptr<llvm::Module> M;
-	llvm::IRBuilder<> Builder;
-};
 
 
 template <typename T>
@@ -68,7 +41,7 @@ public:
 	typedef CompileLayerT::ModuleSetHandleT ModuleHandleT;
 
 
-	KaleidoscopeJIT(SessionContext &Session) : DL(*Session.getTarget().getDataLayout()), CompileLayer(ObjectLayer, llvm::orc::SimpleCompiler(Session.getTarget())) {}
+	KaleidoscopeJIT(llvm::TargetMachine* tm) : DL(*tm->getDataLayout()), CompileLayer(ObjectLayer, llvm::orc::SimpleCompiler(*tm)) {}
 
 	std::string mangle(const std::string &Name) {
 		std::string MangledName;

@@ -1,5 +1,5 @@
 #include <atomic>
-#include "console.h"
+#include "globalinfo.h"
 class mutex_lock
 {
 	enum { UNLOCKED, LOCKED };

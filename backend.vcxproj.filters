@@ -24,9 +24,6 @@
     <ClCompile Include="unwrappedsrc\testdriver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="unwrappedsrc\helperfunctions.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="unwrappedsrc\memory.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -42,9 +39,6 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="unwrappedsrc\cs11.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\helperfunctions.h">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="unwrappedsrc\lock.h">
@@ -69,6 +63,9 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="unwrappedsrc\globalinfo.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="unwrappedsrc\helperfunctions.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -12,7 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="unwrappedsrc\cs11.cpp" />
-    <ClCompile Include="unwrappedsrc\helperfunctions.cpp" />
     <ClCompile Include="unwrappedsrc\memory.cpp" />
     <ClCompile Include="unwrappedsrc\testdriver.cpp" />
     <ClCompile Include="unwrappedsrc\types.cpp" />
