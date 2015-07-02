@@ -51,7 +51,7 @@ thread_local compiler_host* c;
 thread_local llvm::LLVMContext* context;
 thread_local llvm::IRBuilder<>* builder;
 thread_local uint64_t finiteness;
-std::unique_ptr<llvm::TargetMachine> TM(llvm::EngineBuilder().selectTarget());
+llvm::TargetMachine* TM;
 
 #include <chrono>
 #include <random>
@@ -1166,6 +1166,8 @@ int main(int argc, char* argv[])
 	l::InitializeNativeTargetAsmPrinter();
 	l::InitializeNativeTargetAsmParser();
 
+	std::unique_ptr<llvm::TargetMachine> TM_backer(llvm::EngineBuilder().selectTarget());
+	TM = TM_backer.get();
 	c = new compiler_host;
 	thread_local std::unique_ptr<compiler_host> c_holder(c); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
 	
