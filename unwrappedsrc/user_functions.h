@@ -24,7 +24,7 @@ inline void compile_returning_legitimate_object(uint64_t* memory_location, uint6
 	}
 	else
 	{
-		function* new_location = new(allocate_function()) function(target, a.return_type, a.parameter_type, a.fptr, &c->J, a.result_module);
+		function* new_location = new(allocate_function()) function(target, a.return_type, a.parameter_type, a.fptr, &c->J, a.result_module, std::move(a.new_context));
 		if (VERBOSE_GC)
 		{
 			console << *new_location;
