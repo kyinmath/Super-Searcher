@@ -75,7 +75,7 @@ class compiler_object
 	Return_Info generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired = memory_location());
 
 public:
-	compiler_object() : J(c->J), error_location(nullptr), new_context(&llvm::getGlobalContext()) {}//TODO: shouldn't be global context
+	compiler_object() : J(c->J), error_location(nullptr), new_context(new llvm::LLVMContext()) {}
 	unsigned compile_AST(uAST* target); //we can't combine this with the ctor, because it needs to return an int
 
 	void* fptr; //the end fptr.
