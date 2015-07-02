@@ -14,9 +14,10 @@ struct function
 	void* fptr; //the function pointer
 	KaleidoscopeJIT* thread_jit;
 	KaleidoscopeJIT::ModuleHandleT result_module;
+	std::unique_ptr<llvm::LLVMContext> context;
 	//todo: finiteness
 	//function() { the_AST = (uAST*)(this - 1); return_type = (Type*)(this + 1); } //initializing the doubly-linked list.
-	function(uAST* a, Type* r, Type* p, void* f, KaleidoscopeJIT* j, KaleidoscopeJIT::ModuleHandleT m) : the_AST(a), return_type(r), parameter_type(p), fptr(f), thread_jit(j), result_module(m) {}
+	function(uAST* a, Type* r, Type* p, void* f, KaleidoscopeJIT* j, KaleidoscopeJIT::ModuleHandleT m, std::unique_ptr<llvm::LLVMContext> c) : the_AST(a), return_type(r), parameter_type(p), fptr(f), thread_jit(j), result_module(m), context(std::move(c)) {}
 	~function()
 	{
 		if (!DONT_ADD_MODULE_TO_ORC && !DELETE_MODULE_IMMEDIATELY)

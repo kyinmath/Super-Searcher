@@ -72,9 +72,6 @@ uint64_t generate_exponential_dist()
 //return value is the error code, which is 0 if successful
 unsigned compiler_object::compile_AST(uAST* target)
 {
-	//todo: the context should be moved.
-	//std::unique_ptr<llvm::LLVMContext> new_context(new llvm::LLVMContext); //must live longer than the module
-	llvm::LLVMContext* new_context(new llvm::LLVMContext); //must live longer than the module
 	llvm::IRBuilder<> new_builder(*new_context);
 	std::unique_ptr<llvm::Module> M(new llvm::Module(GenerateUniqueName("jit_module_"), *new_context)); //should be unique ptr because ownership will be transferred
 	struct builder_context_stack
