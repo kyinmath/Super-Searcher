@@ -10,7 +10,7 @@ namespace std {
 		size_t operator () (const Type* f) const
 		{
 			uint64_t hash = f->tag;
-			for (int x = 0; x < total_valid_fields(f); ++x)
+			for (uint64_t x = 0; x < total_valid_fields(f); ++x)
 				hash ^= f->fields[x].num;
 			//we're ignoring con_vec, but that's probably ok
 
@@ -40,7 +40,7 @@ namespace std {
 				return false;
 
 			uint64_t no_of_fields = total_valid_fields(l);
-			for (int x = 0; x < no_of_fields; ++x)
+			for (uint64_t x = 0; x < no_of_fields; ++x)
 				if (l->fields[x].num != r->fields[x].num)
 					return false;
 

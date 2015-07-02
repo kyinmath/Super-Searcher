@@ -111,8 +111,8 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 {
 	std::array<Type*, 2> iter{{existing_reference, new_reference}};
 	//u::does_not_return is a special value. we can't be handling it here.
-	check(iter[0] != u::does_not_return, "can't handle nonexistent types in type_check()");
-	check(iter[1] != u::does_not_return, "can't handle nonexistent types in type_check()");
+	check(iter[0] != u::does_not_return, "can't handle nonexistent types in type_check_once()");
+	check(iter[1] != u::does_not_return, "can't handle nonexistent types in type_check_once()");
 
 	
 	/*if fully immut + immut, the new reference can't change the object
@@ -151,6 +151,8 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 			return type_check_result::different;
 
 		case Typen("AST pointer"):
+		case Typen("function pointer"):
+		case Typen("type pointer"):
 			if (iter[0]->tag == iter[1]->tag)
 				return type_check_result::perfect_fit;
 			return type_check_result::different;
@@ -183,6 +185,8 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 			}
 		case Typen("integer"):
 		case Typen("AST pointer"):
+		case Typen("function pointer"):
+		case Typen("type pointer"):
 			return type_check_result::perfect_fit;
 
 		case Typen("dynamic pointer"):

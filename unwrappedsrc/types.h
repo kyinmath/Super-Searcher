@@ -94,17 +94,32 @@ constexpr Type_info Type_descriptor[] =
 	{"con_vec", minus_one, minus_one}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types.
 	{"integer", 0, 1}, //64-bit integer
 	_t("pointer", 1, 1).make_special_fields(1), //pointer to anything, except the target type must be non-nullptr. second field is 1 if it's a full pointer, and 0 otherwise
-	_t("dynamic pointer", 0, 2).make_special_fields(1), //dynamic pointer. a double-indirection. points to two elements: first field is the pointer, second field is a pointer to the type. the purpose of double indirection is lock safety. if the type will be null, then the very first pointer is nullptr.
+	_t("dynamic pointer", 0, 2).make_special_fields(1), //dynamic pointer. first field is the pointer, second field is a pointer to the type. if either is null, both are null together.
 	{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
 	//the actual object has 2+fields: tag, then previous, then some fields.
 	{"type pointer", 0, 1},
+	//actual object is tag + fields.
 	{"function pointer", 0, 1}, //points to the function object. the purpose of not specifying the return/parameter type is given in "doc/AST pointers"
 	{"does not return", 0, 0}, //a special value
 	{"never reached", 0, 0},
 	//we want the parameter AST to be before everything that might use it, so having it as a first_pointer is not good, since the beginning of the function might change.
 };
 
-#include <iostream>
+//gcc 5 doesn't support loops in constexpr
+#if __GNUC__ == 5
+template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const char name[], unsigned number)
+{
+	if (static_strequal(vector_name[number].name, name)) return number;
+	else if (static_strequal(vector_name[number].name, "never reached")) //this isn't recursive, because the previous if statement returns.
+		error(string("tried to get a nonexistent name: ") + name);
+	else return get_enum_from_name<X, vector_name>(name, number + 1);
+}
+
+template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const char name[])
+{
+	return get_enum_from_name<X, vector_name>(name, 0);
+}
+#else
 template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const char name[])
 {
 	for (unsigned k = 0; 1; ++k)
@@ -115,6 +130,7 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
 		//llvm_unreachable doesn't give proper errors for run time mistakes, only when it's compile time.
 	}
 }
+#endif
 constexpr uint64_t Typen(const char name[]) { return get_enum_from_name<const Type_info, Type_descriptor>(name); }
 
 #define fields_in_Type 3u
