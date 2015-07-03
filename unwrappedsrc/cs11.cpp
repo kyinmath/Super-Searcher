@@ -114,7 +114,7 @@ unsigned compiler_object::compile_AST(uAST* target)
 	if (VERBOSE_DEBUG) console << "Size of return is " << size_of_return << '\n';
 	std::string function_name = GenerateUniqueName("");
 	Function *F(Function::Create(FT, Function::ExternalLinkage, function_name, M.get())); //marking this private linkage seems to fail
-	F->addFnAttr(Attribute::NoUnwind); //7% speedup
+	F->addFnAttr(Attribute::NoUnwind); //7% speedup. and required to get Orc not to leak memory, because it doesn't unregister EH frames
 
 	F->getBasicBlockList().splice(F->begin(), dummy_func->getBasicBlockList());
 	dummy_func->eraseFromParent();
@@ -485,10 +485,10 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			l::Value* comparison = builder->CreateICmpNE(condition.IR, llvm_integer(0), s("if() condition"));
 			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
 
-			// Create blocks for the then and else cases.  Insert the 'then' block at the end of the function.
+			// Create blocks for the then and else cases.  Insert the blocks at the end of the function; this is ok because the builder position is the thing that affects instruction insertion. it's necessary to insert them into the function so that we can avoid memleak on errors
 			l::BasicBlock *ThenBB = l::BasicBlock::Create(*context, s("then"), TheFunction);
-			l::BasicBlock *ElseBB = l::BasicBlock::Create(*context, s("else"));
-			l::BasicBlock *MergeBB = l::BasicBlock::Create(*context, s("merge"));
+			l::BasicBlock *ElseBB = l::BasicBlock::Create(*context, s("else"), TheFunction);
+			l::BasicBlock *MergeBB = l::BasicBlock::Create(*context, s("merge"), TheFunction);
 
 			builder->CreateCondBr(comparison, ThenBB, ElseBB);
 
@@ -505,7 +505,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			builder->CreateBr(MergeBB);
 			ThenBB = builder->GetInsertBlock();
 
-			TheFunction->getBasicBlockList().push_back(ElseBB);
 			builder->SetInsertPoint(ElseBB);
 
 			Return_Info else_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, desired);
@@ -525,7 +524,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			ElseBB = builder->GetInsertBlock();
 
 			// Emit merge block.
-			TheFunction->getBasicBlockList().push_back(MergeBB);
 			builder->SetInsertPoint(MergeBB);
 			if (else_IR.type == u::does_not_return)
 				finish_special_stack_handled_pointer(then_IR.IR, then_IR.type, then_IR.self_validity_guarantee, then_IR.target_hit_contract);
@@ -593,7 +591,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
 			l::BasicBlock *SuccessBB = l::BasicBlock::Create(*context, s("finiteness success"), TheFunction);
-			l::BasicBlock *FailureBB = l::BasicBlock::Create(*context, s("finiteness failure"));
+			l::BasicBlock *FailureBB = l::BasicBlock::Create(*context, s("finiteness failure"), TheFunction);
 			builder->CreateCondBr(comparison, SuccessBB, FailureBB);
 
 			//start inserting code in the "then" block
@@ -613,7 +611,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			builder->ClearInsertionPoint();
 
 
-			TheFunction->getBasicBlockList().push_back(FailureBB);
 			builder->SetInsertPoint(FailureBB);
 
 			Return_Info Failure_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, desired);
@@ -799,8 +796,8 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			l::Value* comparison = builder->CreateICmpNE(condition, llvm_integer(0), s("compile branching"));
 			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
 			l::BasicBlock *SuccessBB = l::BasicBlock::Create(*context, s("success"), TheFunction);
-			l::BasicBlock *FailureBB = l::BasicBlock::Create(*context, s("failure"));
-			l::BasicBlock *MergeBB = l::BasicBlock::Create(*context, s("merge"));
+			l::BasicBlock *FailureBB = l::BasicBlock::Create(*context, s("failure"), TheFunction);
+			l::BasicBlock *MergeBB = l::BasicBlock::Create(*context, s("merge"), TheFunction);
 			builder->CreateCondBr(comparison, SuccessBB, FailureBB);
 			builder->SetInsertPoint(SuccessBB);
 
@@ -810,7 +807,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 			builder->CreateBr(MergeBB);
 			SuccessBB = builder->GetInsertBlock();
-			TheFunction->getBasicBlockList().push_back(FailureBB);
 			builder->SetInsertPoint(FailureBB);
 
 			Return_Info error_branch = generate_IR(target->fields[2].ptr, 0);
@@ -818,7 +814,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 			builder->CreateBr(MergeBB);
 			FailureBB = builder->GetInsertBlock();
-			TheFunction->getBasicBlockList().push_back(MergeBB);
 			builder->SetInsertPoint(MergeBB);
 
 
@@ -1175,8 +1170,8 @@ int main(int argc, char* argv[])
 
 	std::unique_ptr<llvm::TargetMachine> TM_backer(llvm::EngineBuilder().selectTarget());
 	TM = TM_backer.get();
-	thread_local std::unique_ptr<compiler_host> c_holder(new compiler_host); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
-	c = c_holder.get();
+	thread_local compiler_host c_holder; //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
+	c = &c_holder;
 	
 	//console << "compiler host is at " << c << '\n';
 	//console << "its JIT is at " << &(c->J) << '\n';
@@ -1221,6 +1216,13 @@ int main(int argc, char* argv[])
 
 	test_unique_types();
 	debugtypecheck(T::does_not_return);
+
+	struct cleanup_at_end
+	{
+		~cleanup_at_end() {
+			start_GC(); //this cleanup is to let Valgrind know that we've legitimately taken care of all memory.
+		}
+	} a;
 
 	/*
 	AST get1("integer", nullptr, 1); //get the integer 1
