@@ -1,0 +1,7 @@
+ when generate_IR fails, then everything gets leaked.
+
+CreateEmptyAlloca is leaking too. how?
+
+./toy continuous quiet: 36.9 MB, at 10:48. then 44.1 MB later.
+
+valgrind --leak-check=yes ./toy timer quiet limited label limited random
