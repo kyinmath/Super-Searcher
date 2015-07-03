@@ -10,7 +10,10 @@ cppcheck
 coverity
 viva64
 
-
+./toy timer limited random quiet gctight
+	it doesn't have the huge memory leaks that otherwise exist. maybe just the small normal one.
+	seems none at all. 21.1 MB baseline, changed to 21.3 MB baseline after first run finished, then...for a long time, no change. so no leaks.
+	"label" causes memleaks.
 
 
 

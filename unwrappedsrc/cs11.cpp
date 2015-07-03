@@ -42,6 +42,8 @@ bool OLD_AST_OUTPUT = false;
 bool FUZZTESTER_NO_COMPILE = false;
 bool DONT_ADD_MODULE_TO_ORC = false;
 bool DELETE_MODULE_IMMEDIATELY = false;
+bool LIMITED_FUZZ_CHOICES = false;
+bool GC_TIGHT = false;
 
 basic_onullstream<char> null_stream;
 std::ostream& console = std::cerr;
@@ -87,7 +89,7 @@ unsigned compiler_object::compile_AST(uAST* target)
 			context = old_context;
 		}
 	}
-	builder_context_stack(&new_builder, new_context);
+	builder_context_stack(&new_builder, new_context.get());
 
 	if (VERBOSE_DEBUG) console << "starting compilation\ntarget is " << target << '\n'; //necessary in case it crashes here
 	if (target == nullptr) return IRgen_status::null_AST;
@@ -900,6 +902,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 }
 
 std::array<uint64_t, ASTn("never reached")> hitcount;
+std::vector<uint64_t> allowed_tags;
 extern std::vector< uAST*> fuzztester_roots; //for use in garbage collecting. each valid AST that the fuzztester has a reference to must be kept in here
 /**
 The fuzztester generates random ASTs and attempts to compile them.
@@ -921,10 +924,16 @@ void fuzztester(unsigned iterations)
 	{
 		//create a random AST
 		unsigned tag = mersenne() % ASTn("never reached");
+		if (LIMITED_FUZZ_CHOICES)
+		{
+			tag = allowed_tags[mersenne() % allowed_tags.size()];
+		}
 		unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
 		unsigned prev_AST = generate_exponential_dist() % AST_list.size(); //perhaps: prove that exponential_dist is desired.
 		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
 		//but does exponential falloff solve this problem in the way we want?
+
+		//if (LIMITED_FUZZ_CHOICES) prev_AST = 0;
 
 
 		std::vector<uAST*> fields;
@@ -977,7 +986,7 @@ void fuzztester(unsigned iterations)
 			std::cin.get();
 		}
 		console << "\n";
-		if ((generate_random() % 30) == 0)
+		if ((generate_random() % (GC_TIGHT ? 1 : 30)) == 0)
 			start_GC();
 	}
 	fuzztester_roots.clear();
@@ -1193,6 +1202,12 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "fuzznocompile") == 0) FUZZTESTER_NO_COMPILE = true;
 		else if (strcmp(argv[x], "noaddmodule") == 0)  DONT_ADD_MODULE_TO_ORC = true;
 		else if (strcmp(argv[x], "deletemodule") == 0)  DELETE_MODULE_IMMEDIATELY = true;
+		else if (strcmp(argv[x], "limited") == 0) //write "limited label", where "label" is the AST tag you want. you can have multiple tags like "limited label limited random", putting "limited" before each one.
+		{
+			LIMITED_FUZZ_CHOICES = true;
+			allowed_tags.push_back(ASTn(argv[++x]));
+		}
+		else if (strcmp(argv[x], "gctight") == 0)  GC_TIGHT = true;
 		else if (strcmp(argv[x], "quiet") == 0)
 		{
 			console.setstate(std::ios_base::failbit);
@@ -1223,8 +1238,8 @@ int main(int argc, char* argv[])
 		while (1)
 		{
 			std::clock_t start = std::clock();
-			for (int x = 0; x < 400; ++x) fuzztester(100);
-			std::cout << "400/100 time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
+			for (int x = 0; x < 40; ++x) fuzztester(100);
+			std::cout << "40/100 time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
 			for (unsigned x = 0; x < ASTn("never reached"); ++x)
 				std::cout << "tag " << x << " " << AST_descriptor[x].name << ' ' << hitcount[x] << '\n';
 		}
@@ -1233,8 +1248,10 @@ int main(int argc, char* argv[])
 
 	if (TIMER)
 	{
+		unsigned runs = 40;
+		if (LIMITED_FUZZ_CHOICES) runs = 5;
 		std::clock_t start = std::clock();
-		for (int x = 0; x < 40; ++x)
+		for (int x = 0; x < runs; ++x)
 		{
 			std::clock_t ministart = std::clock();
 			fuzztester(100);
