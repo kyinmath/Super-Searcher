@@ -97,7 +97,7 @@ unsigned compiler_object::compile_AST(uAST* target)
 	using namespace llvm;
 	FunctionType *dummy_type(FunctionType::get(void_type(), false));
 
-	Function *dummy_func(Function::Create(dummy_type, Function::ExternalLinkage, "dummy_func"));
+	Function *dummy_func(Function::Create(dummy_type, Function::ExternalLinkage, "dummy_func", M.get())); //we have to insert the function in the Module so that it doesn't leak when generate_IR fails. things like instructions, basic blocks, and functions are not part of a context.
 
 	BasicBlock *BB(BasicBlock::Create(*context, "entry", dummy_func));
 	new_builder.SetInsertPoint(BB);
@@ -117,7 +117,7 @@ unsigned compiler_object::compile_AST(uAST* target)
 	F->addFnAttr(Attribute::NoUnwind); //7% speedup
 
 	F->getBasicBlockList().splice(F->begin(), dummy_func->getBasicBlockList());
-	delete dummy_func;
+	dummy_func->eraseFromParent();
 	if (size_of_return) builder->CreateRet(return_object.IR);
 	else builder->CreateRetVoid();
 
@@ -1175,8 +1175,8 @@ int main(int argc, char* argv[])
 
 	std::unique_ptr<llvm::TargetMachine> TM_backer(llvm::EngineBuilder().selectTarget());
 	TM = TM_backer.get();
-	c = new compiler_host;
-	thread_local std::unique_ptr<compiler_host> c_holder(c); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
+	thread_local std::unique_ptr<compiler_host> c_holder(new compiler_host); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
+	c = c_holder.get();
 	
 	//console << "compiler host is at " << c << '\n';
 	//console << "its JIT is at " << &(c->J) << '\n';
