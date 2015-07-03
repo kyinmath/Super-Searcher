@@ -86,14 +86,14 @@ template<typename... should_be_type_ptr, typename fptr> inline llvm::Value* llvm
 	return builder->CreateIntToPtr(function_address, function_pointer_type, s("convert address to function"));
 }
 
-//we already typechecked and received 3. then, they're the same size, unless one of them is T::nonexistent
+//we already typechecked and received 3. then, they're the same size, unless one of them is T::does_not_return
 //thus, we check for T::nonexistent
 inline llvm::Value* llvm_create_phi(llvm::Value* first, llvm::Value* second, Type* first_t, Type* second_t, llvm::BasicBlock* firstBB, llvm::BasicBlock* secondBB)
 {
 	uint64_t size1 = get_size(first_t);
 	uint64_t size2 = get_size(second_t);
 
-	//these are in case one of them is T::nonexistent
+	//these are in case one of them is T::does_not_return
 	if (size2 == 0) return first;
 	if (size1 == 0) return second;
 

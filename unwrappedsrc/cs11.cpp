@@ -525,11 +525,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 			// Emit merge block.
 			builder->SetInsertPoint(MergeBB);
-			if (else_IR.type == u::does_not_return)
-				finish_special_stack_handled_pointer(then_IR.IR, then_IR.type, then_IR.self_validity_guarantee, then_IR.target_hit_contract);
-			else if (then_IR.type == u::does_not_return)
-				finish_special_stack_handled_pointer(else_IR.IR, else_IR.type, else_IR.self_validity_guarantee, else_IR.target_hit_contract);
-
 			uint64_t result_self_validity_guarantee = std::max(then_IR.self_validity_guarantee, else_IR.self_validity_guarantee);
 			uint64_t result_target_hit_contract = std::min(then_IR.target_hit_contract, else_IR.target_hit_contract);
 			if (stack_degree == 0)
@@ -537,8 +532,15 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				l::Value* endPN = llvm_create_phi(then_IR.IR, else_IR.IR, then_IR.type, else_IR.type, ThenBB, ElseBB);
 				finish_special_pointer(endPN, result_type, result_self_validity_guarantee, result_target_hit_contract);
 			}
-			else finish_special_stack_handled_pointer(then_IR.IR, then_IR.type, result_self_validity_guarantee, result_target_hit_contract); //todo: use the result type, not then_IR's type.
-			//even though finish_pointer returns, the else makes it clear from first glance that it's not a continued statement.
+			else
+			{
+				if (else_IR.type == u::does_not_return)
+					finish_special_stack_handled_pointer(then_IR.IR, then_IR.type, then_IR.self_validity_guarantee, then_IR.target_hit_contract);
+				else if (then_IR.type == u::does_not_return)
+					finish_special_stack_handled_pointer(else_IR.IR, else_IR.type, else_IR.self_validity_guarantee, else_IR.target_hit_contract);
+
+				finish_special_stack_handled_pointer(then_IR.IR, result_type, result_self_validity_guarantee, result_target_hit_contract);
+			}
 		}
 
 	case ASTn("label"):
