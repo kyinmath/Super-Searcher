@@ -37,7 +37,6 @@ bool VERBOSE_DEBUG = false;
 bool INTERACTIVE = false;
 bool CONSOLE = false;
 bool TIMER = false;
-bool CONTINUOUS = false;
 bool OLD_AST_OUTPUT = false;
 bool FUZZTESTER_NO_COMPILE = false;
 bool DONT_ADD_MODULE_TO_ORC = false;
@@ -1195,7 +1194,6 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "optimize") == 0) OPTIMIZE = true;
 		else if (strcmp(argv[x], "console") == 0) CONSOLE = true;
 		else if (strcmp(argv[x], "timer") == 0) TIMER = true;
-		else if (strcmp(argv[x], "continuous") == 0) CONTINUOUS = true;
 		else if (strcmp(argv[x], "oldoutput") == 0) OLD_AST_OUTPUT = true;
 		else if (strcmp(argv[x], "fuzznocompile") == 0) FUZZTESTER_NO_COMPILE = true;
 		else if (strcmp(argv[x], "noaddmodule") == 0)  DONT_ADD_MODULE_TO_ORC = true;
@@ -1248,18 +1246,6 @@ int main(int argc, char* argv[])
 	compiler.compile_AST(&helloworld);
 	*/
 
-	if (CONTINUOUS)
-	{
-		while (1)
-		{
-			std::clock_t start = std::clock();
-			for (int x = 0; x < 40; ++x) fuzztester(100);
-			std::cout << "40/100 time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
-			for (unsigned x = 0; x < ASTn("never reached"); ++x)
-				std::cout << "tag " << x << " " << AST_descriptor[x].name << ' ' << hitcount[x] << '\n';
-		}
-		return 0;
-	}
 
 	if (TIMER)
 	{
@@ -1302,5 +1288,14 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	fuzztester(-1);
+	//default mode
+		while (1)
+		{
+			std::clock_t start = std::clock();
+			for (int x = 0; x < 40; ++x) fuzztester(100);
+			std::cout << "40/100 time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
+			for (unsigned x = 0; x < ASTn("never reached"); ++x)
+				std::cout << "tag " << x << " " << AST_descriptor[x].name << ' ' << hitcount[x] << '\n';
+		}
+		return 0;
 }
