@@ -32,6 +32,7 @@ extern bool CONSOLE;
 extern bool TIMER;
 extern bool DONT_ADD_MODULE_TO_ORC;
 extern bool DELETE_MODULE_IMMEDIATELY;
+extern bool DEBUG_GC;
 
 
 //ok, so these two are special: they work like a stack. when you want to work with a context/builder, you push it here. and when you're done, you pop it from here.

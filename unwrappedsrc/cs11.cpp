@@ -50,7 +50,7 @@ basic_onullstream<char> null_stream;
 std::ostream& console = std::cerr;
 l::raw_null_ostream llvm_null_stream;
 l::raw_ostream* llvm_console = &l::outs();
-thread_local compiler_host* c;
+thread_local KaleidoscopeJIT* c;
 thread_local llvm::LLVMContext* context;
 thread_local llvm::IRBuilder<>* builder;
 thread_local uint64_t finiteness;
@@ -1170,7 +1170,7 @@ int main(int argc, char* argv[])
 
 	std::unique_ptr<llvm::TargetMachine> TM_backer(llvm::EngineBuilder().selectTarget());
 	TM = TM_backer.get();
-	thread_local compiler_host c_holder; //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
+	thread_local KaleidoscopeJIT c_holder(TM); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
 	c = &c_holder;
 	
 	//console << "compiler host is at " << c << '\n';
@@ -1199,6 +1199,15 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "noaddmodule") == 0)  DONT_ADD_MODULE_TO_ORC = true;
 		else if (strcmp(argv[x], "deletemodule") == 0)  DELETE_MODULE_IMMEDIATELY = true;
 		else if (strcmp(argv[x], "noprevious") == 0)  NO_PREVIOUS = true;
+		else if (strcmp(argv[x], "benchmark") == 0)
+		{
+			TIMER = true;
+			DEBUG_GC = false;
+			console.setstate(std::ios_base::failbit);
+			console.rdbuf(nullptr);
+			llvm_console = &llvm_null_stream;
+
+		}
 		else if (strcmp(argv[x], "limited") == 0) //write "limited label", where "label" is the AST tag you want. you can have multiple tags like "limited label limited random", putting "limited" before each one.
 		{
 			LIMITED_FUZZ_CHOICES = true;
