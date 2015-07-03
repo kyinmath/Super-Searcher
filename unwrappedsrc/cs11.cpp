@@ -44,6 +44,7 @@ bool DONT_ADD_MODULE_TO_ORC = false;
 bool DELETE_MODULE_IMMEDIATELY = false;
 bool LIMITED_FUZZ_CHOICES = false;
 bool GC_TIGHT = false;
+bool NO_PREVIOUS = false;
 
 basic_onullstream<char> null_stream;
 std::ostream& console = std::cerr;
@@ -220,7 +221,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
 #define return_code(X, Y) do { error_location = user_target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, u::null, stack_state::temp, 0, 0, 0); } while (0)
-
+	//if (stack_degree == 2) stack_degree = 0; //we're trying to diagnose the memory problems with label. this does nothing.
 
 	if (VERBOSE_DEBUG)
 	{
@@ -933,7 +934,7 @@ void fuzztester(unsigned iterations)
 		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
 		//but does exponential falloff solve this problem in the way we want?
 
-		//if (LIMITED_FUZZ_CHOICES) prev_AST = 0;
+		if (NO_PREVIOUS) prev_AST = 0; //this seems to solve the mem problem completely. label goes from a memory gobbler to totally clean. why?
 
 
 		std::vector<uAST*> fields;
@@ -1202,6 +1203,7 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "fuzznocompile") == 0) FUZZTESTER_NO_COMPILE = true;
 		else if (strcmp(argv[x], "noaddmodule") == 0)  DONT_ADD_MODULE_TO_ORC = true;
 		else if (strcmp(argv[x], "deletemodule") == 0)  DELETE_MODULE_IMMEDIATELY = true;
+		else if (strcmp(argv[x], "noprevious") == 0)  NO_PREVIOUS = true;
 		else if (strcmp(argv[x], "limited") == 0) //write "limited label", where "label" is the AST tag you want. you can have multiple tags like "limited label limited random", putting "limited" before each one.
 		{
 			LIMITED_FUZZ_CHOICES = true;
