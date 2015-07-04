@@ -32,11 +32,11 @@ generate_IR() is the main AST conversion tool. it turns ASTs into l::Values, rec
 
 namespace l = llvm;
 
+uint64_t runs = -1ull;
 bool OPTIMIZE = false;
 bool VERBOSE_DEBUG = false;
 bool INTERACTIVE = false;
 bool CONSOLE = false;
-bool TIMER = false;
 bool OLD_AST_OUTPUT = false;
 bool FUZZTESTER_NO_COMPILE = false;
 bool DONT_ADD_MODULE_TO_ORC = false;
@@ -44,6 +44,7 @@ bool DELETE_MODULE_IMMEDIATELY = false;
 bool LIMITED_FUZZ_CHOICES = false;
 bool GC_TIGHT = false;
 bool NO_PREVIOUS = false;
+bool LONGRUN = false;
 
 basic_onullstream<char> null_stream;
 std::ostream& console = std::cerr;
@@ -1178,7 +1179,6 @@ int main(int argc, char* argv[])
 	thread_local KaleidoscopeJIT c_holder(TM); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
 	c = &c_holder;
 
-	unsigned runs = 40;
 	
 	//console << "compiler host is at " << c << '\n';
 	//console << "its JIT is at " << &(c->J) << '\n';
@@ -1199,10 +1199,13 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "verbose") == 0) VERBOSE_DEBUG = true;
 		else if (strcmp(argv[x], "optimize") == 0) OPTIMIZE = true;
 		else if (strcmp(argv[x], "console") == 0) CONSOLE = true;
-		else if (strcmp(argv[x], "timer") == 0) TIMER = true;
+		else if (strcmp(argv[x], "timer") == 0)
+		{
+			runs = 40;
+		}
 		else if (strcmp(argv[x], "longrun") == 0)
 		{
-			TIMER = true;
+			LONGRUN = true;
 			bool isNumber = true;
 			string next_token = argv[++x];
 			for (auto& k : next_token)
@@ -1218,7 +1221,7 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "noprevious") == 0)  NO_PREVIOUS = true;
 		else if (strcmp(argv[x], "benchmark") == 0)
 		{
-			TIMER = true;
+			runs = 40;
 			DEBUG_GC = false;
 			console.setstate(std::ios_base::failbit);
 			console.rdbuf(nullptr);
@@ -1267,18 +1270,6 @@ int main(int argc, char* argv[])
 	compiler.compile_AST(&helloworld);
 	*/
 
-	if (TIMER)
-	{
-		std::clock_t start = std::clock();
-		for (int x = 0; x < runs; ++x)
-		{
-			std::clock_t ministart = std::clock();
-			fuzztester(100);
-			std::cout << "Minitime: " << (std::clock() - ministart) / (double)CLOCKS_PER_SEC << '\n';
-		}
-		std::cout << "Overall time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
-		return 0;
-	}
 	if (CONSOLE)
 	{
 		while (1)
@@ -1304,14 +1295,16 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	//default mode
-		while (1)
-		{
-			std::clock_t start = std::clock();
-			for (int x = 0; x < 40; ++x) fuzztester(100);
-			std::cout << "40/100 time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
-			for (unsigned x = 0; x < ASTn("never reached"); ++x)
-				std::cout << "tag " << x << " " << AST_descriptor[x].name << ' ' << hitcount[x] << '\n';
-		}
+	std::clock_t start = std::clock();
+	for (int x = 0; x < runs; ++x)
+	{
+		std::clock_t ministart = std::clock();
+		fuzztester(100);
+		if (!LONGRUN && (runs != -1))
+			if (x % 40 == 0)
+				std::cout << "40/100 time: " << (std::clock() - ministart) / (double)CLOCKS_PER_SEC << '\n';
+	}
+	std::cout << "Overall time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
 		return 0;
+	//default mode
 }
