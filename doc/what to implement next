@@ -1,19 +1,14 @@
-0. garbage collector.
-	cleaning up the AST descriptor so that types are all clean
-	then, registering type GC roots
 1. dynamic_get_type(object)
 2. dynamic_assert(object, Type, number)
 3. dynamic_assert_pointer
+looking at types. we want to get the Nth type. when we get types past the end, we return null (as usual).
 move the fuzzer into AST format
-	fix compilation: returns dynamic pointer containing a function.
-	Call() + finiteness
 	getting types of ASTs
 		which requires being able to look at types.
 	how to figure out the internals of dynamic objects? since we don't have function parameters, we'll need to use global pointers to pass data.
 4. convert dynamic pointer, to dynamic object containing a pointer. this is necessary for static objects.
 acquisition of Type and AST values
 overwriting ASTs
-cleanup of all the memory leaks
 recursive types
 
 pointer offsets/type slicing

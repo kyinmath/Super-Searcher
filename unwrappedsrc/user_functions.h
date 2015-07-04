@@ -57,6 +57,8 @@ template<size_t array_num> inline void cout_array(std::array<uint64_t, array_num
 inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 {
 	if (func_int == 0) return std::array < uint64_t, 2 > {{0, 0}};
+	if (finiteness == 0) return std::array < uint64_t, 2 > {{0, 0}};
+	else --finiteness;
 	auto func = (function*)func_int;
 	void* fptr = func->fptr;
 	Type* return_type = func->return_type;
