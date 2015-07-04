@@ -106,10 +106,10 @@ constexpr AST_info AST_descriptor[] =
 	{"random", T::integer}, //returns a random integer
 	a("pointer", special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
 	a("load", special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
-	a("concatenate", special_return).make_pointer_fields(2),
+	a("concatenate", special_return).make_pointer_fields(2), //squashes two objects together to make a big object
 	{"dynamic", T::full_dynamic_pointer, parameter_no_type_check}, //creates dynamic storage for any kind of object. moves it to the heap.
 	a("compile", T::function_pointer, T::AST_pointer).make_pointer_fields(3), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
-	//a("temp_generate_AST", T::AST_pointer), //hacked in, generates a random AST.
+	{"run_function", T::full_dynamic_pointer, T::function_pointer},
 	{"dynamic_conc", special_return, T::cheap_dynamic_pointer, T::cheap_dynamic_pointer}, //concatenate the interiors of two dynamic pointers
 	a("goto", special_return).make_pointer_fields(3), //first field is label, second field is success, third field is failure
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.

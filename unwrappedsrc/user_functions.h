@@ -6,6 +6,16 @@
 //using our current set of optimization passes, the undef+insertvalue operations aren't optimized to anything better.
 
 #include "function.h"
+
+
+
+#include "memory.h"
+//return value is the address
+inline uint64_t user_allocate_memory(uint64_t size)
+{
+	return (uint64_t)(allocate(size));
+}
+
 /*first argument is the location of the return object. if we didn't do this, we'd be forced to anyway, by http://www.uclibc.org/docs/psABI-i386.pdf P13. that's the way structs are returned, when 3 or larger.
 takes in AST.
 returns: the fptr, then the error code, then the dynamic object. for now, we let the dynamic error object be 0.
@@ -41,9 +51,71 @@ template<size_t array_num> inline void cout_array(std::array<uint64_t, array_num
 	console << '\n';
 }
 
-//first parameter is a function*
-//return value is a pointer to an array of integers. except, we actually don't do anything at the moment.
-inline uint64_t run_null_parameter_function(uint64_t func_int)
+//parameter is a function*
+//return value is a dynamic pointer to the return value. it's just the object pointer, not the type.
+//todo: the problem is that on failure, we can't get the type. since this requires a switch, we should get the type here.
+inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
+{
+	if (func_int == 0) return std::array < uint64_t, 2 > {{0, 0}};
+	auto func = (function*)func_int;
+	void* fptr = func->fptr;
+	Type* return_type = func->return_type;
+	uint64_t size_of_return = get_size(return_type);
+	if (size_of_return == 1)
+	{
+		uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
+		return std::array < uint64_t, 2 > {{FP(), (uint64_t)return_type}};
+	}
+	else if (size_of_return == 0)
+	{
+		void(*FP)() = (void(*)())(intptr_t)fptr;
+		FP();
+		return std::array < uint64_t, 2 > {{0, 0}};
+	}
+	else //make a trampoline. this is definitely a bad solution, but too bad for us.
+	{
+		llvm::LLVMContext mini_context;
+		llvm::IRBuilder<> new_builder(mini_context);
+		std::unique_ptr<llvm::Module> M(new llvm::Module(GenerateUniqueName("jit_module_"), mini_context));
+		builder_context_stack b(&new_builder, &mini_context); //for safety
+		using namespace llvm;
+		FunctionType *func_type(FunctionType::get(int64_type(), false));
+
+		std::string function_name = GenerateUniqueName("");
+		Function *trampoline(Function::Create(func_type, Function::ExternalLinkage, function_name, M.get()));
+		trampoline->addFnAttr(Attribute::NoUnwind); //7% speedup. and required to get Orc not to leak memory, because it doesn't unregister EH frames
+
+
+		BasicBlock *BB(BasicBlock::Create(*context, "entry", trampoline));
+		new_builder.SetInsertPoint(BB);
+		Value* target_function = llvm_function(fptr, llvm_type_including_void(size_of_return));
+		Value* result_of_call = new_builder.CreateCall(target_function, std::vector < llvm::Value* > {});
+
+		//START DYNAMIC
+		llvm::Value* allocator = llvm_function(user_allocate_memory, int64_type(), int64_type());
+		llvm::Value* dynamic_object_address = builder->CreateCall(allocator, std::vector < llvm::Value* > {llvm_integer(size_of_return)});
+		llvm::Type* target_pointer_type = llvm_type(size_of_return)->getPointerTo();
+
+		//store the returned value into the acquired address
+		llvm::Value* dynamic_object = builder->CreateIntToPtr(dynamic_object_address, target_pointer_type);
+		builder->CreateStore(result_of_call, dynamic_object);
+		builder->CreateRet(dynamic_object_address);
+		///FINISH DYNAMIC
+
+		check(!llvm::verifyFunction(*trampoline, llvm_console), "verification failed");
+
+		auto H = c->addModule(std::move(M));
+
+		auto ExprSymbol = c->findUnmangledSymbol(function_name);
+
+		auto trampfptr = (uint64_t(*)())(ExprSymbol.getAddress());
+		uint64_t result = trampfptr();
+		c->removeModule(H);
+		return std::array < uint64_t, 2 > {{result, (uint64_t)return_type}};
+	}
+}
+
+inline void run_null_parameter_function_bogus(uint64_t func_int)
 {
 	auto func = (function*)func_int;
 	void* fptr = func->fptr;
@@ -78,7 +150,6 @@ inline uint64_t run_null_parameter_function(uint64_t func_int)
 			FP();
 		}
 	}
-	return 923913;
 }
 
 //each parameter is a pointer
@@ -99,13 +170,6 @@ inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_pointer, uint6
 	for (uint64_t idx = 0; idx < size[0]; ++idx) new_dynamic[idx] = pointer[0][idx];
 	for (uint64_t idx = 0; idx < size[1]; ++idx) new_dynamic[idx + size[0]] = pointer[1][idx];
 	return std::array<uint64_t, 2>{{(uint64_t)new_dynamic, (uint64_t)concatenate_types(std::vector<Type*>{type[0], type[1]})}};
-}
-
-#include "memory.h"
-//return value is the address
-inline uint64_t user_allocate_memory(uint64_t size)
-{
-	return (uint64_t)(allocate(size));
 }
 
 //returns pointer-to-AST

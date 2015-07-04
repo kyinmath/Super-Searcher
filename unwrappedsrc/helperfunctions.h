@@ -252,3 +252,17 @@ inline llvm::AllocaInst* create_actual_alloca(uint64_t size) {
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
 	return TmpB.CreateAlloca(llvm_array(size));
 }
+
+struct builder_context_stack
+{
+	llvm::IRBuilder<>* old_builder = builder;
+	llvm::LLVMContext* old_context = context;
+	builder_context_stack(llvm::IRBuilder<>* b, llvm::LLVMContext* c) {
+		builder = b;
+		context = c;
+	}
+	~builder_context_stack() {
+		builder = old_builder;
+		context = old_context;
+	}
+};

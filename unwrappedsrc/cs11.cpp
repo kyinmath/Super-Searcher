@@ -76,20 +76,8 @@ unsigned compiler_object::compile_AST(uAST* target)
 {
 	llvm::IRBuilder<> new_builder(*new_context);
 	std::unique_ptr<llvm::Module> M(new llvm::Module(GenerateUniqueName("jit_module_"), *new_context)); //should be unique ptr because ownership will be transferred
-	struct builder_context_stack
-	{
-		llvm::IRBuilder<>* old_builder = builder;
-		llvm::LLVMContext* old_context = context;
-		builder_context_stack(llvm::IRBuilder<>* b, llvm::LLVMContext* c) {
-			builder = b;
-			context = c;
-		}
-		~builder_context_stack() {
-			builder = old_builder;
-			context = old_context;
-		}
-	}
-	builder_context_stack(&new_builder, new_context.get());
+
+	builder_context_stack b(&new_builder, new_context.get());
 
 	if (VERBOSE_DEBUG) console << "starting compilation\ntarget is " << target << '\n'; //necessary in case it crashes here
 	if (target == nullptr) return IRgen_status::null_AST;
@@ -163,7 +151,6 @@ unsigned compiler_object::compile_AST(uAST* target)
 	else
 	{
 		fptr = (void*)2222222ull;
-		//std::unique_ptr<llvm::Module> a(C.takeM()); //delete the module
 	}
 	return 0;
 }
@@ -327,7 +314,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 		if (VERBOSE_DEBUG && return_value != nullptr)
 		{
-			console << "finish() in generate_IR, called value is ";
+			console << "finish() in generate_IR, Value is ";
 			return_value->print(*llvm_console);
 			console << "\nand the llvm type is ";
 			return_value->getType()->print(*llvm_console);
@@ -716,8 +703,8 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				builder->CreateStore(field_results[0].IR, dynamic_object);
 
 				//create a pointer to the type of the dynamic pointer. but we serialize the pointer to be an integer.
-				Type* type_of_dynamic_object = get_unique_type(field_results[0].type, false);
-				l::Constant* integer_type_pointer = llvm_integer((uint64_t)type_of_dynamic_object);
+				//note that the type is already unique.
+				l::Constant* integer_type_pointer = llvm_integer((uint64_t)field_results[0].type);
 
 				//we now serialize both objects to become integers.
 				l::Value* undef_value = l::UndefValue::get(llvm_array(2));
@@ -756,7 +743,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			l::Value* dynamic_conc_function = builder->CreateIntToPtr(twister_address, dynamic_conc_type_pointer, s("convert integer address to actual function"));
 
 			std::vector<l::Value*> arguments{pointer[0], type[0], pointer[1], type[1]};
-			l::Value* result_of_compile = builder->CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
+			l::Value* result_of_conc = builder->CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
 
 
 
@@ -765,10 +752,10 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			//using our current set of optimization passes, this operation isn't optimized to anything better.
 			l::Value* undef_value = l::UndefValue::get(llvm_array(2));
 
-			l::Value* first_return = builder->CreateExtractValue(result_of_compile, std::vector<unsigned>{0});
+			l::Value* first_return = builder->CreateExtractValue(result_of_conc, std::vector<unsigned>{0});
 			l::Value* first_value = builder->CreateInsertValue(undef_value, first_return, std::vector<unsigned>{0});
 
-			l::Value* second_return = builder->CreateExtractValue(result_of_compile, std::vector<unsigned>{1});
+			l::Value* second_return = builder->CreateExtractValue(result_of_conc, std::vector<unsigned>{1});
 			l::Value* full_value = builder->CreateInsertValue(first_value, second_return, std::vector<unsigned>{1});
 
 			bool is_full_dynamic = is_full(field_results[0].type) && is_full(field_results[1].type);
@@ -843,6 +830,22 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 			finish(AST_result);
 
+		}
+	case ASTn("run_function"):
+		{
+			llvm::Type* agg_type = llvm::StructType::get(*context, std::vector < llvm::Type* > {{int64_type(), int64_type()}});
+			llvm::Value* runner = llvm_function(run_null_parameter_function, agg_type, int64_type());
+			l::Value* run_result = builder->CreateCall(runner, std::vector < l::Value* > {field_results[0].IR});
+
+
+			l::Value* object_pointer = builder->CreateExtractValue(run_result, std::vector < unsigned > {0}, s("fields of hopeful AST"));
+			l::Value* type_pointer = builder->CreateExtractValue(run_result, std::vector < unsigned > {1}, s("type of hopeful AST"));
+
+
+			l::Value* undef_value = l::UndefValue::get(llvm_array(2));
+			l::Value* first_value = builder->CreateInsertValue(undef_value, object_pointer, std::vector < unsigned > {0});
+			l::Value* full_value = builder->CreateInsertValue(first_value, type_pointer, std::vector < unsigned > {1});
+			finish(full_value);
 		}
 		/*
 	case ASTn("temp_generate_AST"):
@@ -957,10 +960,11 @@ void fuzztester(unsigned iterations)
 		{
 			uint64_t result[3];
 			compile_returning_legitimate_object(result, (uint64_t)test_AST);
+			console << "results of user compile are " << result[0] << ' ' << result[1] << ' ' << result[2] << '\n';
 			auto func = (function*)result[0];
 			if (result[1] == 0)
 			{
-				run_null_parameter_function(result[0]);
+				run_null_parameter_function_bogus(result[0]);
 				AST_list.push_back((uAST*)func->the_AST); //we need the cast to get rid of the const
 				fuzztester_roots.push_back((uAST*)func->the_AST); //we absolutely shouldn't keep the type here, because it gets removed.
 				//theoretically, this action is disallowed. these ASTs are pointing to already-immuted ASTs, which can't happen. however, it's safe as long as we isolate these ASTs from the user
@@ -1173,6 +1177,8 @@ int main(int argc, char* argv[])
 	TM = TM_backer.get();
 	thread_local KaleidoscopeJIT c_holder(TM); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
 	c = &c_holder;
+
+	unsigned runs = 40;
 	
 	//console << "compiler host is at " << c << '\n';
 	//console << "its JIT is at " << &(c->J) << '\n';
@@ -1194,6 +1200,17 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "optimize") == 0) OPTIMIZE = true;
 		else if (strcmp(argv[x], "console") == 0) CONSOLE = true;
 		else if (strcmp(argv[x], "timer") == 0) TIMER = true;
+		else if (strcmp(argv[x], "longrun") == 0)
+		{
+			TIMER = true;
+			bool isNumber = true;
+			string next_token = argv[++x];
+			for (auto& k : next_token)
+				isNumber = isNumber && isdigit(k);
+			check(isNumber, string("tried to input non-number ") + next_token);
+			check(next_token.size(), "no digits in the number");
+			runs = std::stoull(next_token);
+		}
 		else if (strcmp(argv[x], "oldoutput") == 0) OLD_AST_OUTPUT = true;
 		else if (strcmp(argv[x], "fuzznocompile") == 0) FUZZTESTER_NO_COMPILE = true;
 		else if (strcmp(argv[x], "noaddmodule") == 0)  DONT_ADD_MODULE_TO_ORC = true;
@@ -1211,6 +1228,7 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "limited") == 0) //write "limited label", where "label" is the AST tag you want. you can have multiple tags like "limited label limited random", putting "limited" before each one.
 		{
 			LIMITED_FUZZ_CHOICES = true;
+			runs = 5;
 			allowed_tags.push_back(ASTn(argv[++x]));
 		}
 		else if (strcmp(argv[x], "gctight") == 0)  GC_TIGHT = true;
@@ -1230,6 +1248,9 @@ int main(int argc, char* argv[])
 	{
 		~cleanup_at_end() {
 			start_GC(); //this cleanup is to let Valgrind know that we've legitimately taken care of all memory.
+
+			for (unsigned x = 0; x < ASTn("never reached"); ++x)
+				std::cout << "tag " << x << " " << AST_descriptor[x].name << ' ' << hitcount[x] << '\n';
 		}
 	} a;
 
@@ -1246,11 +1267,8 @@ int main(int argc, char* argv[])
 	compiler.compile_AST(&helloworld);
 	*/
 
-
 	if (TIMER)
 	{
-		unsigned runs = 40;
-		if (LIMITED_FUZZ_CHOICES) runs = 5;
 		std::clock_t start = std::clock();
 		for (int x = 0; x < runs; ++x)
 		{
@@ -1259,8 +1277,6 @@ int main(int argc, char* argv[])
 			std::cout << "Minitime: " << (std::clock() - ministart) / (double)CLOCKS_PER_SEC << '\n';
 		}
 		std::cout << "Overall time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
-		for (unsigned x = 0; x < ASTn("never reached"); ++x)
-			std::cout << "tag " << x << " " << AST_descriptor[x].name << ' ' << hitcount[x] << '\n';
 		return 0;
 	}
 	if (CONSOLE)
@@ -1280,11 +1296,11 @@ int main(int argc, char* argv[])
 			output_AST_and_previous(end);
 			uint64_t result[3];
 			compile_returning_legitimate_object(result, (uint64_t)end);
-			if (result[1] == 0)
+			run_null_parameter_function(result[0]);
+			if (result[1] != 0)
 			{
-				run_null_parameter_function(result[0]);
+				std::cout << "wrong!\n";
 			}
-			else std::cout << "wrong!\n";
 		}
 	}
 

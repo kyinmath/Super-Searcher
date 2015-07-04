@@ -35,3 +35,6 @@ stack storage.
 	usually ought to fail. random > highest possible tag
 [convert_to_AST [integer 7] [scope] [dynamic]]
 	should produce a [random] AST
+
+
+[run_function [compile [convert_to_AST [random] [scope] [dynamic [integer 0]]] [scope] [scope]]]
