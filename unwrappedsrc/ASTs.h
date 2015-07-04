@@ -116,7 +116,13 @@ constexpr AST_info AST_descriptor[] =
 	a("convert_to_AST", T::AST_pointer, T::integer, parameter_no_type_check, T::cheap_dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
 	a("store", T::null, parameter_no_type_check, parameter_no_type_check), //pointer, then value.
 	//a("static_object", T::special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a static object. I think this is obsoleted by load_object; just load a pointer.
-	a("load_object", special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a constant. similar to "int x = 40". if the value ends up on the stack, it can still be modified, but any changes are temporary. TODO: this is wrong. the parameter is not a full dynamic pointer, it's embedded now. 2 fields vs 1. causing segfaults.
+	a("load_object", special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a constant. similar to "int x = 40". if the value ends up on the stack, it can still be modified, but any changes are temporary.
+	//{"load_type", T::type, T::type, T::integer}, //gets the Nth subtype of a concatenated type. todo...except that this also conflicts with the copy_into_dynamic. this command seems to be necessary however, in order to facilitate vectors. we don't actually want to ever load a 4000-long repeated type as a dynamic object.
+	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both. todo
+	//{"copy_into_dynamic", T::dynamic}, for type or AST. todo. this is also necessary, because pointers have integer fields.
+	//{"write_into_AST", T::integer, T::integer, T::dynamic}, //writes a field. the integer comes first because it logically decides the field.
+	//{"test_null"}. good for types, ASTs, functions, dynamics, integers, etc. except not: our if statement should do this automatically.
+	//
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
 	{ "mul", 2 },

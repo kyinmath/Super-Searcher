@@ -1,15 +1,23 @@
 #pragma once
 #include "types.h"
 #include "cs11.h"
+#include "function.h"
+#include "memory.h"
 
 //warning: array<uint64_t, 2> becomes {i64, i64}
 //using our current set of optimization passes, the undef+insertvalue operations aren't optimized to anything better.
 
-#include "function.h"
 
+inline uint64_t generate_random() { return mersenne(); }
 
+//generates an approximately exponential distribution using bit twiddling
+inline uint64_t generate_exponential_dist()
+{
+	uint64_t cutoff = generate_random();
+	cutoff ^= cutoff - 1; //1s starting from the lowest digit of cutoff
+	return generate_random() & cutoff;
+}
 
-#include "memory.h"
 //return value is the address
 inline uint64_t user_allocate_memory(uint64_t size)
 {
@@ -104,7 +112,7 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 		builder->CreateRet(dynamic_object_address);
 		///FINISH DYNAMIC
 
-		check(!llvm::verifyFunction(*trampoline, llvm_console), "verification failed");
+		check(!llvm::verifyFunction(*trampoline, &llvm::outs()), "verification failed");
 
 		auto H = c->addModule(std::move(M));
 
