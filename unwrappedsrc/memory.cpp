@@ -303,11 +303,11 @@ void sweepy_sweep()
 		uint64_t diffmask = function_pool_flags[x] - sweep_function_pool_flags[x];
 		if (diffmask)
 		{
-			console << "diffmask " << diffmask << '\n';
+			if (VERBOSE_GC) console << "diffmask " << diffmask << '\n';
 			for (unsigned offset = 0; offset < 64; ++offset)
 				if (diffmask & (1ull << offset))
 				{
-					console << "offset is " << offset << ' ';
+					if (VERBOSE_GC) console << "offset is " << offset << ' ';
 					function_pool[x * 64 + offset].~function();
 				}
 			function_pool_flags[x] = sweep_function_pool_flags[x];

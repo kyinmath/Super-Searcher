@@ -120,7 +120,6 @@ unsigned compiler_object::compile_AST(uAST* target)
 		auto H = J.addModule(std::move(M));
 
 		// Get the address of the JIT'd function in memory.
-		//this seems unreasonably expensive. even having a few functions around makes it cost 5% total run time.
 		auto ExprSymbol = J.findUnmangledSymbol(function_name);
 
 		fptr = (void*)(intptr_t)(ExprSymbol.getAddress());
@@ -829,35 +828,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			l::Value* full_value = builder->CreateInsertValue(first_value, type_pointer, std::vector < unsigned > {1});
 			finish(full_value);
 		}
-		/*
-	case ASTn("temp_generate_AST"):
-		{
-			l::Value* generator = llvm_function(ASTmaker, int64_type());
-			//l::Constant *twister_function = TheModule->getOrInsertFunction("ASTmaker", AST_maker_type);
-			finish(builder->CreateCall(generator, std::vector<l::Value*>{}, s("ASTmaker")));
-		}*/
-	/*case ASTn("static_object"):
-		{
-			//what does this even mean? we load a pointer, but if it's embedded, then we load the internal values instead?
-			//the problem is that we can't choose the memory location. but if stack_degree = 1, memory location is already fixed.
-			//we should instead have the type be a pointer. you're loading the pointer.
-			//then, is this even necessary? why not require the other one instead?
-				//but, is it possible to embed a cheap pointer in a dynamic poitner? how do you do that instead of dynamic-in-dynamic?
-			l::Value* address_of_object = llvm_integer(target->fields[0].num);
-			Type* type_of_object = (Type*)target->fields[1].ptr;
-			uint64_t size_of_object = get_size(type_of_object);
-			if (size_of_object)
-			{
-				l::Type* pointer_to_array = llvm_type(size_of_object)->getPointerTo();
-				storage_location = l::cast<l::AllocaInst>(builder->CreatePointerCast(address_of_object, pointer_to_array, s("pointer cast to array")));
-				final_stack_state = stack_state::full_might_be_visible;
-				//whenever storage_location is set, we start to worry about on_stack.
-
-				l::Value* final_value = stack_degree == 0 ? (l::Value*)builder->CreateLoad(storage_location, s("load concatenated object")) : storage_location;
-				finish_special_stack_handled_pointer(final_value, type_of_object, full_lifetime, full_lifetime);
-			}
-			else finish_special(nullptr, nullptr);
-		} */
+			
 	case ASTn("load_object"): //bakes in the value into the compiled function. changes by the function are temporary.
 		{
 			uint64_t* array_of_integers = (uint64_t*)(target->fields[0].ptr);
