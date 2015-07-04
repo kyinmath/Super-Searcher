@@ -6,7 +6,6 @@
 
 
 bool LIMITED_FUZZ_CHOICES = false;
-bool NO_PREVIOUS = false;
 bool LONGRUN = false;
 bool GC_TIGHT = false;
 bool INTERACTIVE = false;
@@ -40,16 +39,11 @@ void fuzztester(unsigned iterations)
 		//create a random AST
 		unsigned tag = mersenne() % ASTn("never reached");
 		if (LIMITED_FUZZ_CHOICES)
-		{
 			tag = allowed_tags[mersenne() % allowed_tags.size()];
-		}
 		unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
 		unsigned prev_AST = generate_exponential_dist() % AST_list.size(); //perhaps: prove that exponential_dist is desired.
 		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
 		//but does exponential falloff solve this problem in the way we want?
-
-		if (NO_PREVIOUS) prev_AST = 0; //this seems to solve the mem problem completely. label goes from a memory gobbler to totally clean. why?
-
 
 		std::vector<uAST*> fields;
 		uint64_t incrementor = 0;
@@ -57,17 +51,14 @@ void fuzztester(unsigned iterations)
 			fields.push_back(AST_list.at(mersenne() % AST_list.size())); //get pointers to previous ASTs
 		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
 		{
-			if (AST_descriptor[tag].parameter_types[incrementor].type == T::integer) //we're working with the AST_descriptor type directly. use T::types.
-				fields.push_back((uAST*)generate_exponential_dist()); //get random integers and fill in the remaining fields
-			else if (AST_descriptor[tag].parameter_types[incrementor].type == T::full_dynamic_pointer)
+			if (AST_descriptor[tag].parameter_types[incrementor].type == T::full_dynamic_pointer)
 			{
-				fields.push_back(nullptr);
-				fields.push_back(nullptr); //make a zero dynamic object
+				fields.push_back((uAST*)generate_exponential_dist());
+				fields.push_back((uAST*)u::integer); //make a random integer
 			}
 			else error("fuzztester doesn't know how to make this special type, so I'm going to panic");
 		}
 		uAST* test_AST = new_AST(tag, AST_list.at(prev_AST), fields);
-		if (OLD_AST_OUTPUT) output_AST_and_previous(test_AST);
 		output_AST_console_version a(test_AST);
 
 
@@ -293,10 +284,6 @@ int main(int argc, char* argv[])
 	thread_local KaleidoscopeJIT c_holder(TM); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
 	c = &c_holder;
 
-
-	//console << "compiler host is at " << c << '\n';
-	//console << "its JIT is at " << &(c->J) << '\n';
-
 	//these do nothing
 	//assert(0);
 	//assert(1);
@@ -332,7 +319,6 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "fuzznocompile") == 0) FUZZTESTER_NO_COMPILE = true;
 		else if (strcmp(argv[x], "noaddmodule") == 0)  DONT_ADD_MODULE_TO_ORC = true;
 		else if (strcmp(argv[x], "deletemodule") == 0)  DELETE_MODULE_IMMEDIATELY = true;
-		else if (strcmp(argv[x], "noprevious") == 0)  NO_PREVIOUS = true;
 		else if (strcmp(argv[x], "benchmark") == 0)
 		{
 			runs = 40;

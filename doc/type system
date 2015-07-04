@@ -9,3 +9,14 @@ Cons of storing the actual type:
 Decision: our internal type system doesn't create an extra pointer for stack objects. 
 	#our type system represents our conceptual understanding, so that debugging works well.
 	#if we ever want a "get type of AST return object" AST, then it will work directly. the return type should not be context dependent on some other ASTs you can't see.
+
+implicit conversion is good because it allows for subtraction, which gives equality testing.
+
+
+
+
+current problem: Types now only have further types as subfields.
+and with ASTs, the "integer" AST is obsolete because of the dynamic static object AST, which provides a better static object.
+
+so, the only subfield that isn't an AST pointer is the static object AST. how do we handle this?
+	is it possible that "static object" will forever be the only AST not using AST pointers?
