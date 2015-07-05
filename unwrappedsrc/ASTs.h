@@ -197,8 +197,11 @@ inline uAST* new_AST(uint64_t tag, uAST* previous, llvm::ArrayRef<uAST*> fields)
 	return (uAST*)new_home;
 }
 
+void output_AST(uAST* target);
 inline uAST* copy_AST(uAST* t)
 {
+	console << "copying AST: ";
+	output_AST(t);
 	uint64_t tag = t->tag;
 	uAST* previous = t->preceding_BB_element;
 	uint64_t total_field_size = get_size(get_AST_fields_type(tag));

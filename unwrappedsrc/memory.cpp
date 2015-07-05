@@ -223,7 +223,7 @@ void mark_single_element(uint64_t* memory, Type* t)
 		if (*memory != 0)
 		{
 			if (living_objects.find(*(uint64_t**)memory) != living_objects.end()) break;
-			to_be_marked.push({*(uint64_t**)memory, (Type*)(memory + 1)}); //pushing the object
+			to_be_marked.push({*(uint64_t**)memory, *(Type**)(memory + 1)}); //pushing the object
 			to_be_marked.push({*(uint64_t**)(memory + 1), get_Type_full_type(*(Type**)(memory + 1))}); //pushing the type
 		}
 		break;

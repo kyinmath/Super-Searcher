@@ -53,11 +53,9 @@ void fuzztester(unsigned iterations)
 		{
 			if (AST_descriptor[tag].parameter_types[incrementor].type == T::full_dynamic_pointer)
 			{
-
-				fields.push_back(0);
-				fields.push_back(0);
 				fields.push_back((uAST*)new_object(generate_exponential_dist()));
-				fields.push_back((uAST*)u::integer); //make a random integer
+				fields.push_back((uAST*)(u::integer)); //make a random integer
+				console << "u::integer is at " << u::integer << '\n';
 			}
 			else error("fuzztester doesn't know how to make this special type, so I'm going to panic");
 		}
