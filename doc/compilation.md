@@ -16,6 +16,10 @@ sudo apt-get install clang-3.7 llvm-3.7 zlib1g-dev libedit-dev
 
 The packages zlib1g-dev and libedit-dev are to suppress errors about lz and ledit. The 3.7 branch is necessary at the moment because the headers move around every llvm version.
 
+Otherwise, to live on the top of trunk, follow the clang "Getting Started" guide, and use at the end:
+cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_ASSERTIONS=On -DCMAKE_INSTALL_PREFIX=/usr/ ../llvm
+sudo make install
+
 To compile, run "make". Or if your path is clang++ instead of clang++-3.7, you should change the makefile from clang++-3.7 to clang++, and llvm-config-3.7 to llvm_config.
 
 

@@ -275,7 +275,7 @@ void sweepy_sweep()
 		{
 			if (DEBUG_GC)
 			{
-				check(ending_location - memory_incrementor < pool_size, "more free memory than exists");
+				check((uint64_t)(ending_location - memory_incrementor) < pool_size, "more free memory than exists");
 				for (uint64_t* x = memory_incrementor; x < ending_location; ++x)
 					*x = collected_special_value; //any empty fields are set to a special value
 			}

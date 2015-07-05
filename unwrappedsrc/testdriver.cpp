@@ -11,6 +11,7 @@ bool GC_TIGHT = false;
 bool INTERACTIVE = false;
 bool CONSOLE = false;
 bool OLD_AST_OUTPUT = false;
+bool OUTPUT_MODULE = true;
 bool FUZZTESTER_NO_COMPILE = false;
 uint64_t runs = -1ull;
 llvm::raw_null_ostream llvm_null_stream;
@@ -55,7 +56,6 @@ void fuzztester(unsigned iterations)
 			{
 				fields.push_back((uAST*)new_object(generate_exponential_dist()));
 				fields.push_back((uAST*)(u::integer)); //make a random integer
-				console << "u::integer is at " << u::integer << '\n';
 			}
 			else error("fuzztester doesn't know how to make this special type, so I'm going to panic");
 		}
@@ -75,7 +75,6 @@ void fuzztester(unsigned iterations)
 				AST_list.push_back((uAST*)func->the_AST); //we need the cast to get rid of the const
 				fuzztester_roots.push_back((uAST*)func->the_AST); //we absolutely shouldn't keep the type here, because it gets removed.
 				//theoretically, this action is disallowed. these ASTs are pointing to already-immuted ASTs, which can't happen. however, it's safe as long as we isolate these ASTs from the user
-				console << AST_list.size() - 1 << "\n";
 				++hitcount[tag];
 			}
 		}
@@ -320,6 +319,11 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "fuzznocompile") == 0) FUZZTESTER_NO_COMPILE = true;
 		else if (strcmp(argv[x], "noaddmodule") == 0)  DONT_ADD_MODULE_TO_ORC = true;
 		else if (strcmp(argv[x], "deletemodule") == 0)  DELETE_MODULE_IMMEDIATELY = true;
+		else if (strcmp(argv[x], "truefuzz") == 0)
+		{
+			DEBUG_GC = true;
+			OUTPUT_MODULE = false;
+		}
 		else if (strcmp(argv[x], "benchmark") == 0)
 		{
 			runs = 40;
@@ -327,7 +331,6 @@ int main(int argc, char* argv[])
 			console.setstate(std::ios_base::failbit);
 			console.rdbuf(nullptr);
 			llvm_console = &llvm_null_stream;
-
 		}
 		else if (strcmp(argv[x], "limited") == 0) //write "limited label", where "label" is the AST tag you want. you can have multiple tags like "limited label limited random", putting "limited" before each one.
 		{
@@ -397,13 +400,13 @@ int main(int argc, char* argv[])
 	}
 
 	std::clock_t start = std::clock();
-	for (int x = 0; x < runs; ++x)
+	for (uint64_t x = 0; x < runs; ++x)
 	{
 		std::clock_t ministart = std::clock();
 		fuzztester(100);
-		if (!LONGRUN && (runs != -1))
-			if (x % 40 == 0)
-				std::cout << "40/100 time: " << (std::clock() - ministart) / (double)CLOCKS_PER_SEC << '\n';
+		if (!LONGRUN && (runs == -1ull))
+			if (x % 100 == 0)
+				std::cout << "100/100 time: " << (std::clock() - ministart) / (double)CLOCKS_PER_SEC << '\n';
 	}
 	std::cout << "Overall time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
 	return 0;

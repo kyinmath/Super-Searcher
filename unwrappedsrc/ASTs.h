@@ -171,10 +171,10 @@ inline Type* get_AST_fields_type(uint64_t tag)
 	std::vector<Type*> fields;
 	//check(tag != 0, "this is so that some functions like marky_mark() don't need special cases for null objects"); //this isn't necessary anymore, because no more null ASTs
 	check(tag < ASTn("never reached"), "get_AST_type is a sandboxed function, use the user facing version instead");
-	int number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
-	for (int x = 0; x < number_of_AST_pointers; ++x)
+	uint64_t number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
+	for (uint64_t x = 0; x < number_of_AST_pointers; ++x)
 		fields.push_back(u::AST_pointer);
-	for (int x = 0; x < AST_descriptor[tag].additional_special_fields; ++x)
+	for (uint64_t x = 0; x < AST_descriptor[tag].additional_special_fields; ++x)
 		fields.push_back(get_unique_type(AST_descriptor[tag].parameter_types[number_of_AST_pointers + x].type, false));
 	return concatenate_types(fields);
 }
@@ -200,8 +200,6 @@ inline uAST* new_AST(uint64_t tag, uAST* previous, llvm::ArrayRef<uAST*> fields)
 void output_AST(uAST* target);
 inline uAST* copy_AST(uAST* t)
 {
-	console << "copying AST: ";
-	output_AST(t);
 	uint64_t tag = t->tag;
 	uAST* previous = t->preceding_BB_element;
 	uint64_t total_field_size = get_size(get_AST_fields_type(tag));

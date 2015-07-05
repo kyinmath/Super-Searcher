@@ -89,8 +89,8 @@ unsigned compiler_object::compile_AST(uAST* target)
 	dummy_func->eraseFromParent();
 	if (size_of_return) builder->CreateRet(return_object.IR);
 	else builder->CreateRetVoid();
-
-	M->print(*llvm_console, nullptr);
+	if (OUTPUT_MODULE)
+		M->print(*llvm_console, nullptr);
 	check(!l::verifyFunction(*F, &llvm::outs()), "verification failed");
 	if (OPTIMIZE)
 	{
@@ -551,8 +551,8 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				finish_special(nullptr, u::does_not_return);
 			}
 
-			//check finiteness
-			l::AllocaInst* finiteness_pointer = l::cast<l::AllocaInst>(builder->CreateIntToPtr(llvm_integer((uint64_t)&finiteness), int64_type()->getPointerTo()));
+			//check finiteness. it's not an AllocaInst apparently (llvm asserts), because it wasn't allocated that way.
+			l::Value* finiteness_pointer = builder->CreateIntToPtr(llvm_integer((uint64_t)&finiteness), int64_type()->getPointerTo());
 			l::Value* current_finiteness = builder->CreateLoad(finiteness_pointer);
 			l::Value* comparison = builder->CreateICmpNE(current_finiteness, llvm_integer(0), s("finiteness comparison"));
 
