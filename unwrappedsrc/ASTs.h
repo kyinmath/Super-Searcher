@@ -142,7 +142,6 @@ constexpr AST_info AST_descriptor[] =
 	{ "bitwise and", 2 },
 	{ "bitwise or", 2 },
 
-	//{"null_AST", T::null}, //tag is 0. used when you create an AST and want nullptr. this AST doesn't actually exist.
 	//since we have guaranteed success, it's super easy for the user to make null ASTs by letting tag >= "never reached"
 	{ "bitwise xor", 2 },*/
 };

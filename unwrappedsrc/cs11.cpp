@@ -410,7 +410,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	//we generate code for the AST, depending on its tag.
 	switch (target->tag)
 	{
-	case ASTn("integer"): finish(llvm_integer(target->fields[0].num));
 	case ASTn("add"): finish(builder->CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
 	case ASTn("subtract"): finish(builder->CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
 	case ASTn("increment"): finish(builder->CreateAdd(field_results[0].IR, llvm_integer(1), s("increment")));
