@@ -66,6 +66,8 @@ class compiler_object
 
 	Return_Info generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired = memory_location());
 
+
+	
 public:
 	compiler_object() : J(*c), error_location(nullptr), new_context(new llvm::LLVMContext()) {}
 	unsigned compile_AST(uAST* target); //we can't combine this with the ctor, because it needs to return an int
@@ -85,5 +87,17 @@ public:
 
 	std::unique_ptr<llvm::LLVMContext> new_context;
 
+
+
+	//miscellaneous
+
+	//we'll need to eventually replace the fields in our copy with their correct versions. this does that for us.
+	void replace_field_pointer_with_immut_version(uAST*& pointer)
+	{
+		if (pointer == nullptr) return;
+		auto immut_pointer = copy_mapper.find(pointer);
+		check(immut_pointer != copy_mapper.end(), "where did my pointer go");
+		pointer = immut_pointer->second;
+	};
 
 };

@@ -18,7 +18,7 @@ llvm::raw_null_ostream llvm_null_stream;
 
 std::array<uint64_t, ASTn("never reached")> hitcount;
 std::vector<uint64_t> allowed_tags;
-extern std::vector< uAST*> fuzztester_roots; //for use in garbage collecting. each valid AST that the fuzztester has a reference to must be kept in here
+extern std::deque< uAST*> fuzztester_roots; //for use in garbage collecting. each valid AST that the fuzztester has a reference to must be kept in here
 /**
 The fuzztester generates random ASTs and attempts to compile them.
 the output "Malformed AST" is fine. not all randomly-generated ASTs will be well-formed.
@@ -30,26 +30,27 @@ each remaining field is chosen randomly according to an exponential distribution
 finally, if the created AST successfully compiles, it is added to the vector of working ASTs.
 
 todo: this scheme can't produce forward references, which are necessary for goto. that is, a goto points to an AST that's created after it.
-and, it can't produce [concatenate [int]a [load a]]
+and, it can't produce [concatenate [int]a [load a]]. that requires speculative creation of multiple ASTs simultaneously.
 */
 void fuzztester(unsigned iterations)
 {
-	std::vector<uAST*> AST_list{nullptr}; //start with nullptr as the default referenceable AST
+	uint64_t max_fuzztester_size = 1;
 	while (iterations--)
 	{
+		fuzztester_roots.push_back(nullptr); //we this is so that we always have something to find, when we're looking for previous_ASTs
 		//create a random AST
 		unsigned tag = mersenne() % ASTn("never reached");
 		if (LIMITED_FUZZ_CHOICES)
 			tag = allowed_tags[mersenne() % allowed_tags.size()];
 		unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
-		unsigned prev_AST = generate_exponential_dist() % AST_list.size(); //perhaps: prove that exponential_dist is desired.
+		unsigned prev_AST = generate_exponential_dist() % fuzztester_roots.size(); //perhaps: prove that exponential_dist is desired.
 		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
 		//but does exponential falloff solve this problem in the way we want?
 
 		std::vector<uAST*> fields;
 		uint64_t incrementor = 0;
 		for (; incrementor < pointer_fields; ++incrementor)
-			fields.push_back(AST_list.at(mersenne() % AST_list.size())); //get pointers to previous ASTs
+			fields.push_back(fuzztester_roots.at(mersenne() % fuzztester_roots.size())); //get pointers to previous ASTs
 		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
 		{
 			if (AST_descriptor[tag].parameter_types[incrementor].type == T::full_dynamic_pointer)
@@ -59,9 +60,9 @@ void fuzztester(unsigned iterations)
 			}
 			else error("fuzztester doesn't know how to make this special type, so I'm going to panic");
 		}
-		uAST* test_AST = new_AST(tag, AST_list.at(prev_AST), fields);
+		uAST* test_AST = new_AST(tag, fuzztester_roots.at(prev_AST), fields);
 		output_AST_console_version a(test_AST);
-
+		fuzztester_roots.pop_back(); //delete the null we put on the back
 
 		if (!FUZZTESTER_NO_COMPILE)
 		{
@@ -72,8 +73,9 @@ void fuzztester(unsigned iterations)
 			if (result[1] == 0)
 			{
 				run_null_parameter_function_bogus(result[0]);
-				AST_list.push_back((uAST*)func->the_AST); //we need the cast to get rid of the const
-				fuzztester_roots.push_back((uAST*)func->the_AST); //we absolutely shouldn't keep the type here, because it gets removed.
+				fuzztester_roots.push_back((uAST*)func->the_AST);
+				if (fuzztester_roots.size() > max_fuzztester_size)
+					fuzztester_roots.pop_front();
 				//theoretically, this action is disallowed. these ASTs are pointing to already-immuted ASTs, which can't happen. however, it's safe as long as we isolate these ASTs from the user
 				++hitcount[tag];
 			}
@@ -81,9 +83,10 @@ void fuzztester(unsigned iterations)
 		else
 		{
 			//don't bother compiling. just shove everything in there.
-			AST_list.push_back(test_AST);
 			fuzztester_roots.push_back(test_AST);
-			console << AST_list.size() - 1 << "\n";
+			if (fuzztester_roots.size() > max_fuzztester_size)
+				fuzztester_roots.pop_front();
+			console << fuzztester_roots.size() - 1 << "\n";
 			++hitcount[tag];
 		}
 		//else delete test_AST;

@@ -251,14 +251,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		made_a_copy = false;
 	}
 
-	//we'll need to eventually replace the fields in our copy with their correct versions. this does that for us.
-	auto replace_field_pointer_with_immut_version = [&](uAST*& pointer)
-	{
-		if (pointer == nullptr) return;
-		auto immut_pointer = copy_mapper.find(pointer);
-		check(immut_pointer != copy_mapper.end(), "where did my pointer go");
-		pointer = immut_pointer->second;
-	};
 
 	//after we're done with this AST, we remove it from loop_catcher.
 	struct loop_catcher_destructor_cleanup

@@ -34,6 +34,7 @@ inline void compile_returning_legitimate_object(uint64_t* memory_location, uint6
 	uAST* target = (uAST*)int_target;
 	compiler_object a;
 	unsigned error = a.compile_AST(target);
+	a.replace_field_pointer_with_immut_version(target);
 
 	if (error)
 	{

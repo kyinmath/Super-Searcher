@@ -13,7 +13,7 @@
 //thus, we wrap them in a unique() function, so that the user only ever sees GC-handled objects.
 
 bool DEBUG_GC = true; //do some checking to make sure the GC is tracking free memory accurately. slow. mainly: whenever GCing or creating, it sets memory locations to special values.
-bool VERBOSE_GC = false;
+bool VERBOSE_GC = true;
 
 constexpr const uint64_t pool_size = 100000ull;
 constexpr const uint64_t function_pool_size = 2000ull * 64;
@@ -167,7 +167,7 @@ void start_GC()
 		console << "total free after GC " << total_memory_use << '\n';
 	}
 }
-std::vector< uAST*> fuzztester_roots;
+std::deque< uAST*> fuzztester_roots;
 extern type_htable_t type_hash_table; //a hash table of all the unique types. don't touch this unless you're the memory allocation
 void initialize_roots()
 {
@@ -182,6 +182,7 @@ void initialize_roots()
 	}
 	for (auto& root_AST : fuzztester_roots)
 	{
+		console << "gc root AST at " << root_AST << '\n';
 		to_be_marked.push(std::make_pair((uint64_t*)root_AST, get_AST_full_type(root_AST->tag)));
 	}
 
