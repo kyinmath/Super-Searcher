@@ -193,14 +193,19 @@ class source_reader
 					goto_delay.insert(make_pair(&((uAST*)(new_type_location))->fields[field_num].ptr, delayed_binding_name));
 				}
 			}
-			else //it's an integer
+			else //it's a static object. make an integer
 			{
-				bool isNumber = true;
-				for (auto& k : next_token)
-					isNumber = isNumber && isdigit(k);
-				check(isNumber, string("tried to input non-number ") + next_token);
-				check(next_token.size(), "token is empty, probably a missing ]");
-				fields[field_num] = std::stoull(next_token);
+				if (AST_type == 0 && field_num == 0)
+				{
+					bool isNumber = true;
+					for (auto& k : next_token)
+						isNumber = isNumber && isdigit(k);
+					check(isNumber, string("tried to input non-number ") + next_token);
+					check(next_token.size(), "token is empty, probably a missing ]");
+					fields[field_num] = (uint64_t)new_object(std::stoull(next_token));
+					fields[field_num + 1] = (uint64_t)u::integer;
+				}
+				else error("trying to write too many fields");
 			}
 		}
 		//check(next_token == "]", "failed to have ]");
@@ -227,8 +232,6 @@ class source_reader
 			console << '\n';
 		}
 		return new_type;
-
-
 	}
 
 	uAST* create_single_basic_block(bool create_brace_at_end = false)
@@ -256,7 +259,7 @@ class source_reader
 	}
 
 public:
-	source_reader(std::istream& stream, char end) : input(stream) {} //char end can't be used, because the char needs to go in a switch case
+	source_reader(std::istream& stream, char end) : input(stream) {} //char end must be '\n', because the char needs to go in a switch case
 	uAST* read()
 	{
 		uAST* end = create_single_basic_block();

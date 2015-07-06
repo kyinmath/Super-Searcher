@@ -91,7 +91,9 @@ unsigned compiler_object::compile_AST(uAST* target)
 	{
 		if (size_of_return == 1)
 			builder->CreateRet(return_object.IR);
-		else //since we permit both {i64, i64} and [2 x i64], we have to canonicalize the type here.
+		else if (return_object.IR->getType()->isArrayTy())
+			builder->CreateRet(return_object.IR);
+		else //since we permit {i64, i64}, we have to canonicalize the type here.
 		{
 			check(size_of_return < -1u, "load object not equipped to deal with large objects, because CreateInsertValue has a small index");
 			llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(size_of_return));
