@@ -87,7 +87,22 @@ unsigned compiler_object::compile_AST(uAST* target)
 
 	F->getBasicBlockList().splice(F->begin(), dummy_func->getBasicBlockList());
 	dummy_func->eraseFromParent();
-	if (size_of_return) builder->CreateRet(return_object.IR);
+	if (size_of_return)
+	{
+		if (size_of_return == 1)
+			builder->CreateRet(return_object.IR);
+		else //since we permit both {i64, i64} and [2 x i64], we have to canonicalize the type here.
+		{
+			check(size_of_return < -1u, "load object not equipped to deal with large objects, because CreateInsertValue has a small index");
+			llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(size_of_return));
+			for (uint64_t a = 0; a < size_of_return; ++a)
+			{
+				llvm::Value* integer_transfer = builder->CreateExtractValue(return_object.IR, std::vector < unsigned > { (unsigned)a });
+				undef_value = builder->CreateInsertValue(undef_value, integer_transfer, std::vector < unsigned > { (unsigned)a });
+			};
+			builder->CreateRet(undef_value);
+		}
+	}
 	else builder->CreateRetVoid();
 	if (OUTPUT_MODULE)
 		M->print(*llvm_console, nullptr);
@@ -317,11 +332,10 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		{
 			if (size_of_return >= 1)
 			{
-				if (size_of_return > 1) desired.cast_base(size_of_return);
-				if (move_to_stack) desired.store(return_value, size_of_return);
+				desired.cast_base(size_of_return);
+				if (move_to_stack) desired.store(value_collection(return_value, size_of_return));
 
 				stack_return_location = desired;
-				stack_return_location.set_stored_size(size_of_return);
 			}
 			else desired.base->eraseFromParent();
 		}
@@ -331,9 +345,8 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			{
 				//we can't defer RVO all the way to the stack_degree = 2. but we can move it up one to concatenate() if we want. maybe we won't bother.
 
-				desired.store(return_value, size_of_return);
+				desired.store(value_collection(return_value, size_of_return));
 				stack_return_location = desired;
-				stack_return_location.set_stored_size(size_of_return);
 			}
 		}
 		//we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for justification.
@@ -606,13 +619,13 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			//if on_stack is temp, it's not an alloca so we should copy instead of loading.
 			Return_Info AST_to_load = found_AST->second;
-			//todo: atomic load? maybe it's automatic.
+			//I think atomic load is automatic on x64, but we don't need it anyway on a single-threaded app.
 			if (AST_to_load.on_stack == stack_state::temp) finish_special_pointer(AST_to_load.IR, AST_to_load.type, AST_to_load.self_validity_guarantee, AST_to_load.target_hit_contract);
 			else
 			{
-				llvm::Value* final_value = builder->CreateLoad(AST_to_load.place.get_location()); //loads the int.
-				//note that the IR value is either i64* or [S x i64]*. if it's a single integer, the array is already removed.
-				//if (get_size(AST_to_load.type) == 1) final_value = builder->CreateExtractValue(final_value, std::vector < unsigned > {0}); //it's an integer
+				uint64_t load_size = get_size(AST_to_load.type);
+				llvm::Value* final_value = load_from_stack(AST_to_load.place.get_location(), load_size);
+				//we load either i64* or [S x i64]*. but the address is always of form i64*.
 				
 				uint64_t lifetime = (is_full(AST_to_load.type)) ? 0 : AST_to_load.self_lifetime;
 				finish_special_pointer(final_value, AST_to_load.type, lifetime, 0);
@@ -639,12 +652,11 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			if (stack_degree == 0)
 			{
 				desired.cast_base(final_size);
-				final_value = builder->CreateLoad(desired.get_location(final_size));
+				final_value = load_from_stack(desired.get_location(), final_size);
 			}
 			else
 			{
 				final_value = nullptr;
-				desired.set_stored_size(final_size); //automatically becomes the proper return value, like a hidden parameter to finish()
 			}
 
 			uint64_t result_target_life_guarantee = std::max(half[0].self_validity_guarantee, half[1].self_validity_guarantee);
@@ -660,12 +672,14 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			if (field_results[0].type->tag != Typen("pointer")) return_code(type_mismatch, 0);
 			if (type_check(RVO, field_results[1].type, field_results[0].type->fields[0].ptr) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
 			if (field_results[0].target_hit_contract < field_results[1].self_validity_guarantee) return_code(store_pointer_lifetime_mismatch, 0);
-			llvm::Value* memory_location = builder->CreateIntToPtr(field_results[0].IR, llvm_type(get_size(field_results[1].type))->getPointerTo());
-			if (requires_atomic(field_results[0].on_stack))
-				builder->CreateAtomicRMW(llvm::AtomicRMWInst::Xchg, memory_location, field_results[1].IR, llvm::AtomicOrdering::Release); //todo: I don't think this works for large objects; memory location must match exactly. in any case, all we want is piecewise atomic.
-			else builder->CreateStore(field_results[1].IR, memory_location);
+			llvm::Value* memory_location = builder->CreateIntToPtr(field_results[0].IR, int64_type()->getPointerTo());
+
+			write_into_place(value_collection(field_results[1].IR, get_size(field_results[1].type)), memory_location);
+
+			//no need for atomics on single threaded app
+			//if (requires_atomic(field_results[0].on_stack))
+				//builder->CreateAtomicRMW(llvm::AtomicRMWInst::Xchg, memory_location, field_results[1].IR, llvm::AtomicOrdering::Release); //I don't think this works for large objects; memory location must match exactly. in any case, all we want is piecewise atomic.
 			finish(0);
-			//todo: this doesn't work properly. we need to consider the difference between [int64 x 1] on stack and int64 return type.
 		}
 	case ASTn("dynamic"):
 		{
@@ -675,12 +689,9 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				l::Value* allocator = llvm_function(user_allocate_memory, int64_type(), int64_type());
 				l::Value* dynamic_object_address = builder->CreateCall(allocator, std::vector<l::Value*>{llvm_integer(size_of_object)}, s("dyn_allocate_memory"));
 
-				//this represents either an integer or an array of integers.
-				l::Type* target_pointer_type = llvm_type(size_of_object)->getPointerTo();
-
 				//store the returned value into the acquired address
-				l::Value* dynamic_object = builder->CreateIntToPtr(dynamic_object_address, target_pointer_type);
-				builder->CreateStore(field_results[0].IR, dynamic_object);
+				l::Value* dynamic_object = builder->CreateIntToPtr(dynamic_object_address, int64_type()->getPointerTo());
+				write_into_place(value_collection(field_results[0].IR, size_of_object), dynamic_object);
 
 				//create a pointer to the type of the dynamic pointer. but we serialize the pointer to be an integer.
 				//note that the type is already unique.
@@ -728,20 +739,11 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 
 
-			//this transformation is necessary because array<uint64_t, 2> becomes {i64, i64}
-			//using our current set of optimization passes, this operation isn't optimized to anything better.
-			l::Value* undef_value = l::UndefValue::get(llvm_array(2));
-
-			l::Value* first_return = builder->CreateExtractValue(result_of_conc, std::vector<unsigned>{0});
-			l::Value* first_value = builder->CreateInsertValue(undef_value, first_return, std::vector<unsigned>{0});
-
-			l::Value* second_return = builder->CreateExtractValue(result_of_conc, std::vector<unsigned>{1});
-			l::Value* full_value = builder->CreateInsertValue(first_value, second_return, std::vector<unsigned>{1});
-
+			
 			bool is_full_dynamic = is_full(field_results[0].type) && is_full(field_results[1].type);
 			Type* dynamic_type = get_non_convec_unique_type(Type(Typen("dynamic pointer"), is_full_dynamic));
 
-			finish_special(full_value, dynamic_type);
+			finish_special(result_of_conc, dynamic_type);
 		}
 	case ASTn("compile"):
 		{
@@ -758,7 +760,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 
 			auto error_code = memory_location(return_holder, 1);
-			auto condition = builder->CreateLoad(error_code.get_location(1));
+			auto condition = builder->CreateLoad(error_code.get_location());
 
 
 			l::Value* comparison = builder->CreateICmpNE(condition, llvm_integer(0), s("compile branching"));
@@ -787,7 +789,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 			clear_stack(final_stack_position);
 			auto return_location = memory_location(return_holder, 0);
-			auto return_object = builder->CreateLoad(return_location.get_location(1));
+			auto return_object = builder->CreateLoad(return_location.get_location());
 			finish(return_object);
 		}
 	case ASTn("convert_to_AST"):
@@ -817,15 +819,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			llvm::Value* runner = llvm_function(run_null_parameter_function, agg_type, int64_type());
 			l::Value* run_result = builder->CreateCall(runner, std::vector < l::Value* > {field_results[0].IR});
 
-
-			l::Value* object_pointer = builder->CreateExtractValue(run_result, std::vector < unsigned > {0}, s("fields of hopeful AST"));
-			l::Value* type_pointer = builder->CreateExtractValue(run_result, std::vector < unsigned > {1}, s("type of hopeful AST"));
-
-
-			l::Value* undef_value = l::UndefValue::get(llvm_array(2));
-			l::Value* first_value = builder->CreateInsertValue(undef_value, object_pointer, std::vector < unsigned > {0});
-			l::Value* full_value = builder->CreateInsertValue(first_value, type_pointer, std::vector < unsigned > {1});
-			finish(full_value);
+			finish(run_result);
 		}
 			
 	case ASTn("load_object"): //bakes in the value into the compiled function. changes by the function are temporary.

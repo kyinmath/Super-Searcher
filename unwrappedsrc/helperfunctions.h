@@ -61,7 +61,7 @@ inline llvm::ArrayType* llvm_array(uint64_t size)
 	return llvm::ArrayType::get(int64_type(), size);
 }
 
-inline llvm::Type* llvm_type(uint64_t size)
+inline llvm::Type*  llvm_type(uint64_t size)
 {
 	check(size != 0, "tried to get 0 size llvm type");
 	if (size > 1) return llvm_array(size);
@@ -104,90 +104,93 @@ inline llvm::Value* llvm_create_phi(llvm::Value* first, llvm::Value* second, Typ
 }
 
 
+struct value_collection
+{
+	//each llvm::Value* must be either an aggregate {i64, i64}, or an array [4 x i64]. but either is fine, because extractvalue works on both.
+	//however, each term inside must have size 1.
+	std::vector<std::pair<llvm::Value*, uint64_t>> objects; //value, then size.
+	value_collection(llvm::Value* integer, uint64_t size) : objects{std::make_pair(integer, size)} {}
+};
 
 
+
+inline void write_into_place(value_collection data, llvm::Value* start)
+{
+	uint64_t offset = 0;
+	for (auto& single_object : data.objects)
+	{
+		for (uint64_t subplace = 0; subplace < single_object.second; ++subplace)
+		{
+			check(single_object.second != 0, "tried to store 0 size object");
+
+			llvm::Value* integer_transfer;
+			if (single_object.second > 1)
+				integer_transfer = builder->CreateExtractValue(single_object.first, subplace);
+			else integer_transfer = single_object.first;
+			llvm::Value* location = builder->CreateConstInBoundsGEP1_64(start, offset);
+			builder->CreateStore(integer_transfer, location);
+			++offset;
+		}
+	}
+}
+
+
+//val = i64 if size = 1, val = [i64 x size] if size > 1.
+//AllocaInst* a = alloca i64, size for size >= 1.
 struct memory_location //used for GEP. good for delaying emission of instructions unless they're necessary.
 {
 	llvm::AllocaInst* base;
 	uint64_t offset;
-	llvm::AllocaInst* spot;
-	uint64_t cached_size; //when you get this object, it caches the size, so that AllocaInst* spot can be cached. if the size is different, I need to reengineer things.
-	uint64_t stored_size = 0; //used if you want to embed the entire information in the memory_location. good for storing memory locations in active_objects, but without emitting instructions.
+	llvm::Value* spot;
 	memory_location(llvm::AllocaInst* f1, uint64_t o) : base(f1), offset(o), spot(nullptr) {}
 	memory_location() : base(nullptr), offset(0), spot(nullptr) {}
 
-	void set_stored_size(uint64_t size)
-	{
-		stored_size = size;
-	}
 
 	llvm::Value* get_location()
 	{
-		check(stored_size != 0, "no stored size");
-		determine_spot(stored_size);
+		determine_spot();
 		return spot;
 	}
 	void cast_base(uint64_t size)
 	{
-		if (size > 1)
-		{
-			llvm::AllocaInst* new_alloca = new llvm::AllocaInst(llvm_array(size));
-			llvm::BasicBlock::iterator ii(base);
-			ReplaceInstWithInst(base->getParent()->getInstList(), ii, new_alloca);
-			//base->setAllocatedType(llvm_array(size));
-			//base->mutateType(llvm_array(size)->getPointerTo()); //this is potentially very very dangerous. maybe we should use ReplaceInstWithInst
+		llvm::AllocaInst* new_alloca = new llvm::AllocaInst(int64_type(), llvm_integer(size));
+		llvm::BasicBlock::iterator ii(base);
+		ReplaceInstWithInst(base->getParent()->getInstList(), ii, new_alloca);
 
-			//we can only do this when size > 1, because if it's smaller, we'd need to do a GetElementPtr.
-			base = new_alloca;
-			spot = base;
-			cached_size = size;
-		}
+		base = new_alloca;
+		spot = base;
 		check(offset == 0, "this isn't expected, I'm relying on this to cache base in spot which I probably shouldn't be doing");
 	}
-	//assigns spot to be the correct pointer. i64* or [size x i64]*.
-	void determine_spot(uint64_t size)
+	//assigns spot to be the correct pointer. i64*
+	void determine_spot()
 	{
-		check(size != 0, "meaningless to get a 0 size location");
-		//this is a caching mechanism. we find spot once, and then store it.
 		if (spot == nullptr)
 		{
-			cached_size = size;
 			spot = base;
-			if (size > 1)
-			{
-				//if offset == 0, we don't need to GEP, because it will be casted anyway.
-				if (offset) spot = llvm::cast<llvm::AllocaInst>(builder->CreateConstInBoundsGEP2_64(base, 0, offset));
-				spot = llvm::cast<llvm::AllocaInst>(builder->CreatePointerCast(spot, llvm_array(size)->getPointerTo()));
-			}
-			else //size is 1
-			{
-				spot = llvm::cast<llvm::AllocaInst>(builder->CreateConstInBoundsGEP2_64(base, 0, offset));
-			}
+			if (offset) spot = builder->CreateConstInBoundsGEP1_64(base, offset);
 		}
-		check(size == cached_size, "caching mechanism failed");
 	}
-	void store(llvm::Value* val, uint64_t size)
+	void store(value_collection val)
 	{
-		//val = int64 if size = 1, val = [int64 x size] if size > 1.
-		//AllocaInst* a = [int64 x size] for size >= 1.
-		//the reason for the difference is that we can't GEP on an integer alloca.
-		//we can't change the type halfway through either, because there are old CreateStores that relied on it being an int.
-		//seems like we basically have to know before-hand what the end type will be, since we can't convert an Int alloca into an Array alloca or vice-versa, without screwing up the GEP or lack of GEP in all the functions.
-		//thus, we need all allocas to be arrays.
-
-		check(size != 0, "tried to store 0 size object");
-		determine_spot(size);
-		builder->CreateStore(val, spot);
-	}
-
-	llvm::Value* get_location(uint64_t size)
-	{
-		determine_spot(size);
-		return spot;
+		determine_spot();
+		write_into_place(val, spot);
 	}
 };
 
-
+inline llvm::Value* load_from_stack(llvm::Value* location, uint64_t size)
+{
+	check(size < -1u, "load object not equipped to deal with large objects, because CreateInsertValue has a small index");
+	if (size == 1) return builder->CreateLoad(location);
+	llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(size));
+	for (uint64_t a = 0; a < size; ++a)
+	{
+		llvm::Value* integer_transfer;
+		llvm::Value* new_location = builder->CreateConstInBoundsGEP1_64(location, a);
+		integer_transfer = builder->CreateLoad(new_location);
+		undef_value = builder->CreateInsertValue(undef_value, integer_transfer, std::vector < unsigned > { (unsigned)a });
+	};
+	return undef_value;
+}
 
 
 //every time IR is generated, this holds the relevant return info.
@@ -198,11 +201,12 @@ struct Return_Info
 	//either IR or place is active, not both.
 	//if on_stack == temp, then IR is active. otherwise, place is active.
 	//place is only ever active if you passed in stack_degree >= 1, because that's when on_stack != temp.
+	//either way, the internal type doesn't change.
 	llvm::Value* IR;
 	memory_location place;
 
 	Type* type;
-	stack_state on_stack; //if on_stack =/= temp, the llvm type is actually a pointer. but the internal type doesn't change.
+	stack_state on_stack;
 
 	//to write an object into a pointed-to memory location, we must have guarantee of object <= hit contract of memory location
 	//there's only one hit contract value per object, which can be a problem for concatenations of many cheap pointers.
@@ -240,17 +244,20 @@ we call this "create_alloca" instead of "create_alloca_in_entry_block", because 
 we create an alloca. it's a placeholder for dependencies, in case we need a place to store things.
 if we don't need it, we can use eraseFromParent()
 if we do need it, then we use ReplaceInstWithInst.
+
+we create a many-element allocation instead of an array allocation, because we need to use ReplaceInstWithInst, which must preserve type.
+	otherwise, I see assert(): "replaceAllUses of value with new value of different type!"
 */
 inline llvm::AllocaInst* create_empty_alloca() {
 	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
-	return TmpB.CreateAlloca(llvm_array(1));
+	return TmpB.CreateAlloca(int64_type(), llvm_integer(0));
 }
 
 inline llvm::AllocaInst* create_actual_alloca(uint64_t size) {
 	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
-	return TmpB.CreateAlloca(llvm_array(size));
+	return TmpB.CreateAlloca(int64_type(), llvm_integer(size));
 }
 
 struct builder_context_stack
