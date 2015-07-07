@@ -182,7 +182,6 @@ class source_reader
 		if (READER_VERBOSE_DEBUG) console << "AST tag was " << AST_type << "\n";
 		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
 
-		int_or_ptr<uAST> fields[max_fields_in_AST] = {nullptr, nullptr, nullptr, nullptr};
 
 		//field_num is which field we're on
 		uint64_t field_num = 0;
@@ -191,9 +190,9 @@ class source_reader
 			check(field_num < max_fields_in_AST, "more fields than possible");
 			if (field_num < pointer_fields) //it's a pointer!
 			{
-				if (next_token == "{") fields[field_num] = create_single_basic_block(true);
-				else fields[field_num] = read_single_AST(nullptr, next_token);
-				if (fields[field_num].ptr == delayed_binding_special_value)
+				if (next_token == "{") new_type_location->fields[field_num] = create_single_basic_block(true);
+				else new_type_location->fields[field_num] = read_single_AST(nullptr, next_token);
+				if (new_type_location->fields[field_num].ptr == delayed_binding_special_value)
 				{
 					goto_delay.insert(make_pair(&((uAST*)(new_type_location))->fields[field_num].ptr, delayed_binding_name));
 				}
@@ -207,17 +206,16 @@ class source_reader
 						isNumber = isNumber && isdigit(k);
 					check(isNumber, string("tried to input non-number ") + next_token);
 					check(next_token.size(), "token is empty, probably a missing ]");
-					fields[field_num] = (uint64_t)new_object(std::stoull(next_token));
-					fields[field_num + 1] = (uint64_t)u::integer;
+					new_type_location->fields[field_num] = (uint64_t)new_object(std::stoull(next_token));
+					new_type_location->fields[field_num + 1] = (uint64_t)u::integer;
 				}
 				else error("trying to write too many fields");
 			}
 		}
 		//check(next_token == "]", "failed to have ]");
-		uAST* new_type = new(new_type_location)uAST(AST_type, previous_AST, fields[0], fields[1], fields[2], fields[3]);
 
 		if (READER_VERBOSE_DEBUG)
-			output_AST_console_version a(new_type);
+			output_AST_console_version a(new_type_location);
 
 		//get an AST name if any.
 		if (input.peek() != ' ' && input.peek() != '\n' && input.peek() != ']' && input.peek() != '[' && input.peek() != '{' && input.peek() != '}')
@@ -227,7 +225,7 @@ class source_reader
 			if (!thisASTname.empty())
 			{
 				check(ASTmap.find(thisASTname) == ASTmap.end(), string("duplicated variable name: ") + thisASTname);
-				ASTmap.insert(std::make_pair(thisASTname, new_type));
+				ASTmap.insert(std::make_pair(thisASTname, new_type_location));
 			}
 		}
 
@@ -236,7 +234,7 @@ class source_reader
 			console << "next char is" << (char)input.peek() << input.peek();
 			console << '\n';
 		}
-		return new_type;
+		return new_type_location;
 	}
 
 	uAST* create_single_basic_block(bool create_brace_at_end = false)
