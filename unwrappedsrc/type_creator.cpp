@@ -14,7 +14,7 @@ bool UNIQUE_VERBOSE_DEBUG = false;
 
 //this wrapper type is used for the hash table. we want equality and hashing to occur on a Type, not a Type*, since hashing on pointers is dumb. but we want the hash table to store pointers to types, so that references to them stay valid forever.
 
-type_htable_t type_hash_table; //a hash table of all the unique types.
+extern type_htable_t type_hash_table; //a hash table of all the unique types.
 
 
 //an internal function with a bool for speedup.
@@ -78,17 +78,6 @@ Type* get_unique_type(Type* model, bool can_reuse_parameter)
 	else return get_unique_type_internal(model, can_reuse_parameter).first;
 }
 
-
-namespace u
-{
-	Type* does_not_return = get_unique_type(T::does_not_return, false); //it's false, because the constexpr types are not in the memory pool
-	Type* integer = get_unique_type(T::integer, false);
-	Type* cheap_dynamic_pointer = get_unique_type(T::cheap_dynamic_pointer, false);
-	Type* full_dynamic_pointer = get_unique_type(T::full_dynamic_pointer, false);
-	Type* type = get_unique_type(T::type, false);
-	Type* AST_pointer = get_unique_type(T::AST_pointer, false);
-	Type* function_pointer = get_unique_type(T::function_pointer, false);
-};
 
 void test_unique_types()
 {

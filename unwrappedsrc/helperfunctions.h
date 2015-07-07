@@ -179,7 +179,7 @@ struct memory_location //used for GEP. good for delaying emission of instruction
 
 inline llvm::Value* load_from_stack(llvm::Value* location, uint64_t size)
 {
-	check(size < -1u, "load object not equipped to deal with large objects, because CreateInsertValue has a small index");
+	check(size < ~0u, "load object not equipped to deal with large objects, because CreateInsertValue has a small index");
 	if (size == 1) return builder->CreateLoad(location);
 	llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(size));
 	for (uint64_t a = 0; a < size; ++a)

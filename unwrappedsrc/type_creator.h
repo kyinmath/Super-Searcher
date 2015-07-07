@@ -4,20 +4,21 @@
 
 void output_type(const Type* target);
 extern bool UNIQUE_VERBOSE_DEBUG;
+
+/* "Aside: if your hash function cannot throw then it's quite important to give it a noexcept exception-specification, otherwise the hash table needs to store every element's hash code alongside the element itself (which increases memory usage and affects performance) so that container operations that must not throw do not have to recalculate the hash code."
+*/
+
 namespace std {
 	template <> struct hash < Type* >
 	{
-		size_t operator () (const Type* f) const
+		size_t operator () (const Type* f) const noexcept
 		{
 			uint64_t hash = f->tag;
 			for (uint64_t x = 0; x < total_valid_fields(f); ++x)
 				hash ^= f->fields[x].num;
 			//we're ignoring con_vec, but that's probably ok
 
-			if (UNIQUE_VERBOSE_DEBUG)
-			{
-				console << "hash is" << hash << '\n';
-			}
+			if (UNIQUE_VERBOSE_DEBUG) console << "hash is" << hash << '\n';
 			return hash;
 		}
 	};
@@ -25,7 +26,7 @@ namespace std {
 	//does a bit comparison
 	template <> struct equal_to < Type* >
 	{
-		size_t operator () (const Type* l, const Type* r) const
+		size_t operator () (const Type* l, const Type* r) const noexcept
 		{
 			if (UNIQUE_VERBOSE_DEBUG)
 			{

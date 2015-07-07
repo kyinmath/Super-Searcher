@@ -189,6 +189,7 @@ inline Type* get_AST_full_type(uint64_t tag)
 inline uAST* new_AST(uint64_t tag, uAST* previous, llvm::ArrayRef<uAST*> fields)
 {
 	uint64_t total_field_size = get_size(get_AST_fields_type(tag));
+	check(total_field_size == get_size(get_AST_fields_type(tag)), "passed the wrong number of fields to new_AST");
 	uint64_t* new_home = allocate(total_field_size + 2);
 	new_home[0] = tag;
 	new_home[1] = (uint64_t)previous;

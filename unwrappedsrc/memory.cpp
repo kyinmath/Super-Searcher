@@ -28,7 +28,7 @@ function* function_pool = (function*)function_memory_allocation.data(); //we use
 uint64_t function_pool_flags[function_pool_size / 64] = {0}; //each bit is marked 0 if free, 1 if occupied. the {0} is necessary by https://stackoverflow.com/questions/629017/how-does-array100-0-set-the-entire-array-to-0#comment441685_629023
 uint64_t* sweep_function_pool_flags; //we need this to be able to run finalizers on the functions.
 
-//todo: a lock on these things. maybe using Lo<>
+//if we did want to multi-thread, we'd eventually want a lock on these things.
 std::multimap<uint64_t, uint64_t*> free_memory = {{pool_size, big_memory_pool}}; //first value = size of slot. second value = address
 std::map<uint64_t*, uint64_t> living_objects; //first value = address of user-seen memory. second slot = size of user-seen memory. ignores headers.
 uint64_t first_possible_empty_function_block; //where to start looking for an empty function block.
@@ -96,7 +96,6 @@ int first_zero(uint64_t mask)
 
 function* allocate_function()
 {
-	//future: lock
 	for (uint64_t x = first_possible_empty_function_block; x < function_pool_size / 64; ++x)
 	{
 		uint64_t mask = function_pool_flags[x];
@@ -117,6 +116,29 @@ function* allocate_function()
 	}
 	error("OOM function");
 }
+
+std::deque< uAST*> fuzztester_roots;
+type_htable_t type_hash_table; //a hash table of all the unique types. don't touch this unless you're the memory allocation
+//this is extern, because of static initialization fiasco. but we still want to use it at the end of GC, so it should be global. thus, the actual objects are at the bottom of the file.
+extern std::vector< Type* > unique_type_roots;
+void initialize_roots()
+{
+	for (auto& root_type : unique_type_roots)
+		to_be_marked.push(std::make_pair((uint64_t*)root_type, get_Type_full_type(root_type)));
+	console << "outputting all types in hash table\n";
+	for (auto& type : type_hash_table)
+		output_type(type);
+	//we must do this in two steps, because we can't get full types until we've already inserted all the basic types.
+
+	for (auto& root_AST : fuzztester_roots)
+	{
+		console << "gc root AST at " << root_AST << '\n';
+		to_be_marked.push(std::make_pair((uint64_t*)root_AST, get_AST_full_type(root_AST->tag)));
+	}
+
+	//add in the thread ASTs
+}
+
 
 void start_GC()
 {
@@ -167,29 +189,11 @@ void start_GC()
 		}
 		console << "total free after GC " << total_memory_use << '\n';
 	}
-}
-std::deque< uAST*> fuzztester_roots;
-extern type_htable_t type_hash_table; //a hash table of all the unique types. don't touch this unless you're the memory allocation
-void initialize_roots()
-{
-	//can't place this in global memory, because of static initialization fiasco
-	std::vector< Type* > unique_type_roots{u::does_not_return, u::integer, u::cheap_dynamic_pointer, u::full_dynamic_pointer, u::type, u::AST_pointer, u::function_pointer};
 
 	type_hash_table.clear();
 	for (auto& root_type : unique_type_roots)
-	{
 		type_hash_table.insert(root_type);
-		to_be_marked.push(std::make_pair((uint64_t*)root_type, get_Type_full_type(root_type)));
-	}
-	for (auto& root_AST : fuzztester_roots)
-	{
-		console << "gc root AST at " << root_AST << '\n';
-		to_be_marked.push(std::make_pair((uint64_t*)root_AST, get_AST_full_type(root_AST->tag)));
-	}
-
-	//add in the thread ASTs
 }
-
 void mark_single_element(uint64_t* memory, Type* t);
 void marky_mark(uint64_t* memory, Type* t)
 {
@@ -326,3 +330,20 @@ void sweepy_sweep()
 //make sure that functions go away when necessary, and don't go away when not necessary.
 //test that some objects are collected, especially ones in loops
 //test that some objects are not collected, especially ones nested deeply
+
+
+
+//this is here to prevent static fiasco. must be below all the constants for the memory allocator. and must be below the hash table.
+namespace u
+{
+	Type* does_not_return = get_unique_type(T::does_not_return, false); //it's false, because the constexpr types are not in the memory pool
+	Type* integer = get_unique_type(T::integer, false);
+	Type* cheap_dynamic_pointer = get_unique_type(T::cheap_dynamic_pointer, false);
+	Type* full_dynamic_pointer = get_unique_type(T::full_dynamic_pointer, false);
+	Type* type = get_unique_type(T::type, false);
+	Type* AST_pointer = get_unique_type(T::AST_pointer, false);
+	Type* function_pointer = get_unique_type(T::function_pointer, false);
+};
+
+//this comes below the types, to prevent static fiasco.
+std::vector< Type* > unique_type_roots{u::does_not_return, u::integer, u::cheap_dynamic_pointer, u::full_dynamic_pointer, u::type, u::AST_pointer, u::function_pointer};

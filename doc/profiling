@@ -2,7 +2,7 @@ To run, first compile with -O3:
 make fast
 
 Then use the following console command to generate data:
-valgrind --tool=callgrind ./toy quiet
+valgrind --tool=callgrind ./toy benchmark
 
 Then to visualize the data:
 kcachegrind

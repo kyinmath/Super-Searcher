@@ -159,9 +159,6 @@ class source_reader
 	uAST* read_single_AST(uAST* previous_AST, string continued_string = "")
 	{
 		string first = continued_string == "" ? get_token() : continued_string;
-		char* new_type_location = new char[sizeof(uAST)]; //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
-		//uAST* new_type = new uAST(special);
-
 		if (first != string(1, '[')) //it's a name reference.
 		{
 			//console << "first was " << first << '\n';
@@ -175,9 +172,13 @@ class source_reader
 			return AST_search->second;
 		}
 
-		string tag = get_token();
+		string tag_str = get_token();
+		uint64_t AST_type = ASTn(tag_str.c_str());
 
-		uint64_t AST_type = ASTn(tag.c_str());
+		std::vector<uAST*> dummy_uASTs(get_size(get_AST_fields_type(AST_type)), nullptr);
+		uAST* new_type_location = new_AST(AST_type, 0, dummy_uASTs); //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
+
+
 		if (READER_VERBOSE_DEBUG) console << "AST tag was " << AST_type << "\n";
 		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
 
@@ -291,6 +292,7 @@ int main(int argc, char* argv[])
 	thread_local KaleidoscopeJIT c_holder(TM); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
 	c = &c_holder;
 
+	bool BENCHMARK = false;
 	//these do nothing
 	//assert(0);
 	//assert(1);
@@ -338,6 +340,7 @@ int main(int argc, char* argv[])
 			console.setstate(std::ios_base::failbit);
 			console.rdbuf(nullptr);
 			llvm_console = &llvm_null_stream;
+			BENCHMARK = true;
 		}
 		else if (strcmp(argv[x], "limited") == 0) //write "limited label", where "label" is the AST tag you want. you can have multiple tags like "limited label limited random", putting "limited" before each one.
 		{
@@ -355,8 +358,11 @@ int main(int argc, char* argv[])
 		else error(string("unrecognized flag ") + argv[x]);
 	}
 
-	test_unique_types();
-	debugtypecheck(T::does_not_return);
+	if (!BENCHMARK)
+	{
+		test_unique_types();
+		debugtypecheck(T::does_not_return);
+	}
 
 	struct cleanup_at_end
 	{

@@ -20,3 +20,7 @@ and with ASTs, the "integer" AST is obsolete because of the dynamic static objec
 
 so, the only subfield that isn't an AST pointer is the static object AST. how do we handle this?
 	is it possible that "static object" will forever be the only AST not using AST pointers?
+
+
+second problem: with dynamic objects, AST pointers, type pointers, copying is not easy.
+	we need an explicit copy command now. I guess that's "load".
