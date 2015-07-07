@@ -100,7 +100,7 @@ function* allocate_function()
 	for (uint64_t x = first_possible_empty_function_block; x < function_pool_size / 64; ++x)
 	{
 		uint64_t mask = function_pool_flags[x];
-		if (mask != -1ull)
+		if (mask != ~0ull)
 		{
 			int offset = first_zero(mask);
 			uint64_t bit_mask = 1ull << offset; //we need to shift 1ull, not 1. this has a high potential for bugs (bitten twice now).

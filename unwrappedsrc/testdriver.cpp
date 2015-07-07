@@ -13,7 +13,7 @@ bool CONSOLE = false;
 bool OLD_AST_OUTPUT = false;
 bool OUTPUT_MODULE = true;
 bool FUZZTESTER_NO_COMPILE = false;
-uint64_t runs = -1ull;
+uint64_t runs = ~0ull;
 llvm::raw_null_ostream llvm_null_stream;
 
 std::array<uint64_t, ASTn("never reached")> hitcount;
@@ -35,8 +35,9 @@ and, it can't produce [concatenate [int]a [load a]]. that requires speculative c
 void fuzztester(unsigned iterations)
 {
 	uint64_t max_fuzztester_size = 1;
-	while (iterations--)
+	while (iterations)
 	{
+		--iterations; //this is here, instead of having "iterations--", so that integer-sanitizer doesn't complain
 		fuzztester_roots.push_back(nullptr); //we this is so that we always have something to find, when we're looking for previous_ASTs
 		//create a random AST
 		unsigned tag = mersenne() % ASTn("never reached");
@@ -410,7 +411,7 @@ int main(int argc, char* argv[])
 	{
 		std::clock_t ministart = std::clock();
 		fuzztester(100);
-		if (!LONGRUN && (runs == -1ull))
+		if (!LONGRUN && (runs == ~0ull))
 			if (x % 100 == 0)
 				std::cout << "100/100 time: " << (std::clock() - ministart) / (double)CLOCKS_PER_SEC << '\n';
 	}
