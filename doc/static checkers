@@ -2,8 +2,8 @@ http://www.di.ens.fr/~zappa/projects/cmmtest/ for concurrency bugs
 clang
 	use "scan-build-3.7 --use-analyzer /usr/lib/llvm-3.7/bin/clang make"
 valgrind
-	valgrind --leak-check=yes ./toy timer quiet
-	valgrind ./toy timer quiet
+	valgrind --leak-check=yes ./toy benchmark
+	valgrind ./toy benchmark
 	found memory errors! very useful. search for "==" and read-error or whatever.
 cppcheck
 	cppcheck ../unwrappedsrc/

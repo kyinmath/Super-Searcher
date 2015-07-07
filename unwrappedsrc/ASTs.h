@@ -157,6 +157,7 @@ struct uAST
 	uAST* preceding_BB_element; //this object survives on the stack and can be referenced. it's the previous basic block element.
 	using iop = int_or_ptr<uAST>;
 	std::array<iop, max_fields_in_AST> fields;
+private:
 	uAST(const char name[], uAST* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
 		: tag(ASTn(name)), preceding_BB_element(preceding), fields{{f1, f2, f3, f4}} {}
 	uAST(uint64_t direct_tag, uAST* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)

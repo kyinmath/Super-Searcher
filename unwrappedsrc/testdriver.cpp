@@ -119,7 +119,7 @@ class source_reader
 
 	std::unordered_map<string, uAST*> ASTmap = {{"0", nullptr}}; //from name to location. starts with 0 = nullptr.
 	std::unordered_map<uAST**, string> goto_delay; //deferred binding of addresses, for goto. we can only see the labels at the end.
-	uAST* delayed_binding_special_value = new uAST(1); //memleak
+	uAST* delayed_binding_special_value = (uAST*)1; //because of alignment, pointers to uAST must be multiples of 8
 	string delayed_binding_name; //a backdoor return value.
 	std::istream& input;
 
