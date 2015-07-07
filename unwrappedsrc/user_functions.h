@@ -62,7 +62,7 @@ template<size_t array_num> inline void cout_array(std::array<uint64_t, array_num
 
 //parameter is a function*
 //return value is a dynamic pointer to the return value. it's just the object pointer, not the type.
-//todo: the problem is that on failure, we can't get the type. since this requires a switch, we should get the type here.
+//on failure, we can't get the type. since this requires a branch, we should get the type here.
 inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 {
 	if (func_int == 0) return std::array < uint64_t, 2 > {{0, 0}};

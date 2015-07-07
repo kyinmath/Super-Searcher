@@ -13,7 +13,7 @@
 //thus, we wrap them in a unique() function, so that the user only ever sees GC-handled objects.
 
 bool DEBUG_GC = true; //do some checking to make sure the GC is tracking free memory accurately. slow. mainly: whenever GCing or creating, it sets memory locations to special values.
-bool VERBOSE_GC = true;
+bool VERBOSE_GC = false;
 
 constexpr const uint64_t pool_size = 100000ull;
 constexpr const uint64_t function_pool_size = 2000ull * 64;
@@ -83,7 +83,7 @@ uint64_t* allocate(uint64_t size)
 	}
 	*found_place = 6666666ull; //mark and sweep allocator, so mark it. we never use this though.
 
-	if (VERBOSE_GC) console << "allocating region " << found_place << " true size incl header " << true_size << '\n';
+	if (VERBOSE_GC) console << "allocating region " << found_place + header_size << " size, not including header " << size << '\n';
 	return found_place + header_size;
 }
 
@@ -136,6 +136,8 @@ void start_GC()
 	while (!to_be_marked.empty())
 	{
 		auto k = to_be_marked.top();
+		to_be_marked.pop(); //this happens before marky_mark(), because marky_mark() might insert things on the top of the stack. then, those things are killed off by this pop().
+		//instead, after we grab a task, we take it off the stack.
 		if (VERBOSE_GC)
 		{
 			console << "GC marking " << k.first << " ";
@@ -143,7 +145,6 @@ void start_GC()
 			console << "the size of the marking stack before marking is " << to_be_marked.size() << '\n';
 		}
 		marky_mark(k.first, k.second);
-		to_be_marked.pop();
 	}
 	if (VERBOSE_GC)
 	{
@@ -198,8 +199,11 @@ void marky_mark(uint64_t* memory, Type* t)
 	living_objects.insert({memory, get_size(t)});
 	if (t->tag == Typen("con_vec"))
 	{
+		//console << "marking convec\n";
 		for (auto& subt : Type_pointer_range(t))
 		{
+			//console << "marking memory " << memory << " with value " << *memory << '\n';
+			//output_type(subt);
 			mark_single_element(memory, subt);
 			memory += get_size(subt);
 		}
@@ -209,6 +213,7 @@ void marky_mark(uint64_t* memory, Type* t)
 
 void mark_single_element(uint64_t* memory, Type* t)
 {
+	//console << "marking single " << memory << '\n';
 	check(memory != nullptr, "passed 0 memory pointer to mark_single");
 	check(t != nullptr, "passed 0 type pointer to mark_single");
 	switch (t->tag)
