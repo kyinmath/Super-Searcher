@@ -358,12 +358,11 @@ namespace u
 {
 	Type* does_not_return = get_unique_type(T::does_not_return, false); //it's false, because the constexpr types are not in the memory pool
 	Type* integer = get_unique_type(T::integer, false);
-	Type* cheap_dynamic_pointer = get_unique_type(T::cheap_dynamic_pointer, false);
-	Type* full_dynamic_pointer = get_unique_type(T::full_dynamic_pointer, false);
+	Type* dynamic_pointer = get_unique_type(T::dynamic_pointer, false);
 	Type* type = get_unique_type(T::type, false);
 	Type* AST_pointer = get_unique_type(T::AST_pointer, false);
 	Type* function_pointer = get_unique_type(T::function_pointer, false);
 };
 
 //this comes below the types, to prevent static fiasco.
-std::vector< Type* > unique_type_roots{u::does_not_return, u::integer, u::cheap_dynamic_pointer, u::full_dynamic_pointer, u::type, u::AST_pointer, u::function_pointer};
+std::vector< Type* > unique_type_roots{u::does_not_return, u::integer, u::dynamic_pointer, u::type, u::AST_pointer, u::function_pointer};

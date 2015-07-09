@@ -11,7 +11,7 @@ cxx: ../unwrappedsrc/*
 	rm -If core
 
 fast: ../unwrappedsrc/*
-	clang++ -Wall -fno-rtti $(CPP_FILES) $(ADDITIONAL_CXX_FLAGS_MISSING_FROM_CPP_FLAGS_FOR_LLVM_CONFIG) `llvm-config --cppflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -g -O3
+	clang++ -Wall -fno-rtti $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -g -O3
 	-rm -If core
 
 check: ../unwrappedsrc/*

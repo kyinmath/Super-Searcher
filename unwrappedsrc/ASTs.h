@@ -95,7 +95,7 @@ keep AST names to one word only, because our console input takes a single word f
 */
 constexpr AST_info AST_descriptor[] =
 {
-	a("load_object", special_return, T::full_dynamic_pointer).make_special_fields(1), //loads a constant. similar to "int x = 40". if the value ends up on the stack, it can still be modified, but any changes are temporary.
+	a("load_object", special_return, T::dynamic_pointer).make_special_fields(1), //immediate value, like "int x = 40". loaded value can be modified in-function, but any changes are temporary.
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
 	//{"hello", T::null},
 	{"print_int", T::null, T::integer},
@@ -104,17 +104,18 @@ constexpr AST_info AST_descriptor[] =
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
 	{"subtract", T::integer, T::integer, T::integer},
 	{"random", T::integer}, //returns a random integer
-	a("pointer", special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it - instead, it searches for the AST pointer in <>objects.
+	a("pointer", special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like the name of an object
 	a("load", special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
 	a("concatenate", special_return).make_pointer_fields(2), //squashes two objects together to make a big object
-	{"dynamic", T::full_dynamic_pointer, parameter_no_type_check}, //creates dynamic storage for any kind of object. moves it to the heap.
+	{"dynamic", T::dynamic_pointer, parameter_no_type_check}, //creates dynamic storage for any kind of object. moves it to the heap.
 	a("compile", T::function_pointer, T::AST_pointer).make_pointer_fields(3), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
-	{"run_function", T::full_dynamic_pointer, T::function_pointer},
-	{"dynamic_conc", special_return, T::cheap_dynamic_pointer, T::cheap_dynamic_pointer}, //concatenate the interiors of two dynamic pointers
+	{"run_function", T::dynamic_pointer, T::function_pointer},
+	{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, T::dynamic_pointer}, //concatenate the interiors of two dynamic pointers
 	a("goto", special_return).make_pointer_fields(3), //first field is label, second field is success, third field is failure
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
-	a("convert_to_AST", T::AST_pointer, T::integer, parameter_no_type_check, T::cheap_dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
+	a("convert_to_AST", T::AST_pointer, T::integer, parameter_no_type_check, T::dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
 	a("store", T::null, parameter_no_type_check, parameter_no_type_check), //pointer, then value.
+	//{"load_n", special_return, parameter_no_type_check}, //if AST, gives Nth subtype. if pointer, gives Nth subobject, etc.
 	//{"load_type", T::type, T::type, T::integer}, //gets the Nth subtype of a concatenated type. todo...except that this also conflicts with the copy_into_dynamic. this command seems to be necessary however, in order to facilitate vectors. we don't actually want to ever load a 4000-long repeated type as a dynamic object.
 	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both. todo
 	//{"copy_into_dynamic", T::dynamic}, for AST. grabs all the fields. todo. this is also necessary, because pointers have integer fields.

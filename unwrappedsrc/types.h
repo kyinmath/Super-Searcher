@@ -61,28 +61,26 @@ struct Type_info
 	const char* name;
 	const unsigned pointer_fields; //how many field elements of the type object must be pointers
 
-	//size of the actual object. -1ll if special
+	//size of the actual object. ~0ull if special
 	const uint64_t size;
 
 	constexpr Type_info(const char a[], uint64_t n, uint64_t s) : name(a), pointer_fields(n), size(s) {}
 };
 
-constexpr uint64_t minus_one = -1ll; //note that a -1 literal, without specifying ll, can either be int32 or int64, so we could be in great trouble.
+constexpr uint64_t minus_one = ~0ull; //note that a -1 literal, without specifying ll, can either be int32 or int64, so we could be in great trouble.
 
 using _t = Type_info;
 /* Guidelines for new Types:
 you must create an entry in type_check.
 marky_mark.
-
-todo: fill in types in type_check()
 */
 constexpr Type_info Type_descriptor[] =
 {
 	{"con_vec", minus_one, minus_one}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types.
 	{"integer", 0, 1}, //64-bit integer
 	_t("pointer", 1, 1), //pointer to anything, except the target type must be non-nullptr. second field is 1 if it's a full pointer, and 0 otherwise
-	_t("dynamic pointer", 0, 2), //dynamic pointer. first field is the pointer, second field is a pointer to the type. if either is null, both are null together.
-	//todo. make the type pointer first. so that it's at a fixed position; the dynamic object can be made an array if necessary, such as with ASTs
+	_t("dynamic pointer", 0, 2), //dynamic pointer. first field is the pointer to the type, second field is a pointer to the object. if either is null, both are null together.
+	//ordering is so that type pointer is at a fixed position; the dynamic object can be made an array if necessary, such as with ASTs
 	{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
 	//the actual object has 2+fields: tag, then previous, then some fields.
 	{"type pointer", 0, 1},
@@ -123,8 +121,7 @@ constexpr uint64_t Typen(const char name[]) { return get_enum_from_name<const Ty
 
 #define fields_in_Type 3u
 //this is for types which are known to be unique and well-behaved (no loops).
-//WARNING: don't use the ctor for creating user objects
-//WARNING: don't use the copy ctor for user objects either!
+//WARNING: don't use the ctor or copy ctor for creating user objects! use the copy_type() and new_type() functions instead, which handle sizes correctly.
 //the Type does not properly represent its true size.
 //todo: add const to all of these things. and to AST tag as well.
 struct Type;
@@ -136,14 +133,9 @@ struct Type
 	std::array<iop, fields_in_Type> fields;
 
 	//these ctors are necessary for the constexpr types.
-	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{{args...}} { if (tag == Typen("con_vec")) error("make it another way"); } //this only works because 0 is the proper default value
-	template<typename... Args> constexpr Type(const uint64_t t, Args... args) : tag(t), fields{{args...}} { if (tag == Typen("con_vec")) error("make it another way"); }
-	constexpr Type(const Type& other) : tag(other.tag)
-	{
-		if (tag == Typen("con_vec")) error("make it another way");
-		for (uint64_t x = 0; x < total_valid_fields(&other); ++x)
-			((uint64_t*)this)[1 + x] = ((uint64_t*)&other)[1 + x];
-	}
+	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{{args...}} { if (tag == Typen("con_vec")) error("make it another way"); }
+private:
+	Type(const Type& other) = delete;
 };
 #define max_fields_in_AST 4u
 //should accomodate the largest possible AST. necessary for AST_descriptor[]
@@ -197,9 +189,9 @@ inline Type* copy_type(const Type* t)
 }
 
 /*when creating a new element here:
-1. instantiate it in types.cpp.
+1. instantiate the T:: version in types.cpp.
 2. make a u:: version just below
-3. instantiate the u::version in type_creator.cpp
+3. instantiate the u::version in memory.cpp
 4. add the u::version to the gc roots in memory.cpp
 the reason these are static members of struct internal is so that the address is the same across translation units.
 otherwise, it's not. see https://stackoverflow.com/questions/7368330/static-members-and-the-default-constructor-c
@@ -212,8 +204,7 @@ namespace T
 	{
 		static constexpr Type int_{"integer"};
 		static constexpr Type does_not_return{"does not return"};
-		static constexpr Type cheap_dynamic_pointer{"dynamic pointer"};
-		static constexpr Type full_dynamic_pointer{"dynamic pointer", 1};
+		static constexpr Type dynamic_pointer{"dynamic pointer"};
 		static constexpr Type type{"type pointer"};
 		static constexpr Type AST_pointer{"AST pointer"};
 		static constexpr Type function_pointer{"function pointer"};
@@ -223,8 +214,7 @@ namespace T
 	typedef internal i;
 	constexpr Type* does_not_return = const_cast<Type* const>(&i::does_not_return);  //the field can't return. used for goto. effectively makes type checking always pass.
 	constexpr Type* integer = const_cast<Type* const>(&i::int_); //describes an integer type
-	constexpr Type* cheap_dynamic_pointer = const_cast<Type* const>(&i::cheap_dynamic_pointer);
-	constexpr Type* full_dynamic_pointer = const_cast<Type* const>(&i::full_dynamic_pointer);
+	constexpr Type* dynamic_pointer = const_cast<Type* const>(&i::dynamic_pointer);
 	constexpr Type* type = const_cast<Type* const>(&i::type);
 	constexpr Type* AST_pointer = const_cast<Type* const>(&i::AST_pointer);
 	constexpr Type* function_pointer = const_cast<Type* const>(&i::function_pointer);
@@ -236,8 +226,7 @@ namespace u
 {
 	extern Type* does_not_return;
 	extern Type* integer;
-	extern Type* cheap_dynamic_pointer;
-	extern Type* full_dynamic_pointer;
+	extern Type* dynamic_pointer;
 	extern Type* type;
 	extern Type* AST_pointer;
 	extern Type* function_pointer;

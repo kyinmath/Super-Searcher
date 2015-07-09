@@ -44,3 +44,7 @@ must full pointers point to the beginning of the object?
 		sure, that seems to work fine with dynamic objects, since the dynamic type can be changed in-place.
 		ASTs embed the type inside, but maybe we can just treat them differently.
 if so, maybe they'd want to point to the entire object. this is so that after you've checked an object, you know you've handled every field. but this messes with vector truncation
+
+type offset pointers:
+	if we don't have cheap pointers anymore, then type offset pointers are always full.
+	that means that if we have a pointer, we can no longer assume that it points to the entire object.

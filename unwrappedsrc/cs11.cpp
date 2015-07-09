@@ -589,7 +589,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			if (found_AST->second.on_stack == stack_state::temp) return_code(pointer_to_temporary, 0);
 			//bool is_full_pointer = false;
-			Type* new_pointer_type = get_non_convec_unique_type(Type("pointer", found_AST->second.type));
+			Type* new_pointer_type = get_non_convec_unique_type(Typen("pointer"), found_AST->second.type);
 
 			l::Value* final_result = builder->CreatePtrToInt(found_AST->second.place.get_location(), int64_type(), s("flattening pointer"));
 
@@ -713,7 +713,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 
 			//bool is_full_dynamic = false;
-			Type* dynamic_type = get_non_convec_unique_type(Type(Typen("dynamic pointer")));
+			Type* dynamic_type = get_non_convec_unique_type(Typen("dynamic pointer"));
 
 			finish_special(result_of_conc, dynamic_type);
 		}
@@ -725,7 +725,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			llvm::Value* forcing_return_type = builder->CreatePointerCast(return_holder, int64_type()->getPointerTo(), "forcing return type");
 			builder->CreateCall(compile_function, std::vector<l::Value*>{forcing_return_type, field_results[0].IR}); //, s("compile"). void type means no name allowed
 			auto error_object = memory_location(return_holder, 1);
-			Type* error_type = concatenate_types(std::vector < Type* > {u::integer, u::cheap_dynamic_pointer});
+			Type* error_type = concatenate_types(std::vector < Type* > {u::integer, u::dynamic_pointer});
 			object_stack.push({user_target, true});
 			auto insert_result = objects.insert({user_target, Return_Info(IRgen_status::no_error, error_object, error_type, final_stack_state, lifetime_of_return_value, lifetime_of_return_value, lifetime_of_return_value)});
 			if (!insert_result.second) return_code(active_object_duplication, 10);

@@ -6,8 +6,7 @@ namespace T
 {
 	constexpr Type internal::int_;
 	constexpr Type internal::does_not_return;
-	constexpr Type internal::cheap_dynamic_pointer;
-	constexpr Type internal::full_dynamic_pointer;
+	constexpr Type internal::dynamic_pointer;
 	constexpr Type internal::type;
 	constexpr Type internal::AST_pointer;
 	constexpr Type internal::function_pointer;
@@ -132,18 +131,13 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 			}
 			else return type_check_result::different;
 		case Typen("integer"):
-			if (iter[0]->tag == iter[1]->tag || iter[0]->tag == Typen("pointer"))
+			if (iter[0]->tag == iter[1]->tag || iter[0]->tag == Typen("pointer") || iter[0]->tag == Typen("type pointer") || iter[0]->tag == Typen("function pointer") || iter[0]->tag == Typen("AST pointer"))
 				return type_check_result::perfect_fit;
 			//maybe we should also allow two uints in a row to take a dynamic pointer?
 			//we'd have to think about that. the current system allows for large types in the new reference to accept pieces, but I don't know if that's the best.
 			return type_check_result::different;
 
 		case Typen("dynamic pointer"):
-
-			if (iter[0]->tag == iter[1]->tag)
-				return type_check_result::perfect_fit;
-			return type_check_result::different;
-
 		case Typen("AST pointer"):
 		case Typen("function pointer"):
 		case Typen("type pointer"):
