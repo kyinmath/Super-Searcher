@@ -421,19 +421,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	case ASTn("add"): finish(builder->CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
 	case ASTn("subtract"): finish(builder->CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
 	case ASTn("increment"): finish(builder->CreateAdd(field_results[0].IR, llvm_integer(1), s("increment")));
-	/*case ASTn("hello"):
-		{
-			l::Value *helloWorld = builder->CreateGlobalStringPtr("hello world!");
-
-			//create the function type
-			std::vector<l::Type*> putsArgs{builder->getInt8Ty()->getPointerTo()};
-			l::FunctionType *putsType = l::FunctionType::get(builder->getInt32Ty(), putsArgs, false);
-
-			//get the actual function
-			l::Constant *putsFunc = builder->GetInsertBlock()->getModule()->getOrInsertFunction("puts", putsType);
-
-			finish(builder->CreateCall(putsFunc, helloWorld, s("hello world")));
-		}*/
 	case ASTn("print_int"):
 		{
 			l::Value* printer = llvm_function(print_uint64_t, void_type(), int64_type());
