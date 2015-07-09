@@ -56,8 +56,8 @@ void fuzztester(unsigned iterations)
 		{
 			if (AST_descriptor[tag].parameter_types[incrementor].type == T::full_dynamic_pointer)
 			{
-				fields.push_back((uAST*)new_object(generate_exponential_dist()));
 				fields.push_back((uAST*)(u::integer)); //make a random integer
+				fields.push_back((uAST*)new_object(generate_exponential_dist()));
 			}
 			else error("fuzztester doesn't know how to make this special type, so I'm going to panic");
 		}
@@ -73,7 +73,9 @@ void fuzztester(unsigned iterations)
 			auto func = (function*)result[0];
 			if (result[1] == 0)
 			{
-				run_null_parameter_function_bogus(result[0]);
+				std::array<uint64_t, 2> dynamic_result = run_null_parameter_function(result[0]);
+				uint64_t size_of_return = get_size((Type*)dynamic_result[0]);
+				output_array((uint64_t*)dynamic_result[1], size_of_return);
 				fuzztester_roots.push_back((uAST*)func->the_AST);
 				if (fuzztester_roots.size() > max_fuzztester_size)
 					fuzztester_roots.pop_front();
@@ -197,7 +199,7 @@ class source_reader
 					goto_delay.insert(make_pair(&((uAST*)(new_type_location))->fields[field_num].ptr, delayed_binding_name));
 				}
 			}
-			else //it's a static object. make an integer
+			else //it's a static object, "load_object". make an integer
 			{
 				if (AST_type == 0 && field_num == 0)
 				{
@@ -206,8 +208,8 @@ class source_reader
 						isNumber = isNumber && isdigit(k);
 					check(isNumber, string("tried to input non-number ") + next_token);
 					check(next_token.size(), "token is empty, probably a missing ]");
-					new_type_location->fields[field_num] = (uint64_t)new_object(std::stoull(next_token));
-					new_type_location->fields[field_num + 1] = (uint64_t)u::integer;
+					new_type_location->fields[field_num] = (uint64_t)u::integer;
+					new_type_location->fields[field_num + 1] = (uint64_t)new_object(std::stoull(next_token));
 				}
 				else error("trying to write too many fields");
 			}
@@ -367,8 +369,13 @@ int main(int argc, char* argv[])
 		~cleanup_at_end() {
 			start_GC(); //this cleanup is to let Valgrind know that we've legitimately taken care of all memory.
 
+			uint64_t total_successful_compiles = 0;
 			for (unsigned x = 0; x < ASTn("never reached"); ++x)
+			{
+				total_successful_compiles += hitcount[x];
 				std::cout << "tag " << x << " " << AST_descriptor[x].name << ' ' << hitcount[x] << '\n';
+			}
+			std::cout << "success rate " << (float)total_successful_compiles/runs << '\n';
 		}
 	} a;
 
@@ -411,15 +418,8 @@ int main(int argc, char* argv[])
 	}
 
 	std::clock_t start = std::clock();
-	for (uint64_t x = 0; x < runs; ++x)
-	{
-		std::clock_t ministart = std::clock();
-		fuzztester(100);
-		if (!LONGRUN && (runs == ~0ull))
-			if (x % 100 == 0)
-				std::cout << "100/100 time: " << (std::clock() - ministart) / (double)CLOCKS_PER_SEC << '\n';
-	}
-	std::cout << "Overall time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
+	fuzztester(runs * 100);
+	std::cout << runs* 100 << " time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
 	return 0;
 	//default mode
 }

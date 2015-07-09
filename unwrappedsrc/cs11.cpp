@@ -680,11 +680,11 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			uint64_t size_of_object = get_size(field_results[0].type);
 			if (size_of_object >= 1)
 			{
-				l::Value* allocator = llvm_function(user_allocate_memory, int64_type(), int64_type());
-				l::Value* dynamic_object_address = builder->CreateCall(allocator, std::vector<l::Value*>{llvm_integer(size_of_object)}, s("dyn_allocate_memory"));
+				l::Value* allocator = llvm_function(allocate, int64_type()->getPointerTo(), int64_type());
+				l::Value* dynamic_object = builder->CreateCall(allocator, std::vector<l::Value*>{llvm_integer(size_of_object)}, s("dyn_allocate_memory"));
 
 				//store the returned value into the acquired address
-				l::Value* dynamic_object = builder->CreateIntToPtr(dynamic_object_address, int64_type()->getPointerTo());
+				l::Value* dynamic_object_address = builder->CreatePtrToInt(dynamic_object, int64_type());
 				write_into_place(value_collection(field_results[0].IR, size_of_object), dynamic_object);
 
 				//create a pointer to the type of the dynamic pointer. but we serialize the pointer to be an integer.
@@ -693,8 +693,8 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 				//we now serialize both objects to become integers.
 				l::Value* undef_value = l::UndefValue::get(llvm_array(2));
-				l::Value* first_value = builder->CreateInsertValue(undef_value, dynamic_object_address, std::vector < unsigned > { 0 });
-				l::Value* full_value = builder->CreateInsertValue(first_value, integer_type_pointer, std::vector < unsigned > { 1 });
+				l::Value* first_value = builder->CreateInsertValue(undef_value, integer_type_pointer, std::vector < unsigned > { 0 });
+				l::Value* full_value = builder->CreateInsertValue(first_value, dynamic_object_address, std::vector < unsigned > { 1 });
 				finish(full_value);
 			}
 			else
@@ -710,30 +710,20 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			for (int x : {0, 1})
 			{
 				//can't gep because it's not in memory
-				pointer[x] = builder->CreateExtractValue(field_results[x].IR, std::vector<unsigned>{0}, s("object pointer of dynamic"));
-				type[x] = builder->CreateExtractValue(field_results[x].IR, std::vector<unsigned>{1}, s("type pointer of dynamic"));
+				type[x] = builder->CreateExtractValue(field_results[x].IR, std::vector<unsigned>{0}, s("type pointer of dynamic"));
+				pointer[x] = builder->CreateExtractValue(field_results[x].IR, std::vector<unsigned>{1}, s("object pointer of dynamic"));
 			}
-
-			std::vector<l::Type*> argument_types{int64_type(), int64_type(), int64_type(), int64_type()};
-			//l::Type* return_type = llvm_array(2);
 
 			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
 			//if ever the optimization changes, we might be in trouble.
 			std::vector<l::Type*> return_types{int64_type(), int64_type()};
 			l::Type* return_type = l::StructType::get(*context, return_types);
-			l::FunctionType* dynamic_conc_type = l::FunctionType::get(return_type, argument_types, false);
+			l::Value* dynamic_conc_function = llvm_function(concatenate_dynamic, return_type, int64_type(), int64_type(), int64_type(), int64_type());
 
-			l::PointerType* dynamic_conc_type_pointer = dynamic_conc_type->getPointerTo();
-			l::Constant *twister_address = llvm_integer((uint64_t)&concatenate_dynamic);
-			l::Value* dynamic_conc_function = builder->CreateIntToPtr(twister_address, dynamic_conc_type_pointer, s("convert integer address to actual function"));
-
-			std::vector<l::Value*> arguments{pointer[0], type[0], pointer[1], type[1]};
+			std::vector<l::Value*> arguments{type[0], pointer[0], type[1], pointer[1]};
 			l::Value* result_of_conc = builder->CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
 
 
-
-
-			
 			bool is_full_dynamic = is_full(field_results[0].type) && is_full(field_results[1].type);
 			Type* dynamic_type = get_non_convec_unique_type(Type(Typen("dynamic pointer"), is_full_dynamic));
 
@@ -788,7 +778,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		}
 	case ASTn("convert_to_AST"):
 		{
-			l::Value* converter = llvm_function(dynamic_to_AST, int64_type(), int64_type(), int64_type(), int64_type(), int64_type());
 
 			l::Value* previous_AST;
 			if (type_check(RVO, field_results[1].type, nullptr) == type_check_result::perfect_fit) //previous AST is nullptr.
@@ -798,10 +787,11 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			else return_code(type_mismatch, 1);
 
 
-			l::Value* pointer = builder->CreateExtractValue(field_results[2].IR, std::vector < unsigned > {0}, s("fields of hopeful AST"));
-			l::Value* type = builder->CreateExtractValue(field_results[2].IR, std::vector < unsigned > {1}, s("type of hopeful AST"));
+			l::Value* type = builder->CreateExtractValue(field_results[2].IR, std::vector < unsigned > {0}, s("type of hopeful AST"));
+			l::Value* pointer = builder->CreateExtractValue(field_results[2].IR, std::vector < unsigned > {1}, s("fields of hopeful AST"));
 
-			std::vector<l::Value*> arguments{field_results[0].IR, previous_AST, pointer, type};
+			l::Value* converter = llvm_function(dynamic_to_AST, int64_type(), int64_type(), int64_type(), int64_type(), int64_type());
+			std::vector<l::Value*> arguments{field_results[0].IR, previous_AST, type, pointer};
 			l::Value* AST_result = builder->CreateCall(converter, arguments, s("converter"));
 
 			finish(AST_result);
@@ -818,8 +808,8 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			
 	case ASTn("load_object"): //bakes in the value into the compiled function. changes by the function are temporary.
 		{
-			uint64_t* array_of_integers = (uint64_t*)(target->fields[0].ptr);
-			Type* type_of_object = (Type*)target->fields[1].ptr;
+			Type* type_of_object = (Type*)target->fields[0].ptr;
+			uint64_t* array_of_integers = (uint64_t*)(target->fields[1].ptr);
 			uint64_t size_of_object = get_size(type_of_object);
 			if (size_of_object)
 			{

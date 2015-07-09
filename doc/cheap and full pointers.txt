@@ -5,8 +5,10 @@ what is the point of full pointers vs cheap pointers? I seem to remember it was 
 
 but moreover, suppose we don't want to care about pointer lifetimes. then everything is automatically on the heap, and then is optimized to the stack when possible.
 	the problem is that we can't always optimize things to the stack. because if we pass the pointer to a function, we won't know if the function stores the pointer somewhere.
-this is what Java does. https://programmers.stackexchange.com/questions/65281/stack-and-heap-memory-in-java
-
+this is what Java does. https://programmers.stackexchange.com/questions/65281/stack-and-heap-memory-in-java "escape analysis"
+	this will mean dtors aren't bound to objects anymore. but they can still see those objects.
+cost: if you ever pass a pointer to the object to another function, the parameter is instantly made full. you no longer have the option to do manual memory management.
+benefit: no need for make_full(); everything is already full.
 
 since pointers and full pointers are pretty similar, now I am going to put them both in a single type.
 0 = cheap, 1 = full, in the second field.

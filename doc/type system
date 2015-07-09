@@ -20,7 +20,8 @@ and with ASTs, the "integer" AST is obsolete because of the dynamic static objec
 
 so, the only subfield that isn't an AST pointer is the static object AST. how do we handle this?
 	is it possible that "static object" will forever be the only AST not using AST pointers?
-
+	what about something like offset of pointer? this will need a fixed, compile-time integer, right? otherwise, we can't get a guaranteed type, which will lead to excessive checking ASTs.
+	idea: we can leave it up to the optimizer to check that the thing is compile-time fixed and guaranteed to succeed.
 
 second problem: with dynamic objects, AST pointers, type pointers, copying is not easy.
 	we need an explicit copy command now. I guess that's "load".

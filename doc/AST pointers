@@ -91,15 +91,35 @@ Locks
 		++bonus: can replace ASTs in-place.
 	lock memory
 	on compilation, immut chain, and then unimmut chain on un-compilation
+	NOTE: with our new single-threaded system, locks are now super cheap. no need for atomicity or barriers at all.
 Copying
 	on compilation, copy, and then clear-mem on un-compilation.
 		++bonus: can compile two versions, then compare them. well, maybe not necessarily so amazing, since your version is gone.
 Benchmarks:
 	https://stackoverflow.com/questions/2538070/atomic-operation-cost 310 cycles for atomic operation, 2 per AST.
-	https://stackoverflow.com/questions/7612292/how-bad-it-is-to-keep-calling-malloc-and-free 418 cycles. only one necessary; "malloc" a bunch of memory at once.
+		except not anymore!!
+	https://stackoverflow.com/questions/7612292/how-bad-it-is-to-keep-calling-malloc-and-free 408 cycles for malloc/free combo. only one necessary; "malloc" a bunch of memory at once.
 maybe the "get AST" function produces the complete copy automatically? no, sometimes (in the far future) you just want to look.
 
 garbage collection:
 suppose a function becomes un-compiled. is it actually possible to unimmut all references in a way that's useful?
 	not really, if you're trying to modify an arbitrary function.
 but if you're touching a function you just made, it's incredibly useful to be able to modify it.
+
+
+how to actually run a function dynamically? the return type will be killer. must we really create a shim function?
+	and then, the shim function makes the return type dynamic?
+	and then, we'll have a failure branch.
+
+perhaps: in some cases, you're allowed to jump to non-labels. for example, [compile [AST_create ...]]. if the AST creation fails, you can jump to the second branch of the compile.
+	however, the error object won't be there, or something.
+
+
+but maybe ASTs are semi dynamic. you pass them around, call them dynamically. for example, normally compile_AST would return either an error object or an AST pointer, in a dynamic object.
+but then, call_dynamic() wouldn't be able to know that the target type was an AST pointer. otherwise, it would be guaranteed to succeed.
+the downside is that we can't pass around function pointers with static types, and then call them freely. but we never could do that anyway, because of finiteness.
+
+maybe compile_AST always returns an AST pointer, but the AST pointer might be null?
+	here, we're exploiting the fact that it's semi-dynamic already
+
+since ASTs/types/functions/dynamics are pointers, we need a way to copy their targets. since we can't just load them.

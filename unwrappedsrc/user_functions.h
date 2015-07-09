@@ -18,12 +18,6 @@ inline uint64_t generate_exponential_dist()
 	return generate_random() & cutoff;
 }
 
-//return value is the address
-inline uint64_t user_allocate_memory(uint64_t size)
-{
-	return (uint64_t)(allocate(size));
-}
-
 /*first argument is the location of the return object. if we didn't do this, we'd be forced to anyway, by http://www.uclibc.org/docs/psABI-i386.pdf P13. that's the way structs are returned, when 3 or larger.
 takes in AST.
 returns: the fptr, then the error code, then the dynamic object. for now, we let the dynamic error object be 0.
@@ -53,6 +47,13 @@ inline void compile_returning_legitimate_object(uint64_t* memory_location, uint6
 	}
 }
 
+inline void output_array(uint64_t* mem, uint64_t number)
+{
+	for (uint64_t idx = 0; idx < number; ++idx)
+		console << mem[idx] << ' ';
+	console << '\n';
+}
+
 template<size_t array_num> inline void cout_array(std::array<uint64_t, array_num> object)
 {
 	console << "Evaluated to";
@@ -75,7 +76,7 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 	if (size_of_return == 1)
 	{
 		uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
-		return std::array < uint64_t, 2 > {{FP(), (uint64_t)return_type}};
+		return std::array < uint64_t, 2 > {{(uint64_t)return_type, FP()}};
 	}
 	else if (size_of_return == 0)
 	{
@@ -99,17 +100,18 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 
 		BasicBlock *BB(BasicBlock::Create(*context, "entry", trampoline));
 		new_builder.SetInsertPoint(BB);
-		Value* target_function = llvm_function(fptr, llvm_type_including_void(size_of_return));
+		Value* target_function = llvm_function(fptr, llvm_type(size_of_return));
 		Value* result_of_call = new_builder.CreateCall(target_function, std::vector < llvm::Value* > {});
 
 		//START DYNAMIC
-		llvm::Value* allocator = llvm_function(user_allocate_memory, int64_type(), int64_type());
-		llvm::Value* dynamic_object_address = builder->CreateCall(allocator, std::vector < llvm::Value* > {llvm_integer(size_of_return)});
+		llvm::Value* allocator = llvm_function(allocate, int64_type()->getPointerTo(), int64_type());
+		llvm::Value* dynamic_object_raw = builder->CreateCall(allocator, std::vector < llvm::Value* > {llvm_integer(size_of_return)});
 		llvm::Type* target_pointer_type = llvm_type(size_of_return)->getPointerTo();
+		llvm::Value* dynamic_object = builder->CreatePointerCast(dynamic_object_raw, target_pointer_type);
 
 		//store the returned value into the acquired address
-		llvm::Value* dynamic_object = builder->CreateIntToPtr(dynamic_object_address, target_pointer_type);
 		builder->CreateStore(result_of_call, dynamic_object);
+		llvm::Value* dynamic_object_address = builder->CreatePtrToInt(dynamic_object, int64_type());
 		builder->CreateRet(dynamic_object_address);
 		///FINISH DYNAMIC
 
@@ -122,10 +124,10 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 		auto trampfptr = (uint64_t(*)())(ExprSymbol.getAddress());
 		uint64_t result = trampfptr();
 		c->removeModule(H);
-		return std::array < uint64_t, 2 > {{result, (uint64_t)return_type}};
+		return std::array < uint64_t, 2 > {{(uint64_t)return_type, result}};
 	}
 }
-
+/*
 inline void run_null_parameter_function_bogus(uint64_t func_int)
 {
 	auto func = (function*)func_int;
@@ -161,16 +163,16 @@ inline void run_null_parameter_function_bogus(uint64_t func_int)
 			FP();
 		}
 	}
-}
+}*/
 
 //each parameter is a pointer
-inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_pointer, uint64_t first_type, uint64_t second_pointer, uint64_t second_type)
+inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_type, uint64_t first_pointer, uint64_t second_type, uint64_t second_pointer)
 {
 	uint64_t* pointer[2] = {(uint64_t*)first_pointer, (uint64_t*)second_pointer};
 	Type* type[2] = {(Type*)first_type, (Type*)second_type};
 
-	if (type[0] == 0) return std::array<uint64_t, 2>{{second_pointer, second_type}};
-	else if (type[1] == 0) return std::array<uint64_t, 2>{{first_pointer, first_type}};
+	if (type[0] == 0) return std::array<uint64_t, 2>{{second_type, second_pointer}};
+	else if (type[1] == 0) return std::array<uint64_t, 2>{{first_type, first_pointer}};
 	uint64_t size[2];
 	for (int x : { 0, 1 })
 	{
@@ -180,11 +182,23 @@ inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_pointer, uint6
 	uint64_t* new_dynamic = allocate(size[0] + size[1]);
 	for (uint64_t idx = 0; idx < size[0]; ++idx) new_dynamic[idx] = pointer[0][idx];
 	for (uint64_t idx = 0; idx < size[1]; ++idx) new_dynamic[idx + size[0]] = pointer[1][idx];
-	return std::array<uint64_t, 2>{{(uint64_t)new_dynamic, (uint64_t)concatenate_types(std::vector<Type*>{type[0], type[1]})}};
+	return std::array<uint64_t, 2>{{(uint64_t)concatenate_types(std::vector<Type*>{type[0], type[1]}), (uint64_t)new_dynamic}};
+}
+
+
+inline uint64_t* copy_dynamic(Type* type, uint64_t* object)
+{
+	uint64_t size = get_size(type);
+	if (size == 0) return 0;
+	uint64_t* mem_slot = allocate(size);
+	for (uint64_t ind = 0; ind < size; ++ind)
+		mem_slot[ind] = object[ind];
+	return mem_slot;
 }
 
 //returns pointer-to-AST
-inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t object, uint64_t type)
+//todo: the load_object AST should make a copy instead, since it is immut
+inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t type, uint64_t object)
 {
 	if (tag >= ASTn("never reached")) return 0; //you make a null AST if the tag is too high
 	if (type == 0)
@@ -193,13 +207,20 @@ inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t object,
 			return 0;
 		return (uint64_t)new_AST(tag, (uAST*)previous, std::vector<uAST*>{});
 	}
-	else
+	else if (tag != ASTn("load_object"))
 	{
 		uAST* dyn_object = (uAST*)object;
 		Type* dyn_type = (Type*)type;
 		if (type_check(RVO, dyn_type, get_AST_fields_type(tag)) != type_check_result::perfect_fit) //this is RVO because we're copying the dynamic object over.
 			return 0;
 		return (uint64_t)new_AST(tag, (uAST*)previous, dyn_object);
+	}
+	else
+	{
+		uint64_t* copied_mem = copy_dynamic((Type*)type, (uint64_t*)object);
+		if (copied_mem == 0) return 0;
+		std::vector<uAST*> AST_members{(uAST*)type, (uAST*)copied_mem};
+		return (uint64_t)new_AST(tag, (uAST*)previous, AST_members);
 	}
 }
 

@@ -6,6 +6,10 @@ all: ../unwrappedsrc/*
 	clang++ -g -Wall -fno-rtti -fno-exceptions $(LLVM_CONFIG_CXX_SUBSTITUTE) $(CPP_FILES) `llvm-config --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
 	rm -If core
 
+cxx: ../unwrappedsrc/*
+	clang++ -g -Wall -fno-rtti -fno-exceptions $(CPP_FILES) `llvm-config --ldflags --cxxflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
+	rm -If core
+
 fast: ../unwrappedsrc/*
 	clang++ -Wall -fno-rtti $(CPP_FILES) $(ADDITIONAL_CXX_FLAGS_MISSING_FROM_CPP_FLAGS_FOR_LLVM_CONFIG) `llvm-config --cppflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -g -O3
 	-rm -If core

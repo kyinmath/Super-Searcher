@@ -38,12 +38,12 @@ void marky_mark(uint64_t* memory, Type* t);
 void initialize_roots();
 void sweepy_sweep();
 
-constexpr uint64_t header_size = 1;
+constexpr uint64_t header_size = 0; //no headers for now
 
 uint64_t* allocate(uint64_t size)
 {
 	uint64_t true_size = size + header_size;
-	auto k = free_memory.upper_bound(true_size);
+	auto k = free_memory.lower_bound(true_size);
 	if (k == free_memory.end())
 	{
 		error("OOM");
@@ -59,7 +59,7 @@ uint64_t* allocate(uint64_t size)
 	{
 		if (found_size < size + 2 * header_size + 1) //if you get the element, there'll be a dead space that's too small for any allocation
 		{
-			k = free_memory.upper_bound(size + 2 * header_size + 1); //find a better spot
+			k = free_memory.upper_bound(size + 2 * header_size); //find a better spot. must be >= size + 2 header + 1
 			if (k == free_memory.end()) error("OOM");
 			found_size = k->first;
 			found_place = k->second;
@@ -81,7 +81,10 @@ uint64_t* allocate(uint64_t size)
 			}
 		}
 	}
-	*found_place = 6666666ull; //mark and sweep allocator, so mark it. we never use this though.
+	
+	if (header_size) //necessary to silence messages about tautological comparisons
+		for (int x = 0; x < header_size; ++x)
+			found_place[x] = 6666666ull; //mark and sweep allocator, so mark it. we never use this though.
 
 	if (VERBOSE_GC) console << "allocating region " << found_place + header_size << " size, not including header " << size << '\n';
 	return found_place + header_size;
@@ -125,10 +128,9 @@ void initialize_roots()
 {
 	for (auto& root_type : unique_type_roots)
 		to_be_marked.push(std::make_pair((uint64_t*)root_type, get_Type_full_type(root_type)));
-	console << "outputting all types in hash table\n";
-	for (auto& type : type_hash_table)
-		output_type(type);
-	//we must do this in two steps, because we can't get full types until we've already inserted all the basic types.
+	//console << "outputting all types in hash table\n";
+	//for (auto& type : type_hash_table)
+	//	output_type(type);
 
 	for (auto& root_AST : fuzztester_roots)
 	{
@@ -171,9 +173,30 @@ void start_GC()
 	if (VERBOSE_GC)
 	{
 		for (auto& x : living_objects)
-		{
 			console << "living object " << x.first << " size " << x.second << '\n';
+	}
+	//console << "outputting unique types\n";
+	//for (Type* const & unique_type : type_hash_table) //clear the hash table of excess elements
+	//	output_type(unique_type);
+	//console << "done outputting unique types\n";
+	/*
+	//this doesn't work, since the erasure invalidates the iterator completely.
+	for (Type* const & unique_type : type_hash_table) //clear the hash table of excess elements
+	{
+		console << "checking unique type " << unique_type << '\n';
+		if (living_objects.find((uint64_t*)unique_type) == living_objects.end())
+		{
+			console << "erasing it\n";
+			unsigned erased = type_hash_table.erase(unique_type);
+			check(erased == 1, "erased wrong number of elements");
 		}
+
+	}*/
+	for (auto it = type_hash_table.begin(); it != type_hash_table.end();)
+	{
+		if (living_objects.find((uint64_t*)*it) == living_objects.end())
+			it = type_hash_table.erase(it);
+		else ++it;
 	}
 
 	sweepy_sweep();
@@ -190,9 +213,6 @@ void start_GC()
 		console << "total free after GC " << total_memory_use << '\n';
 	}
 
-	type_hash_table.clear();
-	for (auto& root_type : unique_type_roots)
-		type_hash_table.insert(root_type);
 }
 void mark_single_element(uint64_t* memory, Type* t);
 void marky_mark(uint64_t* memory, Type* t)
@@ -233,8 +253,8 @@ void mark_single_element(uint64_t* memory, Type* t)
 		if (*memory != 0)
 		{
 			if (living_objects.find(*(uint64_t**)memory) != living_objects.end()) break;
-			to_be_marked.push({*(uint64_t**)memory, *(Type**)(memory + 1)}); //pushing the object
-			to_be_marked.push({*(uint64_t**)(memory + 1), get_Type_full_type(*(Type**)(memory + 1))}); //pushing the type
+			to_be_marked.push({*(uint64_t**)memory, get_Type_full_type(*(Type**)memory)}); //pushing the type
+			to_be_marked.push({*(uint64_t**)(memory + 1), *(Type**)memory}); //pushing the object
 		}
 		break;
 	case Typen("AST pointer"):
@@ -271,7 +291,7 @@ void sweepy_sweep()
 
 	while (1)
 	{
-		auto next_memory = living_objects.upper_bound(memory_incrementor);
+		auto next_memory = living_objects.lower_bound(memory_incrementor);
 		if (next_memory == living_objects.end())
 			break;
 		uint64_t* ending_location = next_memory->first - header_size;

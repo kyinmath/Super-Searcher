@@ -95,6 +95,7 @@ constexpr Type_info Type_descriptor[] =
 	{"integer", 0, 1}, //64-bit integer
 	_t("pointer", 1, 1).make_special_fields(1), //pointer to anything, except the target type must be non-nullptr. second field is 1 if it's a full pointer, and 0 otherwise
 	_t("dynamic pointer", 0, 2).make_special_fields(1), //dynamic pointer. first field is the pointer, second field is a pointer to the type. if either is null, both are null together.
+	//todo. make the type pointer first. so that it's at a fixed position; the dynamic object can be made an array if necessary, such as with ASTs
 	{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
 	//the actual object has 2+fields: tag, then previous, then some fields.
 	{"type pointer", 0, 1},
@@ -146,6 +147,8 @@ struct Type
 	uint64_t tag;
 	using iop = int_or_ptr<Type>;
 	std::array<iop, fields_in_Type> fields;
+
+	//these ctors are necessary for the constexpr types.
 	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{{args...}} { if (tag == Typen("con_vec")) error("make it another way"); } //this only works because 0 is the proper default value
 	template<typename... Args> constexpr Type(const uint64_t t, Args... args) : tag(t), fields{{args...}} { if (tag == Typen("con_vec")) error("make it another way"); }
 	constexpr Type(const Type& other) : tag(other.tag)
@@ -156,7 +159,7 @@ struct Type
 	}
 };
 #define max_fields_in_AST 4u
-//should accomodate the largest possible AST
+//should accomodate the largest possible AST. necessary for AST_descriptor[]
 struct Type_pointer_range
 {
 	Type* t;
