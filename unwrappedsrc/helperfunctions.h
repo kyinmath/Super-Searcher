@@ -36,13 +36,6 @@ inline bool requires_atomic(stack_state x)
 	else return false;
 }
 
-inline bool is_full(stack_state x)
-{
-	if (x == stack_state::full_might_be_visible || x == stack_state::full_isolated)
-		return true;
-	else return false;
-}
-
 constexpr uint64_t full_lifetime = -1ll;
 
 

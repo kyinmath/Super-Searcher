@@ -64,18 +64,6 @@ struct Type_info
 	//size of the actual object. -1ll if special
 	const uint64_t size;
 
-	unsigned additional_special_fields = 0; //these fields come after the pointer fields. they are REAL types, not AST return types.
-	//for example, if you have a Type* in the second field and a normal AST* in the first field, then this would be 1.
-	//then, in the argument list, you'd put a Type* in the second parameter slot.
-
-	//this DOES NOT reduce the number of pointer fields. this is because we aren't specifying types. take note of this.
-	constexpr Type_info make_special_fields(uint64_t x)
-	{
-		Type_info new_copy(*this);
-		new_copy.additional_special_fields = x;
-		return new_copy;
-	}
-
 	constexpr Type_info(const char a[], uint64_t n, uint64_t s) : name(a), pointer_fields(n), size(s) {}
 };
 
@@ -84,7 +72,6 @@ constexpr uint64_t minus_one = -1ll; //note that a -1 literal, without specifyin
 using _t = Type_info;
 /* Guidelines for new Types:
 you must create an entry in type_check.
-is_full, if the Type is inherently a cheap pointer.
 marky_mark.
 
 todo: fill in types in type_check()
@@ -93,8 +80,8 @@ constexpr Type_info Type_descriptor[] =
 {
 	{"con_vec", minus_one, minus_one}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types.
 	{"integer", 0, 1}, //64-bit integer
-	_t("pointer", 1, 1).make_special_fields(1), //pointer to anything, except the target type must be non-nullptr. second field is 1 if it's a full pointer, and 0 otherwise
-	_t("dynamic pointer", 0, 2).make_special_fields(1), //dynamic pointer. first field is the pointer, second field is a pointer to the type. if either is null, both are null together.
+	_t("pointer", 1, 1), //pointer to anything, except the target type must be non-nullptr. second field is 1 if it's a full pointer, and 0 otherwise
+	_t("dynamic pointer", 0, 2), //dynamic pointer. first field is the pointer, second field is a pointer to the type. if either is null, both are null together.
 	//todo. make the type pointer first. so that it's at a fixed position; the dynamic object can be made an array if necessary, such as with ASTs
 	{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
 	//the actual object has 2+fields: tag, then previous, then some fields.
@@ -184,15 +171,14 @@ struct Type_everything_range
 
 inline uint64_t total_valid_fields(const Type* t)
 {
-	return (t->tag == Typen("con_vec")) ? t->fields[0].num + 1 : Type_descriptor[t->tag].pointer_fields + Type_descriptor[t->tag].additional_special_fields;
+	return (t->tag == Typen("con_vec")) ? t->fields[0].num + 1 : Type_descriptor[t->tag].pointer_fields;
 }
 
 #include "memory.h"
 //warning: takes fields directly. so concatenate should worry.
 inline Type* new_type(uint64_t tag, llvm::ArrayRef<Type*> fields)
 {
-	uint64_t total_field_size = (tag == Typen("con_vec")) ? (uint64_t)fields[0] + 1 :
-		Type_descriptor[tag].pointer_fields + Type_descriptor[tag].additional_special_fields;
+	uint64_t total_field_size = (tag == Typen("con_vec")) ? (uint64_t)fields[0] + 1 : Type_descriptor[tag].pointer_fields;
 	uint64_t* new_home = allocate(total_field_size + 1);
 	new_home[0] = tag;
 	for (uint64_t x = 0; x < total_field_size; ++x)
@@ -301,7 +287,6 @@ inline Type* get_Type_full_type(Type* t)
 	{
 		uint64_t number_of_pointers = Type_descriptor[t->tag].pointer_fields;
 		for (uint64_t x = 0; x < number_of_pointers; ++x) fields.push_back(u::type);
-		for (uint64_t x = 0; x < Type_descriptor[t->tag].additional_special_fields; ++x) fields.push_back(u::integer);
 		return concatenate_types(fields);
 	}
 	else
@@ -317,4 +302,3 @@ inline Type* get_Type_full_type(Type* t)
 void debugtypecheck(Type* test);
 type_check_result type_check(type_status version, Type* existing_reference, Type* new_reference);
 extern Type* concatenate_types(llvm::ArrayRef<Type*> components);
-bool is_full(Type* t);

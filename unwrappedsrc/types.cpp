@@ -126,28 +126,22 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 		case Typen("pointer"):
 			if (iter[0]->tag == iter[1]->tag)
 			{
-				if (iter[0]->fields[1].num >= iter[1]->fields[1].num) //full pointers can RVO into cheap pointers.
-				{
-					auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
-					if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
-						return type_check_result::perfect_fit;
-				}
+				auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
+				if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
+					return type_check_result::perfect_fit;
 			}
 			else return type_check_result::different;
 		case Typen("integer"):
-				if (iter[0]->tag == iter[1]->tag || iter[0]->tag == Typen("pointer"))
-					return type_check_result::perfect_fit;
+			if (iter[0]->tag == iter[1]->tag || iter[0]->tag == Typen("pointer"))
+				return type_check_result::perfect_fit;
 			//maybe we should also allow two uints in a row to take a dynamic pointer?
-				//we'd have to think about that. the current system allows for large types in the new reference to accept pieces, but I don't know if that's the best.
-				return type_check_result::different;
+			//we'd have to think about that. the current system allows for large types in the new reference to accept pieces, but I don't know if that's the best.
+			return type_check_result::different;
 
 		case Typen("dynamic pointer"):
 
-			if (iter[0]->fields[0].num >= iter[1]->fields[0].num) //full pointers can RVO into cheap pointers.
-			{
-				if (iter[0]->tag == iter[1]->tag)
-					return type_check_result::perfect_fit;
-			}
+			if (iter[0]->tag == iter[1]->tag)
+				return type_check_result::perfect_fit;
 			return type_check_result::different;
 
 		case Typen("AST pointer"):
@@ -175,24 +169,18 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 		{
 		case Typen("pointer"):
 			{
-				if (iter[0]->fields[1].num >= iter[1]->fields[1].num) //full pointers can be thought of as cheap pointers.
-				{
-					auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
-					if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
-						return type_check_result::perfect_fit;
-				}
+				auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
+				if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
+					return type_check_result::perfect_fit;
 				return type_check_result::different;
 			}
 		case Typen("integer"):
 		case Typen("AST pointer"):
 		case Typen("function pointer"):
 		case Typen("type pointer"):
-			return type_check_result::perfect_fit;
-
 		case Typen("dynamic pointer"):
-			if (iter[0]->fields[0].num >= iter[1]->fields[0].num) //full pointers can be thought of as cheap pointers
+
 				return type_check_result::perfect_fit;
-			else return type_check_result::different;
 	
 		default:
 			error("default case in other branch");
@@ -230,34 +218,4 @@ Type* concatenate_types(llvm::ArrayRef<Type*> components)
 	if (true_components.size() == 1) return nullptr; //only thing in the vector is the size
 	if (true_components.size() == 2) return true_components[1]; //one element in the vector.
 	else return get_unique_type(new_type(Typen("con_vec"), true_components), true);
-}
-
-bool is_full(Type* t)
-{
-	if (t == nullptr) return true;
-	else switch (t->tag)
-	{
-	case Typen("con_vec"):
-		{
-			uint64_t fields = t->fields[0].num;
-			for (uint64_t idx = 0; idx < fields; ++idx)
-				if (!is_full(t->fields[idx + 1].ptr)) return false; //I hope this works
-			return true;
-		}
-	case Typen("pointer"):
-		{
-			unsigned full_indicator = 1;
-			if (t->fields[full_indicator].num != 0 && t->fields[full_indicator].num != 1)
-				error("dynamic pointer case we haven't considered" + std::to_string(t->fields[full_indicator].num));
-			return t->fields[full_indicator].num == 1;
-		}
-	case Typen("dynamic pointer"):
-		{
-			unsigned full_indicator = 0;
-			if (t->fields[full_indicator].num != 0 && t->fields[full_indicator].num != 1)
-				error("dynamic pointer case we haven't considered" + std::to_string(t->fields[full_indicator].num));
-			return t->fields[full_indicator].num == 1;
-		}
-	default: return true;
-	}
 }

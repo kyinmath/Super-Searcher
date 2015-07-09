@@ -61,7 +61,7 @@ unsigned compiler_object::compile_AST(uAST* target)
 
 	builder_context_stack b(&new_builder, new_context.get());
 
-	if (VERBOSE_DEBUG) console << "starting compilation\ntarget is " << target << '\n'; //necessary in case it crashes here
+	if (VERBOSE_DEBUG) console << "starting compilation\ntarget is " << target << '\n'; //in case it crashes here because target is not valid
 	if (target == nullptr) return IRgen_status::null_AST;
 	using namespace llvm;
 	FunctionType *dummy_type(FunctionType::get(void_type(), false));
@@ -372,6 +372,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	//remember: pass the value itself if stack_degree == 0, and pass a pointer to the value if stack_degree == 1 or 2.
 
 	//these are for when we need to specify the return type.
+	//maybe later, we'll separate everything out. so if you specify the type and the return isn't special_pointer, it'll error as well.
 #define finish_special_pointer(X, type, u, l) do {return finish_internal(X, type, u, l, true); } while (0)
 #define finish_special(X, type) do { finish_special_pointer(X, type, 0, -1ll); } while (0)
 #define finish_special_stack_handled(X, type) do { return finish_internal(X, type, 0, -1ll, false); } while (0)
@@ -600,8 +601,8 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			auto found_AST = objects.find(target->fields[0].ptr);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			if (found_AST->second.on_stack == stack_state::temp) return_code(pointer_to_temporary, 0);
-			bool is_full_pointer = is_full(found_AST->second.on_stack);
-			Type* new_pointer_type = get_non_convec_unique_type(Type("pointer", found_AST->second.type, is_full_pointer));
+			//bool is_full_pointer = false;
+			Type* new_pointer_type = get_non_convec_unique_type(Type("pointer", found_AST->second.type));
 
 			l::Value* final_result = builder->CreatePtrToInt(found_AST->second.place.get_location(), int64_type(), s("flattening pointer"));
 
@@ -621,7 +622,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				llvm::Value* final_value = load_from_stack(AST_to_load.place.get_location(), load_size);
 				//we load either i64* or [S x i64]*. but the address is always of form i64*.
 				
-				uint64_t lifetime = (is_full(AST_to_load.type)) ? 0 : AST_to_load.self_lifetime;
+				uint64_t lifetime = AST_to_load.self_lifetime; //we definitely need to figure out how out escape analysis works. this lifetime information is now nonsense.
 				finish_special_pointer(final_value, AST_to_load.type, lifetime, 0);
 			}
 		}
@@ -724,8 +725,8 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			l::Value* result_of_conc = builder->CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
 
 
-			bool is_full_dynamic = is_full(field_results[0].type) && is_full(field_results[1].type);
-			Type* dynamic_type = get_non_convec_unique_type(Type(Typen("dynamic pointer"), is_full_dynamic));
+			//bool is_full_dynamic = false;
+			Type* dynamic_type = get_non_convec_unique_type(Type(Typen("dynamic pointer")));
 
 			finish_special(result_of_conc, dynamic_type);
 		}
@@ -816,9 +817,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				std::vector<l::Constant*> values;
 				values.reserve(size_of_object);
 				for (uint64_t x = 0; x < size_of_object; ++x)
-				{
 					values.push_back(llvm_integer(array_of_integers[x]));
-				}
 				
 				l::Constant* object;
 				if (size_of_object > 1) object = l::ConstantArray::get(llvm_array(size_of_object), values);
