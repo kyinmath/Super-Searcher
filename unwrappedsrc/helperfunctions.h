@@ -221,12 +221,14 @@ struct Return_Info
 	Type* type;
 	bool memory_location_active;
 
+	//if memory_location_active == 1, the references are in the memory_location. this is because they are bound to the actual object.
+	//otherwise, they are here in Value_references
+	//so these references are by the IR if it's a temp object, and they're by the memory_allocation if it's not.
+
 	//this should eventually be changed to an unordered_set, to prevent exponential doubling of the vector size.
 	std::vector<memory_allocation*> Value_references; //if this points to any memory locations that might be on the stack, then these are the uASTs.
 	//those memory locations may nevertheless be in the heap anyway. however, we guarantee that any memory location that is on the stack must be here.
 	//if escape analysis tells you the memory location needs to become full, then go over there and change things.
-	//this only exists if memory_location_active = 0. because references are bound to the actual object.
-	//so these references are by the IR if it's a temp object, and they're by the memory_allocation if it's not.
 
 	bool Value_full_reference_possible; //you might be pointing to a full object. used for store(), where we must update references. if this is true, then instead of updating references, we force the stored pointer's references to become full immediately.
 	//prefer: if a reference can be found, place it in the vector, which accepts all references. the bool is a last-ditch effort to catch unknowable things, and results in slowdowns. it's for when there isn't a meaningful reference to be found.
@@ -248,7 +250,7 @@ struct Return_Info
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
-	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), memory_location_active(false) {}
+	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), memory_location_active(false), Value_full_reference_possible(false) {}
 
 
 	~Return_Info()

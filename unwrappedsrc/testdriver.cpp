@@ -64,7 +64,7 @@ void fuzztester(unsigned iterations)
 		uAST* test_AST = new_AST(tag, fuzztester_roots.at(prev_AST), fields);
 		output_AST_console_version a(test_AST);
 		fuzztester_roots.pop_back(); //delete the null we put on the back
-
+		finiteness = FINITENESS_LIMIT;
 		if (!FUZZTESTER_NO_COMPILE)
 		{
 			uint64_t result[3];
@@ -178,7 +178,7 @@ class source_reader
 		uint64_t AST_type = ASTn(tag_str.c_str());
 
 		std::vector<uAST*> dummy_uASTs(get_size(get_AST_fields_type(AST_type)), nullptr);
-		uAST* new_type_location = new_AST(AST_type, 0, dummy_uASTs); //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
+		uAST* new_type_location = new_AST(AST_type, previous_AST, dummy_uASTs); //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
 
 
 		if (READER_VERBOSE_DEBUG) console << "AST tag was " << AST_type << "\n";
@@ -407,12 +407,17 @@ int main(int argc, char* argv[])
 				continue;
 			}
 			output_AST_and_previous(end);
-			uint64_t result[3];
-			compile_returning_legitimate_object(result, (uint64_t)end);
-			run_null_parameter_function(result[0]);
-			if (result[1] != 0)
+			finiteness = FINITENESS_LIMIT;
+			uint64_t compile_result[3];
+			compile_returning_legitimate_object(compile_result, (uint64_t)end);
+			auto run_result = run_null_parameter_function(compile_result[0]); //even if it's 0, it's fine.
+			if (compile_result[1] != 0)
 			{
-				std::cout << "wrong!\n";
+				std::cout << "wrong! error code " << compile_result[1] << "\n";
+			}
+			else
+			{
+				output_array((uint64_t*)run_result[1], get_size((Type*)run_result[0]));
 			}
 		}
 	}

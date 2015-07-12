@@ -1,10 +1,12 @@
 #pragma once
 #include <string>
 #include <iostream>
-extern std::ostream& console;
 #include <llvm/Support/raw_ostream.h> 
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/IRBuilder.h>
+#define RELEASE 0
+
+extern std::ostream& console;
 extern llvm::raw_ostream* llvm_console;
 using std::string;
 
@@ -24,7 +26,11 @@ inline std::string s(std::string k) { return ""; }
 #endif
 
 //the condition is true when the program behaves normally.
+#if RELEASE
+inline void check(bool condition, const string& Str) {}
+#else
 inline void check(bool condition, const string& Str) { if (!condition) error(Str); }
+#endif
 
 extern bool OPTIMIZE;
 extern bool INTERACTIVE;

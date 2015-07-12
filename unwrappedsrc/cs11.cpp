@@ -223,6 +223,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		console << '\n';
 	}
 
+	//these are required, because full_lifetime_handler relies on desired being nullptr in the concatenate() switch case
 	if (stack_degree == 2) check(desired.base == nullptr, "if stack degree is 2, we should have a nullptr storage location");
 	if (stack_degree == 1) check(desired.base != nullptr, "if stack degree is 1, we should have a storage location");
 
@@ -292,9 +293,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 					return;
 				}
 				if (k->references_to_me > 0)
-				{
 					k->self_is_full = true;
-				}
 				k->cast_base();
 			}
 		}
@@ -650,11 +649,12 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 			if (stack_degree == 0)
 			{
-				//we want the return objects to RVO. thus, we create a memory slot
+				//we want the return objects to RVO. thus, we create a memory slot. warning: this is super fragile, because if we finish early, we have to clean it up.
 				allocations.push_back(memory_allocation()); //for stack_degree >= 1, this takes the place of return_value
 				memory_allocation* minibase = &allocations.back();
 				desired = memory_location(minibase, 0);
 			}
+			full_lifetime_handler stack_degree_zero(stack_degree == 0 ? desired.base : nullptr);
 			uint64_t original_offset = desired.offset;
 			Return_Info half[2];
 			for (int x : {0, 1})

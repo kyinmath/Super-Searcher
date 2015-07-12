@@ -30,6 +30,8 @@ class compiler_object
 {
 	KaleidoscopeJIT& J;
 
+	std::deque<memory_allocation> allocations; //deque, because pointers need to remain valid. must be above std::unordered_map objects, because the Return_Info has dtors that reference this
+
 	//lists the ASTs we're currently looking at. goal is to prevent infinite loops.
 	std::unordered_set<uAST*> loop_catcher;
 
@@ -43,7 +45,6 @@ class compiler_object
 	//maps ASTs to their generated IR and return type.
 	std::unordered_map<uAST*, Return_Info> objects;
 
-	std::deque<memory_allocation> allocations; //deque, because pointers need to remain valid
 
 	struct label_info
 	{

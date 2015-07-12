@@ -248,6 +248,7 @@ constexpr uint64_t get_size(Type* target)
 	else if (Type_descriptor[target->tag].size != minus_one) return Type_descriptor[target->tag].size;
 	else if (target->tag == Typen("con_vec"))
 	{
+		check(target->fields[0].num > 1, "concatenation with insufficient types"); //this is a meaningful check because pointer to nowhere gives tag = 0 (concat), fields = 0.
 		uint64_t total_size = 0;
 		for (auto& x : Type_pointer_range(target)) total_size += get_size(x);
 		return total_size;

@@ -37,4 +37,4 @@ stack storage.
 	should produce a [random] AST
 
 
-[run_function [compile [convert_to_AST [random] [scope] [dynamic [load_object 0]]] [scope] [scope]]]
+[run_function [compile [convert_to_AST [random] [scope] [dynamic [load_object 0]]]]]

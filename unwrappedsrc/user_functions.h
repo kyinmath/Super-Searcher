@@ -73,10 +73,11 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 	void* fptr = func->fptr;
 	Type* return_type = func->return_type;
 	uint64_t size_of_return = get_size(return_type);
+	console << "return type of run function is: "; output_type(return_type); console << '\n';
 	if (size_of_return == 1)
 	{
 		uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
-		return std::array < uint64_t, 2 > {{(uint64_t)return_type, FP()}};
+		return std::array < uint64_t, 2 > {{(uint64_t)return_type, (uint64_t)new_object(FP())}};
 	}
 	else if (size_of_return == 0)
 	{
