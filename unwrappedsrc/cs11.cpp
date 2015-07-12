@@ -72,10 +72,9 @@ unsigned compiler_object::compile_AST(uAST* target)
 	new_builder.SetInsertPoint(BB);
 
 	auto return_object = generate_IR(target, false);
-	turn_full(return_object.Value_references);
-	clear_stack(0); //this happens before the return, because the hash table can't handle the Return_Info's destructor.
-	if (return_object.error_code) return return_object.error_code; //error
+	if (return_object.error_code) return return_object.error_code;
 
+	turn_full(return_object.Value_references);
 	return_type = return_object.type;
 	check(return_type == get_unique_type(return_type, false), "compilation returned a non-unique type");
 	//can't be u::does_not_return, because goto can't go forward past the end of a function.
@@ -165,7 +164,6 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 {
 	while (object_stack.size() != desired_stack_size)
 	{
-		console << "stack size is " << object_stack.size() << '\n';
 		auto to_be_removed = object_stack.top();
 		object_stack.pop();
 		if (to_be_removed.second) //it's a memory location
