@@ -20,25 +20,6 @@ enum IRgen_status {
 	store_pointer_lifetime_mismatch, //tried to store a short-lasting object in a long-lasting memory location
 };
 
-enum class stack_state
-{
-	temp,
-	cheap_alloca,
-	might_be_visible, //to other threads. better use atomic operations
-	full_might_be_visible, //when you load, you get a full_pointer
-	full_isolated, //it's a full pointer. but no need for atomic operations
-};
-
-inline bool requires_atomic(stack_state x)
-{
-	if (x == stack_state::full_might_be_visible || x == stack_state::might_be_visible)
-		return true;
-	else return false;
-}
-
-constexpr uint64_t full_lifetime = -1ll;
-
-
 //solely for convenience
 inline llvm::IntegerType* int64_type() { return llvm::Type::getInt64Ty(*context); }
 inline llvm::Type* void_type() { return llvm::Type::getVoidTy(*context); }
@@ -67,6 +48,7 @@ inline llvm::Type* llvm_type_including_void(uint64_t size)
 	if (size > 1) return llvm_array(size);
 	else return int64_type();
 }
+
 
 
 //return type is not a llvm::Function*, because it's a pointer to a function.
@@ -105,9 +87,7 @@ struct value_collection
 	value_collection(llvm::Value* integer, uint64_t size) : objects{std::make_pair(integer, size)} {}
 };
 
-
-
-inline void write_into_place(value_collection data, llvm::Value* start)
+inline void write_into_place(value_collection data, llvm::Value* target)
 {
 	uint64_t offset = 0;
 	for (auto& single_object : data.objects)
@@ -120,23 +100,61 @@ inline void write_into_place(value_collection data, llvm::Value* start)
 			if (single_object.second > 1)
 				integer_transfer = builder->CreateExtractValue(single_object.first, subplace);
 			else integer_transfer = single_object.first;
-			llvm::Value* location = builder->CreateConstInBoundsGEP1_64(start, offset);
-			builder->CreateStore(integer_transfer, location);
+			//llvm::Value* location = builder->CreateConstInBoundsGEP1_64(this->get_location(), offset);
+			builder->CreateStore(integer_transfer, target);
 			++offset;
 		}
 	}
 }
 
 
+llvm::AllocaInst* create_empty_alloca();
+
+//how to use a memory allocation:
+//change its size continually as you add elements to it.
+//at the end, use cast_base() to make it the correct size.
+struct memory_allocation
+{
+	llvm::Instruction* allocation = create_empty_alloca(); //AllocaInst* a = alloca i64, size, or an allocate() address
+	uint64_t size = 0;
+
+	bool self_is_full = 0; //use turn_full(). don't manipulate this directly.
+	uint64_t references_to_me = 0; //how many pointers exist to this memory location. if the memory location tries to fall off the stack while references still exist, it is made into a full pointer.
+	uint64_t version = 1; //used to version the allocation. when the allocation changes, the cached offsets of memory_location need to change as well.
+
+	std::vector<memory_allocation*> references; //outward references. this memory allocation contains pointers that points to these things.
+	bool full_reference_possible;
+
+	void cast_base() //if this should be a heap alloca, mark self_is_full before calling this.
+	{
+		llvm::Instruction* new_alloca;
+		if (!self_is_full)
+			new_alloca = new llvm::AllocaInst(int64_type(), llvm_integer(size));
+		else
+		{
+			llvm::Value* allocator = llvm_function(allocate, int64_type()->getPointerTo(), int64_type());
+			new_alloca = llvm::CallInst::Create(allocator, std::vector<llvm::Value*>{llvm_integer(size)});
+		}
+
+		llvm::BasicBlock::iterator ii(allocation);
+		ReplaceInstWithInst(allocation->getParent()->getInstList(), ii, new_alloca);
+
+		++version;
+		allocation = new_alloca;
+	}
+};
+
+
 //val = i64 if size = 1, val = [i64 x size] if size > 1.
-//AllocaInst* a = alloca i64, size for size >= 1.
 struct memory_location //used for GEP. good for delaying emission of instructions unless they're necessary.
 {
-	llvm::AllocaInst* base;
+	memory_allocation* base;
 	uint64_t offset;
-	llvm::Value* spot;
-	memory_location(llvm::AllocaInst* f1, uint64_t o) : base(f1), offset(o), spot(nullptr) {}
-	memory_location() : base(nullptr), offset(0), spot(nullptr) {}
+	llvm::Value* spot = nullptr;
+	uint64_t version = 0; //this version number starts below memory_allocation's version. whenever this version is less, spot must be re-calculated, because the cached instruction is invalidated. it's bad that we're re-emitting the GEP, but I don't know how to find the new version of the ReplaceInstwithInst'd GEPs.
+
+	memory_location(memory_allocation* f1, uint64_t o) : base(f1), offset(o) {}
+	memory_location() : base(nullptr), offset(0) {}
 
 
 	llvm::Value* get_location()
@@ -144,33 +162,24 @@ struct memory_location //used for GEP. good for delaying emission of instruction
 		determine_spot();
 		return spot;
 	}
-	void cast_base(uint64_t size)
-	{
-		llvm::AllocaInst* new_alloca = new llvm::AllocaInst(int64_type(), llvm_integer(size));
-		llvm::BasicBlock::iterator ii(base);
-		ReplaceInstWithInst(base->getParent()->getInstList(), ii, new_alloca);
-
-		base = new_alloca;
-		spot = base;
-		check(offset == 0, "this isn't expected, I'm relying on this to cache base in spot which I probably shouldn't be doing");
-	}
 	//assigns spot to be the correct pointer. i64*
 	void determine_spot()
 	{
-		if (spot == nullptr)
+		if (version < base->version)
 		{
-			spot = base;
-			if (offset) spot = builder->CreateConstInBoundsGEP1_64(base, offset);
+			spot = base->allocation;
+			if (offset) spot = builder->CreateConstInBoundsGEP1_64(base->allocation, offset);
 		}
 	}
 	void store(value_collection val)
 	{
 		determine_spot();
-		write_into_place(val, spot);
+		write_into_place(val, get_location());
 	}
 };
 
-inline llvm::Value* load_from_stack(llvm::Value* location, uint64_t size)
+
+inline llvm::Value* load_from_memory(llvm::Value* location, uint64_t size)
 {
 	check(size < ~0u, "load object not equipped to deal with large objects, because CreateInsertValue has a small index");
 	if (size == 1) return builder->CreateLoad(location);
@@ -186,44 +195,72 @@ inline llvm::Value* load_from_stack(llvm::Value* location, uint64_t size)
 }
 
 
+inline void add_reference(std::vector<memory_allocation*>& references, bool& full_reference_possible, memory_allocation* base)
+{
+	if (base->self_is_full)
+	{
+		full_reference_possible = true;
+		return;
+	}
+	++(base->references_to_me);
+	references.push_back(base);
+}
+
 //every time IR is generated, this holds the relevant return info.
 struct Return_Info
 {
 	IRgen_status error_code;
 
 	//either IR or place is active, not both.
-	//if on_stack == temp, then IR is active. otherwise, place is active.
-	//place is only ever active if you passed in stack_degree >= 1, because that's when on_stack != temp.
+	//if memory_location_active == false, then IR is active. otherwise, place is active.
+	//place is active when (stack_degree >= 1) <=> (memory_location_active = true).
 	//either way, the internal type doesn't change.
 	llvm::Value* IR;
 	memory_location place;
 
 	Type* type;
-	stack_state on_stack;
+	bool memory_location_active;
 
-	//to write an object into a pointed-to memory location, we must have guarantee of object <= hit contract of memory location
-	//there's only one hit contract value per object, which can be a problem for concatenations of many cheap pointers.
-	//however, we need concatenation only for heap objects, parameters, function return; in these cases, the memory order doesn't matter
-	uint64_t self_lifetime; //for stack objects, determines when you will fall off the stack. it's a deletion time, not a creation time.
-	//it's important that it is a deletion time, because deletion and creation are not in perfect stack configuration.
-	//because temporaries are created before the base object, and die just after.
+	//this should eventually be changed to an unordered_set, to prevent exponential doubling of the vector size.
+	std::vector<memory_allocation*> Value_references; //if this points to any memory locations that might be on the stack, then these are the uASTs.
+	//those memory locations may nevertheless be in the heap anyway. however, we guarantee that any memory location that is on the stack must be here.
+	//if escape analysis tells you the memory location needs to become full, then go over there and change things.
+	//this only exists if memory_location_active = 0. because references are bound to the actual object.
+	//so these references are by the IR if it's a temp object, and they're by the memory_allocation if it's not.
 
-	//low number = longer life.
-	uint64_t self_validity_guarantee; //higher is less lenient (validity is shorter). the object's values must be valid for at least this time.
-	//for when an object wants to be written into a memory location
+	bool Value_full_reference_possible; //you might be pointing to a full object. used for store(), where we must update references. if this is true, then instead of updating references, we force the stored pointer's references to become full immediately.
+	//prefer: if a reference can be found, place it in the vector, which accepts all references. the bool is a last-ditch effort to catch unknowable things, and results in slowdowns. it's for when there isn't a meaningful reference to be found.
+	//this also only exists if memory_location_active = 0
 
-	uint64_t target_hit_contract; //lower is less lenient. the reference will disappear after this time. used for pointers
-	//measures the pointer's target's lifetime, for when the pointed-to memory location wants something to be written into it.
+	//either b or m must be null. both of them can't be active at the same time.
+	Return_Info(IRgen_status err, llvm::Value* b, memory_location m, Type* t, bool o, std::vector<memory_allocation*> bases, bool full)
+		: error_code(err), IR(b), place(m), type(t), memory_location_active(o), Value_full_reference_possible(full)
+	{
+		if (!memory_location_active)
+		{
+			for (auto*& memory : bases)
+				add_reference(Value_references, Value_full_reference_possible, memory);
+		}
+		else for (auto*& memory : bases)
+			add_reference(place.base->references, place.base->full_reference_possible, memory);
+	}
 
-	Return_Info(IRgen_status err, llvm::Value* b, Type* t, stack_state o, uint64_t s, uint64_t u, uint64_t l)
-		: error_code(err), IR(b), type(t), on_stack(o), self_lifetime(s), self_validity_guarantee(u), target_hit_contract(l) {}
-	Return_Info(IRgen_status err, memory_location b, Type* t, stack_state o, uint64_t s, uint64_t u, uint64_t l)
-		: error_code(err), IR(0), place(b), type(t), on_stack(o), self_lifetime(s), self_validity_guarantee(u), target_hit_contract(l) {}
-	//IR should be initialized to 0 in this ctor to avoid uninitialized-value errors from valgrind. however, it is otherwise unnecessary as the uninitialized value is never used except when trying to output it for debug purposes.
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
-	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), on_stack(stack_state::temp), self_lifetime(0), self_validity_guarantee(0), target_hit_contract(full_lifetime) {}
+	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), memory_location_active(false) {}
+
+
+	~Return_Info()
+	{
+		if (!memory_location_active)
+		{
+			for (auto*& memory : Value_references)
+				--(memory->references_to_me);
+		}
+		else for (auto*& memory : place.base->references)
+			--(memory->references_to_me);
+	}
 };
 
 

@@ -20,3 +20,5 @@ PERHAPS: function parameters are literally set inside the calling function!
 this turns function calls into named parameters.
 editing functions is ok, because those things generally don't have further ASTs (they don't depend on anything). the problem is: how do we attach comments to them? and these comments should be editable, even after the function is compiled.
 	maybe they can just be dynamic pointers. you can copy them. but then how do you change the type of the dynamic object? overwrite() is going to have to succeed.
+
+we're using globals right now for parameters, but those will be slow. even using the stack, like golang does, is slow.

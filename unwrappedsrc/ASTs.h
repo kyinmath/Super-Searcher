@@ -85,6 +85,8 @@ if you're using the heap, set final_stack_state.
 if you don't want a subfield to be compiled, use make_pointer_fields() and don't specify the parameter type.
 if a subfield isn't actually an AST pointer, but is some other special object like a dynamic object or integer, use make_special_fields() and specify the parameter type.
 
+the ASTs that do funny things with pointers all have a "passthrough" comment in cs11.cpp switch case.
+
 the number of parameter types determines the number of subfields to be compiled and type-checked automatically. the instructions in these subfields are always run; there's no branching.
 if you want to compile but not type-check a field, use parameter_no_type_check.
 if you want to neither compile or type-check a field, use make_pointer_fields().
@@ -99,7 +101,7 @@ constexpr AST_info AST_descriptor[] =
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
 	//{"hello", T::null},
 	{"print_int", T::null, T::integer},
-	a("if", special_return).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
+	a("if", special_return, T::integer).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
 	{"scope", T::null, parameter_no_type_check}, //fulfills the purpose of {} from C++
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
 	{"subtract", T::integer, T::integer, T::integer},

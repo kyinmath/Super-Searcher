@@ -43,6 +43,8 @@ class compiler_object
 	//maps ASTs to their generated IR and return type.
 	std::unordered_map<uAST*, Return_Info> objects;
 
+	std::deque<memory_allocation> allocations; //deque, because pointers need to remain valid
+
 	struct label_info
 	{
 		llvm::BasicBlock* block;
@@ -52,10 +54,6 @@ class compiler_object
 	};
 	//these are labels which can be jumped to. the basic block, and the object stack.
 	std::map<uAST*, label_info> labels;
-
-	//increases by 1 every time an object is created. imposes an ordering on stack object lifetimes, such that if two objects exist simultaneously, the lower one will survive longer.
-	//but two objects don't necessarily exist simultaneously. for example, two temporary objects that live separately. then this number is useless in that case.
-	uint64_t incrementor_for_lifetime = 0;
 
 	//some objects have expired - this clears them
 	void clear_stack(uint64_t desired_stack_size);
@@ -100,4 +98,19 @@ public:
 		pointer = immut_pointer->second;
 	};
 
+	//don't I need to know myself as well? because I need to get rid of the reference once I've made it full.
+	//this is really rubbish. what I want to turn full is a uAST*, not a Return_Info. however, we need to delete the references after turning them full.
+	//that can be done outside the function
+	void turn_full(std::vector< memory_allocation*>& address_list)
+	{
+		for (auto& address : address_list)
+		{
+			if (address->self_is_full) continue; //it's already off the stack, so if it was appropriate to be full, it would already be.
+			address->self_is_full = true;
+			if (address->size)
+				address->cast_base();
+			turn_full(address->references);
+		}
+		address_list.clear();
+	}
 };

@@ -72,6 +72,8 @@ unsigned compiler_object::compile_AST(uAST* target)
 	new_builder.SetInsertPoint(BB);
 
 	auto return_object = generate_IR(target, false);
+	turn_full(return_object.Value_references);
+	clear_stack(0); //this happens before the return, because the hash table can't handle the Return_Info's destructor.
 	if (return_object.error_code) return return_object.error_code; //error
 
 	return_type = return_object.type;
@@ -163,9 +165,10 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 {
 	while (object_stack.size() != desired_stack_size)
 	{
+		console << "stack size is " << object_stack.size() << '\n';
 		auto to_be_removed = object_stack.top();
 		object_stack.pop();
-		if (to_be_removed.second) //it's on the stack
+		if (to_be_removed.second) //it's a memory location
 		{
 			uint64_t number_of_erased = objects.erase(to_be_removed.first);
 			check(number_of_erased == 1, "erased too many or too few elements"); //we shouldn't put the erase operation in the check, because check() might be no-op'd, and erase has side effects
@@ -204,7 +207,7 @@ currently, the finish() macro takes in the array itself, not the pointer-to-arra
 Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
-#define return_code(X, Y) do { error_location = user_target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, u::null, stack_state::temp, 0, 0, 0); } while (0)
+#define return_code(X, Y) do { error_location = user_target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, memory_location(), u::null, false, {}, false); } while (0)
 	//if (stack_degree == 2) stack_degree = 0; //we're trying to diagnose the memory problems with label. this does nothing.
 
 	if (VERBOSE_DEBUG)
@@ -215,7 +218,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		console << ", storage location is ";
 		if (desired.base != nullptr)
 		{
-			desired.base->print(*llvm_console);
+			desired.base->allocation->print(*llvm_console);
 			console << " offset " << desired.offset << '\n';
 		}
 		else console << "null";
@@ -269,16 +272,46 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	}
 
 	///NOTE: these are the set of default values. they become hidden parameters to finish().
+	memory_allocation* base = nullptr;
+	if (stack_degree == 2)
+	{
+		allocations.push_back(memory_allocation()); //for stack_degree >= 1, this takes the place of return_value
+		base = &allocations.back();
+		desired = memory_location(base, 0);
+	}
 
-	if (stack_degree == 2) desired.base = create_empty_alloca();
+	struct full_lifetime_handler
+	{
+		memory_allocation* k;
+		full_lifetime_handler(memory_allocation* kl) : k(kl) { }
+		~full_lifetime_handler()
+		{
+			if (k != nullptr) //memory allocation is active
+			{
+				if (k->size == 0)
+				{
+					k->allocation->eraseFromParent();
+					return;
+				}
+				if (k->references_to_me > 0)
+				{
+					k->self_is_full = true;
+				}
+				k->cast_base();
+			}
+		}
+	} dtor_handle(base);
+
 
 	//after compiling the previous elements in the basic block, we find the lifetime of this element
-	uint64_t lifetime_of_return_value = incrementor_for_lifetime++;
-
+	//this actually starts at 2, but that's fine.
 	uint64_t final_stack_position = object_stack.size();
 
-	stack_state final_stack_state = stack_state::temp;
-	if (stack_degree != 0) final_stack_state = stack_state::cheap_alloca; //the default. unless any further information appears.
+	
+	std::vector<memory_allocation*> references; //if the return object is a pointer that might point to an alloca, this remembers it.
+	bool full_reference = false; //if the return object is a pointer that might point to a full object.
+	
+	bool passthrough = false; //if true: I'm not constructing anything; I'm just passing through values. for example, if() and concatenate(), vs random()
 
 	///end default values
 
@@ -291,7 +324,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	//if it's necessary to create and write to storage_location, we do so.
 	//if move_to_stack == true, it writes into a previously created storage_location
 	//if stack_degree >= 1, this will ignore return_value and use "memory_location desired" instead
-	auto finish_internal = [&](l::Value* return_value, Type* type, uint64_t self_validity_guarantee, uint64_t target_hit_contract, bool move_to_stack) -> Return_Info
+	auto finish_internal = [&](l::Value* return_value, Type* type, bool move_to_stack) -> Return_Info
 	{
 		check(type == get_unique_type(type, false), "returned non unique type in finish()");
 
@@ -319,29 +352,26 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			console << "generate_IR single AST " << target << " " << AST_descriptor[target->tag].name << " vvvvvvvvv\n";
 		}
 
-		memory_location stack_return_location; //for stack_degree >= 1, this takes the place of return_value
-
+		memory_location stack_return_location;
 		uint64_t size_of_return = get_size(type);
-		if (stack_degree == 2)
+		if (size_of_return >= 1)
 		{
-			if (size_of_return >= 1)
+			stack_return_location = desired;
+			if (stack_degree == 2)
 			{
-				desired.cast_base(size_of_return);
 				if (move_to_stack) desired.store(value_collection(return_value, size_of_return));
-
-				stack_return_location = desired;
 			}
-			else desired.base->eraseFromParent();
-		}
-		if (stack_degree == 1 && move_to_stack) //otherwise, do nothing.
-		{
-			if (size_of_return >= 1)
+			if (stack_degree == 1 && move_to_stack) //otherwise, do nothing.
 			{
 				//we can't defer RVO all the way to the stack_degree = 2. but we can move it up one to concatenate() if we want. maybe we won't bother.
 
+				desired.base->references.insert(desired.base->references.end(), references.begin(), references.end());
+				desired.base->full_reference_possible |= full_reference;
 				desired.store(value_collection(return_value, size_of_return));
-				stack_return_location = desired;
 			}
+
+			if (!passthrough && stack_degree >= 1)
+				stack_return_location.base->size += size_of_return;
 		}
 		//we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for justification.
 		if (stack_degree == 2) clear_stack(final_stack_position);
@@ -351,15 +381,15 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			if (stack_degree >= 1)
 			{
 				object_stack.push({user_target, true});
-				auto insert_result = objects.insert({user_target, Return_Info(IRgen_status::no_error, stack_return_location, type, final_stack_state, lifetime_of_return_value, self_validity_guarantee, target_hit_contract)});
+				auto insert_result = objects.insert({user_target, Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type, true, {}, false)});
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication, 10);
-				return Return_Info(IRgen_status::no_error, stack_return_location, type, final_stack_state, lifetime_of_return_value, self_validity_guarantee, target_hit_contract);
+				return Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type, true, {}, false);
 			}
 			else //stack_degree == 0
 			{
-				object_stack.push(std::make_pair(user_target, false));
-				return Return_Info(IRgen_status::no_error, return_value, type, final_stack_state, lifetime_of_return_value, self_validity_guarantee, target_hit_contract);
+				object_stack.push({user_target, false});
+				return Return_Info(IRgen_status::no_error, return_value, memory_location(), type, false, references, full_reference);
 			}
 		}
 		else return Return_Info();
@@ -373,16 +403,12 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 	//these are for when we need to specify the return type.
 	//maybe later, we'll separate everything out. so if you specify the type and the return isn't special_pointer, it'll error as well.
-#define finish_special_pointer(X, type, u, l) do {return finish_internal(X, type, u, l, true); } while (0)
-#define finish_special(X, type) do { finish_special_pointer(X, type, 0, -1ll); } while (0)
-#define finish_special_stack_handled(X, type) do { return finish_internal(X, type, 0, -1ll, false); } while (0)
-#define finish_special_stack_handled_pointer(X, type, u, l) do { return finish_internal(X, type, u, l, false); } while (0)
+#define finish_special(X, type) do {return finish_internal(X, type, true); } while (0)
+#define finish_special_stack_handled(X, type) do { return finish_internal(X, type, false); } while (0)
 
 	//make sure not to duplicate X in the expression.
-#define finish_pointer(X, u, l) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special_pointer(X, get_unique_type(AST_descriptor[target->tag].return_object.type, false), u, l); } while (0)
-#define finish(X) do { finish_pointer(X, 0, -1ll); } while (0)
-#define finish_stack_handled(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); return finish_internal(X, get_unique_type(AST_descriptor[target->tag].return_object.type, false), 0, -1ll, false); } while (0)
-#define finish_stack_handled_pointer(X, u, l) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); return finish_internal(X, get_unique_type(AST_descriptor[target->tag].return_object.type, false), u, l, false); } while (0)
+#define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, get_unique_type(AST_descriptor[target->tag].return_object.type, false)); } while (0)
+#define finish_stack_handled(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); return finish_internal(X, get_unique_type(AST_descriptor[target->tag].return_object.type, false), 0, false); } while (0)
 
 
 	for (unsigned x = 0; x < AST_descriptor[target->tag].fields_to_compile; ++x)
@@ -430,20 +456,12 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		finish(builder->CreateCall(llvm_function(generate_random, int64_type()), std::vector<l::Value*>{}, s("random")));
 	case ASTn("if"):
 		{
-			//the condition statement
-			if (target->fields[0].ptr == nullptr) return_code(null_AST, 0);
-			auto condition = generate_IR(target->fields[0].ptr, 0);
-			if (condition.error_code) return condition;
-
-			if (type_check(RVO, condition.type, u::integer) != type_check_result::perfect_fit) return_code(type_mismatch, 0);
-
-
 			//since the fields are conditionally executed, the temporaries generated in each branch are not necessarily referenceable.
 			//therefore, we must clear the stack between each branch.
 			uint64_t if_stack_position = object_stack.size();
 
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
-			l::Value* comparison = builder->CreateICmpNE(condition.IR, llvm_integer(0), s("if() condition"));
+			l::Value* comparison = builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("if() condition"));
 			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
 
 			// Create blocks for the then and else cases.  Insert the blocks at the end of the function; this is ok because the builder position is the thing that affects instruction insertion. it's necessary to insert them into the function so that we can avoid memleak on errors
@@ -452,8 +470,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			l::BasicBlock *MergeBB = l::BasicBlock::Create(*context, s("merge"), TheFunction);
 
 			builder->CreateCondBr(comparison, ThenBB, ElseBB);
-
-			//sets the insert point to be the end of the "Then" basic block.
 			builder->SetInsertPoint(ThenBB);
 
 			//calls with stack_degree as 1 in the called function, if it is 2 outside.
@@ -465,7 +481,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 			builder->CreateBr(MergeBB);
 			ThenBB = builder->GetInsertBlock();
-
 			builder->SetInsertPoint(ElseBB);
 
 			Return_Info else_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, desired);
@@ -486,21 +501,26 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 			// Emit merge block.
 			builder->SetInsertPoint(MergeBB);
-			uint64_t result_self_validity_guarantee = std::max(then_IR.self_validity_guarantee, else_IR.self_validity_guarantee);
-			uint64_t result_target_hit_contract = std::min(then_IR.target_hit_contract, else_IR.target_hit_contract);
 			if (stack_degree == 0)
 			{
+				references = then_IR.Value_references;
+				references.insert(references.end(), else_IR.Value_references.begin(), else_IR.Value_references.end());
+				full_reference = then_IR.Value_full_reference_possible || else_IR.Value_full_reference_possible;
+
 				l::Value* endPN = llvm_create_phi(then_IR.IR, else_IR.IR, then_IR.type, else_IR.type, ThenBB, ElseBB);
-				finish_special_pointer(endPN, result_type, result_self_validity_guarantee, result_target_hit_contract);
+				finish_special(endPN, result_type);
 			}
 			else
 			{
-				if (else_IR.type == u::does_not_return)
-					finish_special_stack_handled_pointer(then_IR.IR, then_IR.type, then_IR.self_validity_guarantee, then_IR.target_hit_contract);
-				else if (then_IR.type == u::does_not_return)
-					finish_special_stack_handled_pointer(else_IR.IR, else_IR.type, else_IR.self_validity_guarantee, else_IR.target_hit_contract);
+				passthrough = true;
+				desired.base->size += get_size(result_type);
 
-				finish_special_stack_handled_pointer(then_IR.IR, result_type, result_self_validity_guarantee, result_target_hit_contract);
+				if (else_IR.type == u::does_not_return)
+					finish_special_stack_handled(then_IR.IR, result_type);
+				else if (then_IR.type == u::does_not_return)
+					finish_special_stack_handled(else_IR.IR, result_type);
+
+				finish_special_stack_handled(then_IR.IR, result_type);
 			}
 		}
 
@@ -579,7 +599,17 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			Return_Info Failure_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, desired);
 			if (Failure_IR.error_code) return Failure_IR;
 
-			finish_special_stack_handled_pointer(Failure_IR.IR, Failure_IR.type, Failure_IR.self_validity_guarantee, Failure_IR.target_hit_contract);
+			if (stack_degree == 0)
+			{
+				references = Failure_IR.Value_references;
+				full_reference = Failure_IR.Value_full_reference_possible;
+			}
+			else
+			{
+				passthrough = true;
+				desired.base->size += get_size(Failure_IR.type);
+			}
+			finish_special_stack_handled(Failure_IR.IR, Failure_IR.type);
 		}
 	case ASTn("scope"):
 		finish(nullptr);
@@ -587,37 +617,46 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		{
 			auto found_AST = objects.find(target->fields[0].ptr);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
-			if (found_AST->second.on_stack == stack_state::temp) return_code(pointer_to_temporary, 0);
+			if (found_AST->second.memory_location_active == false) return_code(pointer_to_temporary, 0);
 			//bool is_full_pointer = false;
 			Type* new_pointer_type = get_non_convec_unique_type(Typen("pointer"), found_AST->second.type);
 
 			l::Value* final_result = builder->CreatePtrToInt(found_AST->second.place.get_location(), int64_type(), s("flattening pointer"));
-
-			finish_special_pointer(final_result, new_pointer_type, found_AST->second.self_lifetime, found_AST->second.self_lifetime);
+			references.push_back(objects.find(target->fields[0].ptr)->second.place.base);
+			finish_special(final_result, new_pointer_type);
 		}
 	case ASTn("load"):
 		{
 			auto found_AST = objects.find(target->fields[0].ptr);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
-			//if on_stack is temp, it's not an alloca so we should copy instead of loading.
+			//if memory_location_active is false, we should copy instead of loading.
 			Return_Info AST_to_load = found_AST->second;
 			//I think atomic load is automatic on x64, but we don't need it anyway on a single-threaded app.
-			if (AST_to_load.on_stack == stack_state::temp) finish_special_pointer(AST_to_load.IR, AST_to_load.type, AST_to_load.self_validity_guarantee, AST_to_load.target_hit_contract);
+			if (AST_to_load.memory_location_active == false)
+			{
+				references = AST_to_load.Value_references;
+				full_reference = AST_to_load.Value_full_reference_possible;
+				finish_special(AST_to_load.IR, AST_to_load.type);
+			}
 			else
 			{
-				uint64_t load_size = get_size(AST_to_load.type);
-				llvm::Value* final_value = load_from_stack(AST_to_load.place.get_location(), load_size);
-				//we load either i64* or [S x i64]*. but the address is always of form i64*.
-				
-				uint64_t lifetime = AST_to_load.self_lifetime; //we definitely need to figure out how out escape analysis works. this lifetime information is now nonsense.
-				finish_special_pointer(final_value, AST_to_load.type, lifetime, 0);
+				references = AST_to_load.place.base->references;
+				full_reference = AST_to_load.place.base->full_reference_possible;
+				llvm::Value* final_value = load_from_memory(AST_to_load.place.get_location(), get_size(AST_to_load.type));
+				finish_special(final_value, AST_to_load.type);
 			}
 		}
 	case ASTn("concatenate"):
 		{
 			//optimization: if stack_degree == 1, then you've already gotten the size. look it up in a special location.
 
-			if (stack_degree == 0) desired.base = create_empty_alloca(); //we want the return objects to RVO. thus, we create a memory slot
+			if (stack_degree == 0)
+			{
+				//we want the return objects to RVO. thus, we create a memory slot
+				allocations.push_back(memory_allocation()); //for stack_degree >= 1, this takes the place of return_value
+				memory_allocation* minibase = &allocations.back();
+				desired = memory_location(minibase, 0);
+			}
 			uint64_t original_offset = desired.offset;
 			Return_Info half[2];
 			for (int x : {0, 1})
@@ -633,19 +672,22 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			l::Value* final_value;
 			if (stack_degree == 0)
 			{
-				desired.cast_base(final_size);
-				final_value = load_from_stack(desired.get_location(), final_size);
+				desired.base->size = final_size;
+				desired.base->cast_base();
+				final_value = load_from_memory(desired.get_location(), final_size);
+				references = half[0].Value_references;
+				references.insert(references.end(), half[1].Value_references.begin(), half[1].Value_references.end());
+				full_reference = half[0].Value_full_reference_possible || half[1].Value_full_reference_possible;
 			}
 			else
 			{
+				passthrough = true;
+				desired.base->size += get_size(half[0].type) + get_size(half[1].type);
 				final_value = nullptr;
 			}
 
-			uint64_t result_target_life_guarantee = std::max(half[0].self_validity_guarantee, half[1].self_validity_guarantee);
-			uint64_t result_target_hit_contract = std::min(half[0].target_hit_contract, half[1].target_hit_contract);
 			Type* final_type = get_unique_type(concatenate_types(std::vector < Type* > {half[0].type, half[1].type}), true);
-			//console << "final type "; output_type(final_type);
-			finish_special_stack_handled_pointer(final_value, final_type, result_target_life_guarantee, result_target_hit_contract);
+			finish_special_stack_handled(final_value, final_type);
 		}
 
 	case ASTn("store"):
@@ -653,14 +695,30 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			if (field_results[0].type == nullptr) return_code(type_mismatch, 0);
 			if (field_results[0].type->tag != Typen("pointer")) return_code(type_mismatch, 0);
 			if (type_check(RVO, field_results[1].type, field_results[0].type->fields[0].ptr) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
-			if (field_results[0].target_hit_contract < field_results[1].self_validity_guarantee) return_code(store_pointer_lifetime_mismatch, 0);
+			if (field_results[0].Value_full_reference_possible)
+			{
+				turn_full(field_results[1].Value_references);
+			}
+			else //time to add references
+			{
+				for (auto& storage_location : field_results[0].Value_references)
+				{
+					//add all the references from field_results[1] to each possible storage location.
+					
+					if (storage_location->self_is_full)
+					{
+						turn_full(field_results[1].Value_references);
+						break;
+					}
+					for (auto& target_location : field_results[1].Value_references)
+					{
+						add_reference(storage_location->references, storage_location->full_reference_possible, target_location);
+					}
+				}
+			}
 			llvm::Value* memory_location = builder->CreateIntToPtr(field_results[0].IR, int64_type()->getPointerTo());
 
 			write_into_place(value_collection(field_results[1].IR, get_size(field_results[1].type)), memory_location);
-
-			//no need for atomics on single threaded app
-			//if (requires_atomic(field_results[0].on_stack))
-				//builder->CreateAtomicRMW(llvm::AtomicRMWInst::Xchg, memory_location, field_results[1].IR, llvm::AtomicOrdering::Release); //I don't think this works for large objects; memory location must match exactly. in any case, all we want is piecewise atomic.
 			finish(0);
 		}
 	case ASTn("dynamic"):
@@ -724,44 +782,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			llvm::AllocaInst* return_holder = create_actual_alloca(3);
 			llvm::Value* forcing_return_type = builder->CreatePointerCast(return_holder, int64_type()->getPointerTo(), "forcing return type");
 			builder->CreateCall(compile_function, std::vector<l::Value*>{forcing_return_type, field_results[0].IR}); //, s("compile"). void type means no name allowed
-			auto error_object = memory_location(return_holder, 1);
-			Type* error_type = concatenate_types(std::vector < Type* > {u::integer, u::dynamic_pointer});
-			object_stack.push({user_target, true});
-			auto insert_result = objects.insert({user_target, Return_Info(IRgen_status::no_error, error_object, error_type, final_stack_state, lifetime_of_return_value, lifetime_of_return_value, lifetime_of_return_value)});
-			if (!insert_result.second) return_code(active_object_duplication, 10);
-
-
-			auto error_code = memory_location(return_holder, 1);
-			auto condition = builder->CreateLoad(error_code.get_location());
-
-
-			l::Value* comparison = builder->CreateICmpNE(condition, llvm_integer(0), s("compile branching"));
-			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
-			l::BasicBlock *SuccessBB = l::BasicBlock::Create(*context, s("success"), TheFunction);
-			l::BasicBlock *FailureBB = l::BasicBlock::Create(*context, s("failure"), TheFunction);
-			l::BasicBlock *MergeBB = l::BasicBlock::Create(*context, s("merge"), TheFunction);
-			builder->CreateCondBr(comparison, SuccessBB, FailureBB);
-			builder->SetInsertPoint(SuccessBB);
-
-
-			Return_Info success_branch = generate_IR(target->fields[1].ptr, 0);
-			if (success_branch.error_code) return success_branch;
-
-			builder->CreateBr(MergeBB);
-			SuccessBB = builder->GetInsertBlock();
-			builder->SetInsertPoint(FailureBB);
-
-			Return_Info error_branch = generate_IR(target->fields[2].ptr, 0);
-			if (error_branch.error_code) return error_branch;
-
-			builder->CreateBr(MergeBB);
-			FailureBB = builder->GetInsertBlock();
-			builder->SetInsertPoint(MergeBB);
-
-
-			clear_stack(final_stack_position);
-			auto return_location = memory_location(return_holder, 0);
-			auto return_object = builder->CreateLoad(return_location.get_location());
+			auto return_object = builder->CreateLoad(return_holder);
 			finish(return_object);
 		}
 	case ASTn("convert_to_AST"):
@@ -809,6 +830,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				l::Constant* object;
 				if (size_of_object > 1) object = l::ConstantArray::get(llvm_array(size_of_object), values);
 				else object = values[0];
+				full_reference = true;
 				finish_special(object, type_of_object);
 			}
 			else finish_special(nullptr, nullptr);
