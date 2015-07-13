@@ -13,3 +13,7 @@ with S4 up, super unscientific, doing things in the background:
 
 ./toy fuzznocompile continuous quiet
 	to check for GC leaks that don't involve llvm
+
+./toy noaddmodule longrun 40 quiet
+./toy noaddmodule longrun 40 quiet optimize
+	to check for optimization costs

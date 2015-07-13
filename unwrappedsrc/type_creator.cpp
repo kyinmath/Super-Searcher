@@ -75,7 +75,11 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 Type* get_unique_type(Type* model, bool can_reuse_parameter)
 {
 	if (model == nullptr) return nullptr;
-	else return get_unique_type_internal(model, can_reuse_parameter).first;
+	else
+	{
+		check((model->tag != 0) || (model->fields[0].num != 0), "trying to make a funny concatenate");
+		return get_unique_type_internal(model, can_reuse_parameter).first;
+	}
 }
 
 

@@ -6,7 +6,6 @@
 
 
 bool LIMITED_FUZZ_CHOICES = false;
-bool LONGRUN = false;
 bool GC_TIGHT = false;
 bool INTERACTIVE = false;
 bool CONSOLE = false;
@@ -73,12 +72,17 @@ void fuzztester(unsigned iterations)
 			auto func = (function*)result[0];
 			if (result[1] == 0)
 			{
-				std::array<uint64_t, 2> dynamic_result = run_null_parameter_function(result[0]);
-				uint64_t size_of_return = get_size((Type*)dynamic_result[0]);
-				output_array((uint64_t*)dynamic_result[1], size_of_return);
 				fuzztester_roots.push_back((uAST*)func->the_AST);
 				if (fuzztester_roots.size() > max_fuzztester_size)
 					fuzztester_roots.pop_front();
+
+
+				if (DONT_ADD_MODULE_TO_ORC || DELETE_MODULE_IMMEDIATELY)
+					continue;
+
+				std::array<uint64_t, 2> dynamic_result = run_null_parameter_function(result[0]);
+				uint64_t size_of_return = get_size((Type*)dynamic_result[0]);
+				output_array((uint64_t*)dynamic_result[1], size_of_return);
 				//theoretically, this action is disallowed. these ASTs are pointing to already-immuted ASTs, which can't happen. however, it's safe as long as we isolate these ASTs from the user
 				++hitcount[tag];
 			}
@@ -315,7 +319,6 @@ int main(int argc, char* argv[])
 		}
 		else if (strcmp(argv[x], "longrun") == 0)
 		{
-			LONGRUN = true;
 			bool isNumber = true;
 			string next_token = argv[++x];
 			for (auto& k : next_token)

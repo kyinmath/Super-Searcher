@@ -35,9 +35,6 @@ class compiler_object
 	//lists the ASTs we're currently looking at. goal is to prevent infinite loops.
 	std::unordered_set<uAST*> loop_catcher;
 
-	//maps user ASTs to copied ASTs. note that it won't handle 0
-	std::unordered_map<uAST*, uAST*> copy_mapper;
-
 	//a stack for bookkeeping lifetimes; keeps track of when objects are alive.
 	//bool is true if the object is a memory location that can have pointers to it, instead of a temporary.
 	std::stack<std::pair<uAST*, bool>> object_stack;
@@ -90,19 +87,11 @@ public:
 
 	//miscellaneous
 
-	//we'll need to eventually replace the fields in our copy with their correct versions. this does that for us.
-	void replace_field_pointer_with_immut_version(uAST*& pointer)
-	{
-		if (pointer == nullptr) return;
-		auto immut_pointer = copy_mapper.find(pointer);
-		check(immut_pointer != copy_mapper.end(), "where did my pointer go");
-		pointer = immut_pointer->second;
-	};
 
 	//don't I need to know myself as well? because I need to get rid of the reference once I've made it full.
 	//this is really rubbish. what I want to turn full is a uAST*, not a Return_Info. however, we need to delete the references after turning them full.
 	//that can be done outside the function
-	void turn_full(std::vector< memory_allocation*>& address_list)
+	void turn_full(std::unordered_set< memory_allocation*>& address_list)
 	{
 		for (auto& address : address_list)
 		{

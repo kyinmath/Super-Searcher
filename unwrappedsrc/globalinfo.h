@@ -26,11 +26,11 @@ inline std::string s(std::string k) { return ""; }
 #endif
 
 //the condition is true when the program behaves normally.
-#if RELEASE
-inline void check(bool condition, const string& Str) {}
-#else
+//#if RELEASE
+//inline void check(bool condition, const string& Str) {}
+//#else
 inline void check(bool condition, const string& Str) { if (!condition) error(Str); }
-#endif
+//#endif
 
 extern bool OPTIMIZE;
 extern bool INTERACTIVE;

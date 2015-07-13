@@ -28,8 +28,7 @@ inline void compile_returning_legitimate_object(uint64_t* memory_location, uint6
 	uAST* target = (uAST*)int_target;
 	compiler_object a;
 	unsigned error = a.compile_AST(target);
-	a.replace_field_pointer_with_immut_version(target);
-
+	
 	if (error)
 	{
 		*return_location = std::array<uint64_t, 3>{{0ull, error, 0ull}};
@@ -37,7 +36,7 @@ inline void compile_returning_legitimate_object(uint64_t* memory_location, uint6
 	}
 	else
 	{
-		function* new_location = new(allocate_function()) function(target, a.return_type, a.parameter_type, a.fptr, c, a.result_module, std::move(a.new_context));
+		function* new_location = new(allocate_function()) function(deep_AST_copier(target).result, a.return_type, a.parameter_type, a.fptr, c, a.result_module, std::move(a.new_context));
 		if (VERBOSE_GC)
 		{
 			console << *new_location;
@@ -198,7 +197,6 @@ inline uint64_t* copy_dynamic(Type* type, uint64_t* object)
 }
 
 //returns pointer-to-AST
-//todo: the load_object AST should make a copy instead, since it is immut
 inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t type, uint64_t object)
 {
 	if (tag >= ASTn("never reached")) return 0; //you make a null AST if the tag is too high

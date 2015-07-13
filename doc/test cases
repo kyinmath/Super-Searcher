@@ -38,3 +38,8 @@ stack storage.
 
 
 [run_function [compile [convert_to_AST [random] [scope] [dynamic [load_object 0]]]]]
+
+[dynamic_conc {[load_object 40]0x7ffff7f14ed0 [dynamic 0x7ffff7f14ed0]0x7ffff7f14e98} 0x7ffff7f14e98]
+I'm pretty sure this shouldn't compile, because the load_object duplicates its reference.
+	we have a bug somewhere.
+[add {[load_object 50] [random]a} a]

@@ -100,8 +100,8 @@ inline void write_into_place(value_collection data, llvm::Value* target)
 			if (single_object.second > 1)
 				integer_transfer = builder->CreateExtractValue(single_object.first, subplace);
 			else integer_transfer = single_object.first;
-			//llvm::Value* location = builder->CreateConstInBoundsGEP1_64(this->get_location(), offset);
-			builder->CreateStore(integer_transfer, target);
+			llvm::Value* location = builder->CreateConstInBoundsGEP1_64(target, offset);
+			builder->CreateStore(integer_transfer, location);
 			++offset;
 		}
 	}
@@ -122,7 +122,7 @@ struct memory_allocation
 	uint64_t references_to_me = 0; //how many pointers exist to this memory location. if the memory location tries to fall off the stack while references still exist, it is made into a full pointer.
 	uint64_t version = 1; //used to version the allocation. when the allocation changes, the cached offsets of memory_location need to change as well.
 
-	std::vector<memory_allocation*> references; //outward references. this memory allocation contains pointers that points to these things.
+	std::unordered_set<memory_allocation*> references; //outward references. this memory allocation contains pointers that points to these things.
 	bool full_reference_possible;
 
 	void cast_base() //if this should be a heap alloca, mark self_is_full before calling this.
@@ -195,7 +195,7 @@ inline llvm::Value* load_from_memory(llvm::Value* location, uint64_t size)
 }
 
 
-inline void add_reference(std::vector<memory_allocation*>& references, bool& full_reference_possible, memory_allocation* base)
+inline void add_reference(std::unordered_set<memory_allocation*>& references, bool& full_reference_possible, memory_allocation* base)
 {
 	if (base->self_is_full)
 	{
@@ -203,7 +203,7 @@ inline void add_reference(std::vector<memory_allocation*>& references, bool& ful
 		return;
 	}
 	++(base->references_to_me);
-	references.push_back(base);
+	references.insert(base);
 }
 
 //every time IR is generated, this holds the relevant return info.
@@ -226,7 +226,7 @@ struct Return_Info
 	//so these references are by the IR if it's a temp object, and they're by the memory_allocation if it's not.
 
 	//this should eventually be changed to an unordered_set, to prevent exponential doubling of the vector size.
-	std::vector<memory_allocation*> Value_references; //if this points to any memory locations that might be on the stack, then these are the uASTs.
+	std::unordered_set<memory_allocation*> Value_references; //if this points to any memory locations that might be on the stack, then these are the uASTs.
 	//those memory locations may nevertheless be in the heap anyway. however, we guarantee that any memory location that is on the stack must be here.
 	//if escape analysis tells you the memory location needs to become full, then go over there and change things.
 
@@ -235,15 +235,15 @@ struct Return_Info
 	//this also only exists if memory_location_active = 0
 
 	//either b or m must be null. both of them can't be active at the same time.
-	Return_Info(IRgen_status err, llvm::Value* b, memory_location m, Type* t, bool o, std::vector<memory_allocation*> bases, bool full)
+	Return_Info(IRgen_status err, llvm::Value* b, memory_location m, Type* t, bool o, std::unordered_set<memory_allocation*> bases, bool full)
 		: error_code(err), IR(b), place(m), type(t), memory_location_active(o), Value_full_reference_possible(full)
 	{
 		if (!memory_location_active)
 		{
-			for (auto*& memory : bases)
+			for (auto* const & memory : bases)
 				add_reference(Value_references, Value_full_reference_possible, memory);
 		}
-		else for (auto*& memory : bases)
+		else for (auto* const & memory : bases)
 			add_reference(place.base->references, place.base->full_reference_possible, memory);
 	}
 
@@ -257,10 +257,10 @@ struct Return_Info
 	{
 		if (!memory_location_active)
 		{
-			for (auto*& memory : Value_references)
+			for (auto* const& memory : Value_references)
 				--(memory->references_to_me);
 		}
-		else for (auto*& memory : place.base->references)
+		else for (auto* const& memory : place.base->references)
 			--(memory->references_to_me);
 	}
 };
@@ -303,5 +303,32 @@ struct builder_context_stack
 	~builder_context_stack() {
 		builder = old_builder;
 		context = old_context;
+	}
+};
+
+//makes a deep copy of ASTs.
+struct deep_AST_copier
+{
+	uAST* result;
+	deep_AST_copier(uAST* starter) { result = internal_copy(starter); }
+private:
+	//maps user ASTs to copied ASTs. it handles nullptr, just to make the code a little shorter
+	std::unordered_map<uAST*, uAST*> copy_mapper{{nullptr, nullptr}};
+	uAST* internal_copy(uAST* user_target)
+	{
+		auto search_for_copy = copy_mapper.find(user_target);
+		uAST* target;
+		if (search_for_copy == copy_mapper.end())
+		{
+			target = copy_AST(user_target); //make a bit copy. the fields will still point to the old ASTs; that will be corrected after inserting into the map
+			//this relies on loads in x64 being atomic, which may not be wholly true.
+			copy_mapper.insert({user_target, target});
+
+			target->preceding_BB_element = internal_copy(target->preceding_BB_element);
+			for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
+				target->fields[x].ptr = internal_copy(target->fields[x].ptr);				
+		}
+		else target = search_for_copy->second;
+		return target;
 	}
 };

@@ -117,8 +117,7 @@ constexpr AST_info AST_descriptor[] =
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
 	a("convert_to_AST", T::AST_pointer, T::integer, parameter_no_type_check, T::dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
 	a("store", T::null, parameter_no_type_check, parameter_no_type_check), //pointer, then value.
-	//{"load_n", special_return, parameter_no_type_check}, //if AST, gives Nth subtype. if pointer, gives Nth subobject, etc.
-	//{"load_type", T::type, T::type, T::integer}, //gets the Nth subtype of a concatenated type. todo...except that this also conflicts with the copy_into_dynamic. this command seems to be necessary however, in order to facilitate vectors. we don't actually want to ever load a 4000-long repeated type as a dynamic object.
+	//{"load_n", special_return, parameter_no_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject, etc. or Type.
 	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both. todo
 	//{"copy_into_dynamic", T::dynamic}, for AST. grabs all the fields. todo. this is also necessary, because pointers have integer fields.
 	//{"write_into_AST", T::integer, T::integer, T::dynamic}, //writes a field. the integer comes first because it logically decides the field.

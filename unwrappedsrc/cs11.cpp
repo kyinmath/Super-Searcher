@@ -202,16 +202,16 @@ for objects that end up on the stack, their return value is either i64* or [S x 
 the actual allocas are always [S x i64]*, even when S = 1. but, getting active objects returns i64*.
 currently, the finish() macro takes in the array itself, not the pointer-to-array.
 */
-Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired)
+Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, memory_location desired)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
-#define return_code(X, Y) do { error_location = user_target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, memory_location(), u::null, false, {}, false); } while (0)
+#define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, memory_location(), u::null, false, std::unordered_set<memory_allocation*>{}, false); } while (0)
 	//if (stack_degree == 2) stack_degree = 0; //we're trying to diagnose the memory problems with label. this does nothing.
 
 	if (VERBOSE_DEBUG)
 	{
 		console << "generate_IR single AST start ^^^^^^^^^\n";
-		if (user_target) output_AST(user_target);
+		if (target) output_AST(target);
 		console << "stack degree " << stack_degree;
 		console << ", storage location is ";
 		if (desired.base != nullptr)
@@ -229,29 +229,11 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 	//generate_IR is allowed to take nullptr. otherwise, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
 	//check(target != nullptr, "generate_IR should never receive a nullptr target");
-	if (user_target == nullptr) return Return_Info();
+	if (target == nullptr) return Return_Info();
 
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
-	if (loop_catcher.find(user_target) != loop_catcher.end()) return_code(infinite_loop, 10); //for now, 10 is a special value, and means not any of the fields
-	loop_catcher.insert(user_target); //we've seen this AST now.
-
-	//handle the copying of the AST.
-	auto search_for_copy = copy_mapper.find(user_target);
-	uAST* target;
-	bool made_a_copy;
-	if (search_for_copy == copy_mapper.end())
-	{
-		if (VERBOSE_GC) console << "copying AST\n";
-		target = copy_AST(user_target); //make a bit copy. the fields will still point to the old ASTs; that will be corrected in finish().
-		//this relies on loads in x64 being atomic, which may not be wholly true.
-		copy_mapper.insert({user_target, target});
-		made_a_copy = true;
-	}
-	else
-	{
-		target = search_for_copy->second;
-		made_a_copy = false;
-	}
+	if (loop_catcher.find(target) != loop_catcher.end()) return_code(infinite_loop, 10); //for now, 10 is a special value, and means not any of the fields
+	loop_catcher.insert(target); //we've seen this AST now.
 
 
 	//after we're done with this AST, we remove it from loop_catcher.
@@ -261,7 +243,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		compiler_object* object; uAST* targ;
 		loop_catcher_destructor_cleanup(compiler_object* x, uAST* t) : object(x), targ(t) {}
 		~loop_catcher_destructor_cleanup() { object->loop_catcher.erase(targ); }
-	} temp_object(this, user_target);
+	} temp_object(this, target);
 
 	//compile the previous elements in the basic block.
 	if (target->preceding_BB_element)
@@ -305,7 +287,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	uint64_t final_stack_position = object_stack.size();
 
 	
-	std::vector<memory_allocation*> references; //if the return object is a pointer that might point to an alloca, this remembers it.
+	std::unordered_set<memory_allocation*> references; //if the return object is a pointer that might point to an alloca, this remembers it.
 	bool full_reference = false; //if the return object is a pointer that might point to a full object.
 	
 	bool passthrough = false; //if true: I'm not constructing anything; I'm just passing through values. for example, if() and concatenate(), vs random()
@@ -325,12 +307,6 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 	{
 		check(type == get_unique_type(type, false), "returned non unique type in finish()");
 
-		if (made_a_copy)
-		{
-			replace_field_pointer_with_immut_version(target->preceding_BB_element);
-			for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
-				replace_field_pointer_with_immut_version(target->fields[x].ptr);
-		}
 
 		if (VERBOSE_DEBUG && return_value != nullptr)
 		{
@@ -362,7 +338,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			{
 				//we can't defer RVO all the way to the stack_degree = 2. but we can move it up one to concatenate() if we want. maybe we won't bother.
 
-				desired.base->references.insert(desired.base->references.end(), references.begin(), references.end());
+				desired.base->references.insert(references.begin(), references.end());
 				desired.base->full_reference_possible |= full_reference;
 				desired.store(value_collection(return_value, size_of_return));
 			}
@@ -375,17 +351,20 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 		if (size_of_return >= 1)
 		{
+			//console << "pushing to objects, its size is " << objects.size() << '\n';
+			//console << "I'm pushing "; output_AST(target); console << '\n';
+			//console << "and my stack degree is " << stack_degree << '\n';
 			if (stack_degree >= 1)
 			{
-				object_stack.push({user_target, true});
-				auto insert_result = objects.insert({user_target, Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type, true, {}, false)});
+				object_stack.push({target, true});
+				auto insert_result = objects.insert({target, Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type, true, std::unordered_set<memory_allocation*>{}, false)});
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication, 10);
-				return Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type, true, {}, false);
+				return Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type, true, std::unordered_set<memory_allocation*>{}, false);
 			}
 			else //stack_degree == 0
 			{
-				object_stack.push({user_target, false});
+				object_stack.push({target, false});
 				return Return_Info(IRgen_status::no_error, return_value, memory_location(), type, false, references, full_reference);
 			}
 		}
@@ -501,7 +480,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			if (stack_degree == 0)
 			{
 				references = then_IR.Value_references;
-				references.insert(references.end(), else_IR.Value_references.begin(), else_IR.Value_references.end());
+				references.insert(else_IR.Value_references.begin(), else_IR.Value_references.end());
 				full_reference = then_IR.Value_full_reference_possible || else_IR.Value_full_reference_possible;
 
 				l::Value* endPN = llvm_create_phi(then_IR.IR, else_IR.IR, then_IR.type, else_IR.type, ThenBB, ElseBB);
@@ -528,7 +507,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 
 			// Create blocks for the then and else cases.  Insert the block into the function, or else it'll leak when we return_code
 			l::BasicBlock *label = l::BasicBlock::Create(*context, "", TheFunction);
-			auto label_insertion = labels.insert(std::make_pair(user_target, label_info(label, final_stack_position, true)));
+			auto label_insertion = labels.insert(std::make_pair(target, label_info(label, final_stack_position, true)));
 			if (label_insertion.second == false) return_code(label_duplication, 0);
 
 			Return_Info scoped = generate_IR(target->fields[0].ptr, 0);
@@ -619,7 +598,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			Type* new_pointer_type = get_non_convec_unique_type(Typen("pointer"), found_AST->second.type);
 
 			l::Value* final_result = builder->CreatePtrToInt(found_AST->second.place.get_location(), int64_type(), s("flattening pointer"));
-			references.push_back(objects.find(target->fields[0].ptr)->second.place.base);
+			references.insert(objects.find(target->fields[0].ptr)->second.place.base);
 			finish_special(final_result, new_pointer_type);
 		}
 	case ASTn("load"):
@@ -674,7 +653,7 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 				desired.base->cast_base();
 				final_value = load_from_memory(desired.get_location(), final_size);
 				references = half[0].Value_references;
-				references.insert(references.end(), half[1].Value_references.begin(), half[1].Value_references.end());
+				references.insert(half[1].Value_references.begin(), half[1].Value_references.end());
 				full_reference = half[0].Value_full_reference_possible || half[1].Value_full_reference_possible;
 			}
 			else
@@ -685,6 +664,9 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			}
 
 			Type* final_type = get_unique_type(concatenate_types(std::vector < Type* > {half[0].type, half[1].type}), true);
+			console << "dynamic types\n";
+			output_type(final_type);
+			output_type(u::dynamic_pointer);
 			finish_special_stack_handled(final_value, final_type);
 		}
 
@@ -749,8 +731,8 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 		}
 	case ASTn("dynamic_conc"):
 		{
-			l::Value* pointer[2];
 			l::Value* type[2];
+			l::Value* pointer[2];
 			for (int x : {0, 1})
 			{
 				//can't gep because it's not in memory
@@ -768,10 +750,11 @@ Return_Info compiler_object::generate_IR(uAST* user_target, unsigned stack_degre
 			l::Value* result_of_conc = builder->CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
 
 
-			//bool is_full_dynamic = false;
-			Type* dynamic_type = get_non_convec_unique_type(Typen("dynamic pointer"));
+			//todo: does uncommenting these things produce a bug?
+			//Type* dynamic_type = get_non_convec_unique_type(Typen("dynamic pointer"));
 
-			finish_special(result_of_conc, dynamic_type);
+			//finish_special(result_of_conc, dynamic_type);
+			finish(result_of_conc);
 		}
 	case ASTn("compile"):
 		{
