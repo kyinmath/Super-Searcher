@@ -9,13 +9,18 @@ move the fuzzer into AST format
 4. convert dynamic pointer, to dynamic object containing a pointer. this is necessary for static objects.
 acquisition of Type and AST values
 overwriting ASTs
-recursive types
+change GC to handle offset pointers
 
 pointer offsets/type slicing
+	should this load the object, or simply return a pointer?
+	for ASTs, you might want to store them. so a pointer would work. however, what if we want to change the AST's tag later? but changing tags might not work because you'd have to resize. so pointer-to-AST-pointer is fine. but if we return null, you're fucked, because regular pointers can't be 0.
+	for Types, you might as well load. they're immutable anyway.
+	for dynamic pointers, if we load, then...you'd need a store_N. and you'd also have to copy the dynamic pointer, in case the dynamic pointer changed in the middle.
+		but if we can't get offset pointers, 
 
 if we have a dynamic pointer, how do we extract information from it?
-
-
+	remember that we can't return a 0 pointer. so it won't be a guaranteed function.
+we can do a switch case. however, what will happen if we ever add a type?
 
 suppose we have a compiled function. it points to an AST. when the function dies, should we really unimmut the old ASTs? is that at all useful?
 	yeah, it's vital. we don't want to create new copies all the time. and we use compilation as error_checking, so we compile a function many times as we create it.

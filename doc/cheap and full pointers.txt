@@ -30,9 +30,6 @@ and when using createstore (pointer, value), we must have that (guarantee of val
 	what is the life guarantee actually good for?
 		the "true" lifetime of the pointer itself, which is the lifetime for which the pointer value is valid, is equal to the target guarantee.
 
-what life guarantee is good for is a self validity. when yourself no longer makes sense. so for integers, it's infinity.
-	this determines when it's possible to store.
-
 must full pointers point to the beginning of the object?
 	+garbage collection is faster, with our bitset. only need to check the first bit to see if you already checked that object.
 	+in the future, we'll want mutators to know where the object is, for concurrent GC. will that require knowing the full object?

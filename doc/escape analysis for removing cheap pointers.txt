@@ -1,0 +1,107 @@
+so, escape analysis:
+as we get pointers floating around, we track the memory_allocations they point to.
+	if ever we require the target lifetime to be larger than is possible, for example if we store a pointer to it as a global, then we force the target lifetime to be full.
+		this is simply determined by checking the memory_allocation when it goes out of scope. if there are still pointers to it, it is forced to become full.
+then, we force the return object and memory_location to become full, by ReplaceInstWithInst on the memory_location, and then forcing upwards the self_lifetime and target_lifetime of the target.
+
+concatenate() was formerly necessary for passing in values to functions, but we don't have function parameters anymore.
+concatenate(), or something like it, is necessary for passing in values to create_AST().
+	although in this case, a vector would be more useful.
+are static concatenations any good? you may want to dynamically concatenate multiple objects. however, you can just do dynamic concatenation and the admin will optimize it out.
+compilation() returns errors, but that is also dynamic.
+	no, it's not. it returns both an error code and a dynamic object.
+	well, we can bake the error code into the dynamic object. but that will require us to add a special failure case "in case" the error code fails.
+	we could also remove the error code entirely.
+other than that, no ASTs return concatenations.
+for the user, some objects usually belong together. like nodes in a tree. for recursive types, we can rely on dynamic pointers. but what about other types?
+	concatenations are useless locally. it's only when you put them in the heap, and pass them to functions, that they matter.
+	so: when should we pass a concatenation from function to function, such that the object is not recursive?
+however, it doesn't make sense if we force things to become dynamic before concatenating them. that requires a lot of steps: making pointers to them (hard), changing the pointer to dynamic (hard), and then finally concatenating them.
+
+idea: we disallow getting pointer offsets entirely, load only?
+	then, what will happen to dynamic pointers?
+
+
+a vector is good in general. simple long-chain types are not that good, because you must make a new type every single time you add (since types are immutable)
+	although...if we can guarantee that vector types are always private, so one dynamic object <=> one private type, and disallow copying types, then that will be awesome.
+	and it'll be invisible to the user as well.
+		this will also allow invisible spying on additions to the vector. that's good, but are there downsides?
+		ASTs might occasionally embed dynamic pointers using double indirection (dynamic to dynamic, thus storing the second dynamic as fixed), and in that case it's mostly fine.
+
+dynamic objects vs dynamic pointers?
+	dynamic objects I think, mainly want to be overwritten.
+	ASTs actually want dynamic objects, not pointers.
+	recursive types want dynamic pointers.
+
+instead of dynamify(), we can have convert_pointer_to_dynamic_pointer().
+	so you load the pointer, then you convert that pointer. seems good.
+
+
+
+
+
+
+
+
+
+
+
+we're having trouble tracking the ReturnInfo as it moves around. that means we can't really have a callback to it from the memory location.
+that's actually probably fine. no callbacks. they probably don't give speedups anyway.
+
+how do we guarantee tha the memory location won't fall off the stack before we get a chance to make it full?
+for example, compile() exposes a temporary return object. and maybe do_after has the same issue.
+
+idea: when the memory location is about to fall off the stack, check how many references it still hsa. if it's >= 1, then make it full instead.
+that means we don't have track lifetimes. instead, we track reference counts
+problem: references will be left with dangling pointers
+
+problem: we can't handle references well. because their ctors and dtors don't yet know about the "objects" uAST to return_info mapper.
+well, maybe we can just add in a pointer to <>objects, to Return_Info
+
+
+Idea: automatic pass-through of references.
+	however, if() doesn't use the automatic function generation.
+	and store() wants a different mechanism.
+	and add() doesn't want to pass through references (although it doesn't matter)
+
+
+how does store() work with escape analysis?
+	we don't necessarily know where all the possible memory_location targets of the pointer are; we only know where the possibly-non-full memory_locations.
+	however, we must still guarantee that if we're writing a pointer into the memory location, the memory_location must gain a reference
+
+the thing is, with both full and maybe-full references, we're going to have toruble passing through information. super verbose.
+	we could add the info to the AST_descriptor[]. then, the 
+and, with full pointers from load_object, do full references really work?
+
+
+
+
+
+
+
+
+
+
+
+
+new strategy: split out memory_location into memory_allocation and memory_location.
+	the memory_allocation possesses the actual alloca.
+	memory_location is passed around, and has a pointer to the allocation.
+	since there's a pointer, we don't need to worry about passing information up and down.
+
+so, the new problem is that memory_location might die. in that case, we better find any memory_location with a pointer to it, and delete that pointer.
+	but back-references face problems since the unordered_map relocates.
+new solution: memory_locations are kept alive by the compiler_object, in a deque.
+	then, each memory_location has a flag which says, "I'm dead", or "I'm alive".
+
+
+do references belong with ReturnInfo, or with memory_allocation?
+	they belong with the actual final object.
+
+how it works now:
+	references are handled by finish(), whenever desired points to a memory allocation
+	otherwise, if desired = 0, you have to handle references manually.
+	that is, they're handled wherever they are produced.
+base size is handled by if() and concatenate(), because we can't just concatenate sizes in if() branches.
+	problem: how does stack_degree == 2 work then? we're constructing an integer in the bottom, and we have to figure out the type...

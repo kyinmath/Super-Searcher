@@ -137,7 +137,7 @@ struct Type
 private:
 	Type(const Type& other) = delete;
 };
-#define max_fields_in_AST 4u
+#define max_fields_in_AST 40u
 //should accomodate the largest possible AST. necessary for AST_descriptor[]
 struct Type_pointer_range
 {

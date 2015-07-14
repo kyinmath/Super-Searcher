@@ -26,6 +26,7 @@ struct AST_info
 		Type* const type;
 		constexpr compile_time_typeinfo(Type* t) : state(normal), type(t) {}
 		constexpr compile_time_typeinfo(special_type s) : state(s), type(0) {}
+		constexpr compile_time_typeinfo() : state(missing_field), type(0) {}
 	};
 	typedef compile_time_typeinfo ctt;
 	ctt return_object; //if this type is null, do not check it using the generic method - check it specially.
@@ -57,20 +58,13 @@ struct AST_info
 		return new_copy.make_pointer_fields(pointer_fields - x);
 	}
 
-	constexpr int field_count(ctt f1, ctt f2, ctt f3, ctt f4)
-	{
-		int number_of_fields = max_fields_in_AST; //by default, both pointer_fields and number_of_fields will be equal to this.
-		if (f4.state == missing_field) number_of_fields = 3;
-		if (f3.state == missing_field) number_of_fields = 2;
-		if (f2.state == missing_field) number_of_fields = 1;
-		if (f1.state == missing_field) number_of_fields = 0;
-		return number_of_fields;
-	};
+	template<typename... Args> constexpr int field_count(Args... args)
+	{ return sizeof...(args); }
 
+	template<typename... Args> constexpr AST_info(const char a[], ctt r, Args... incoming_fields)
+		: name(a), return_object(r), parameter_types{incoming_fields...}, pointer_fields(field_count(incoming_fields...)), fields_to_compile(field_count(incoming_fields...)) {}
 	//in AST_descriptor[], fields_to_compile and pointer_fields are normally set to the number of parameter types specified.
 	//	however, they can be overridden by make_fields_to_compile() and make_pointer_fields()
-	constexpr AST_info(const char a[], ctt r, ctt f1 = missing_field, ctt f2 = missing_field, ctt f3 = missing_field, ctt f4 = missing_field)
-		: name(a), return_object(r), parameter_types{f1, f2, f3, f4}, pointer_fields(field_count(f1, f2, f3, f4)), fields_to_compile(field_count(f1, f2, f3, f4)){ }
 
 };
 
@@ -121,6 +115,7 @@ constexpr AST_info AST_descriptor[] =
 	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both
 	//{"load_static_from_AST", T::dynamic_pointer, T::AST_pointer},
 	//{"write_into_AST", T::integer, T::integer, T::AST_pointer}, //writes a field. the integer comes first because it logically decides the field.
+	//type of function. this is a function thing instead of an AST thing, because compilation verifies correctness, which is necessary for the return type to be meaningful.
 	//
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
@@ -134,7 +129,7 @@ constexpr AST_info AST_descriptor[] =
 	{ "lteq", 2 },
 	{ "less signed", 2 },
 	{ "lteq signed", 2 },
-	{ "equal", 2 },
+	//{ "equal", 2 }, this is useless; subtraction does it.
 	{ "logical not", 1 },
 	{ "logical and", 2 },
 	{ "logical or", 2 },
@@ -159,11 +154,8 @@ struct uAST
 	using iop = int_or_ptr<uAST>;
 	std::array<iop, max_fields_in_AST> fields;
 private:
-	uAST(const char name[], uAST* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
-		: tag(ASTn(name)), preceding_BB_element(preceding), fields{{f1, f2, f3, f4}} {}
-	uAST(uint64_t direct_tag, uAST* preceding = nullptr, iop f1 = nullptr, iop f2 = nullptr, iop f3 = nullptr, iop f4 = nullptr)
-		: tag(direct_tag), preceding_BB_element(preceding), fields{{f1, f2, f3, f4}} {}
-	//watch out and make sure we remember _preceding_! maybe we'll use named constructors later
+	template<typename... Args> constexpr uAST(const char name[], uAST* preceding = nullptr, Args... args)
+		: tag(ASTn(name)), preceding_BB_element(preceding), fields{{args...}} {}
 };
 
 #include "type_creator.h"

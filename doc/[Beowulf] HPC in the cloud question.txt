@@ -1,0 +1,96 @@
+
+  [Beowulf] HPC in the cloud question
+
+*Prentice Bisbal* prentice.bisbal at rutgers.edu
+<mailto:beowulf%40beowulf.org?Subject=Re%3A%20%5BBeowulf%5D%20HPC%20in%20the%20cloud%20question&In-Reply-To=%3C554CBCD4.6060303%40rutgers.edu%3E>
+/Fri May 8 06:40:36 PDT 2015/
+
+  * Previous message: [Beowulf] HPC in the cloud question <033200.html>
+  * Next message: [Beowulf] HPC in the cloud question <033202.html>
+  * *Messages sorted by:* [ date ] <date.html#33201> [ thread ]
+    <thread.html#33201> [ subject ] <subject.html#33201> [ author ]
+    <author.html#33201>
+
+------------------------------------------------------------------------
+
+Mike,
+
+What are the characteristics of your cluster workloads? Are they tightly 
+coupled jobs, or are they embarassingly parallel or serial jobs? I find 
+it hard to believe that a virtualized, ethernet shared network 
+infrastructure can compete with FDR IB for performance on tightly 
+coupled jobs. AWS HPC representatives came to my school to give a 
+presentation on their offerings, and even they admitted as much.
+
+If your workloads are communication intensive, I'd think harder about 
+using the cloud, or find a cloud provider that provides IB for HPC 
+(there are a few that do, but I can't remember their names).  If your 
+workloads are loosely-coupled jobs or many serial jobs, AWS or similar 
+might be fine. AWS does not provide IB, and in fact shares very little 
+information about their network architecture, making it had to compare 
+to other offerings without actually running benchmarks.
+
+If your users primarily interact with the cluster through command-line 
+logins, using the cloud shouldn't be noticeably different the 
+hostname(s) they have to SSH to will be different, and moving data in an 
+out might be different, but compiling and submitting jobs should be the 
+same if you make the same tools available in the cloud that you have on 
+your local clusters.
+
+Prentice
+
+
+
+On 05/07/2015 06:28 PM, Hutcheson, Mike wrote:
+>/ Hi.  We are working on refreshing the centralized HPC cluster resources
+/>/ that our university researchers use.  I have been asked by our
+/>/ administration to look into HPC in the cloud offerings as a possibility to
+/>/ purchasing or running a cluster on-site.
+/>/
+/>/ We currently run a 173-node, CentOS-based cluster with ~120TB (soon to
+/>/ increase to 300+TB) in our datacenter.  It¹s a standard cluster
+/>/ configuration:  IB network, distributed file system (BeeGFS.  I really
+/>/ like it), Torque/Maui batch.  Our users run a varied workload, from
+/>/ fine-grained, MPI-based parallel aps scaling to 100s of cores to
+/>/ coarse-grained, high-throughput jobs (We¹re a CMS Tier-3 site) with high
+/>/ I/O requirements.
+/>/
+/>/ Whatever we transition to, whether it be a new in-house cluster or
+/>/ something ³out there², I want to minimize the amount of change or learning
+/>/ curve our users would have to experience.  They should be able to focus on
+/>/ their research and not have to spend a lot of their time learning a new
+/>/ system or trying to spin one up each time they have a job to run.
+/>/
+/>/ If you have worked with HPC in the cloud, either as an admin and/or
+/>/ someone who has used cloud resources for research computing purposes, I
+/>/ would appreciate learning your experience.
+/>/
+/>/ Even if you haven¹t used the cloud for HPC computing, please feel free to
+/>/ share your thoughts or concerns on the matter.
+/>/
+/>/ Sort of along those same lines, what are your thoughts about leasing a
+/>/ cluster and running it on-site?
+/>/
+/>/ Thanks for your time,
+/>/
+/>/ Mike Hutcheson
+/>/ Assistant Director of Academic and Research Computing Services
+/>/ Baylor University
+/>/
+/>/
+/>/ _______________________________________________
+/>/ Beowulf mailing list, Beowulf at beowulf.org <http://www.beowulf.org/mailman/listinfo/beowulf> sponsored by Penguin Computing
+/>/ To change your subscription (digest mode or unsubscribe) visit http://www.beowulf.org/mailman/listinfo/beowulf
+/
+
+------------------------------------------------------------------------
+
+  * Previous message: [Beowulf] HPC in the cloud question <033200.html>
+  * Next message: [Beowulf] HPC in the cloud question <033202.html>
+  * *Messages sorted by:* [ date ] <date.html#33201> [ thread ]
+    <thread.html#33201> [ subject ] <subject.html#33201> [ author ]
+    <author.html#33201>
+
+------------------------------------------------------------------------
+More information about the Beowulf mailing list
+<http://www.beowulf.org/mailman/listinfo/beowulf>

@@ -710,7 +710,9 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 				l::Value* dynamic_object_address = field_results[0].IR;
 				l::Constant* integer_type_pointer = llvm_integer((uint64_t)field_results[0].type->fields[0].ptr);
 
-				//we now serialize both objects to become integers.
+				references = field_results[0].Value_references;
+				full_reference = field_results[0].Value_full_reference_possible;
+				
 				l::Value* undef_value = l::UndefValue::get(llvm_array(2));
 				l::Value* first_value = builder->CreateInsertValue(undef_value, integer_type_pointer, std::vector < unsigned > { 0 });
 				l::Value* full_value = builder->CreateInsertValue(first_value, dynamic_object_address, std::vector < unsigned > { 1 });
