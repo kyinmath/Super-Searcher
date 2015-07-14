@@ -183,7 +183,7 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 	error("end of type_check");
 }
 
-//this takes a vector of types, and then puts them in concatenation. none of them is allowed to be a concatenation.
+//this takes a vector of types, and then puts them in concatenation. to do this, it first expands out the types into their components, then shoves them back together
 //automatically uses get_unique_type()
 Type* concatenate_types(llvm::ArrayRef<Type*> components)
 {

@@ -12,7 +12,6 @@ overwriting ASTs
 recursive types
 
 pointer offsets/type slicing
-threading
 
 if we have a dynamic pointer, how do we extract information from it?
 
@@ -22,12 +21,6 @@ suppose we have a compiled function. it points to an AST. when the function dies
 	yeah, it's vital. we don't want to create new copies all the time. and we use compilation as error_checking, so we compile a function many times as we create it.
 
 
-perhaps: we want createstore to be a simply mem copy.
-then, dynamic pointers, AST pointers, type pointers: can be double indirection.
-	this lets us overwrite multiple-field objects atomically, by creating a whole new copy.
-but any old references are going to be left behind forever. for example, if you get a dynamic pointer to the various fields.
-	for both ASTs and Types, we can require passthrough using their concatenate() operations.
-for dynamic pointers, 128bit atomic is nice, but there are worries about alignment.
 
 I think: we have a special "concatenation" type, which is an array. the benefit is the random access: to look at parts of the type, you don't need to repetitively re-get pointers, which would kill finiteness.
 	but storing pointers is the same as storing numbers.

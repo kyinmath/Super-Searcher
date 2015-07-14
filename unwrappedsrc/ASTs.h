@@ -109,7 +109,7 @@ constexpr AST_info AST_descriptor[] =
 	a("pointer", special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like the name of an object
 	a("load", special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
 	a("concatenate", special_return).make_pointer_fields(2), //squashes two objects together to make a big object
-	{"dynamic", T::dynamic_pointer, parameter_no_type_check}, //creates dynamic storage for any kind of object. moves it to the heap.
+	{"dynamify", T::dynamic_pointer, parameter_no_type_check}, //turns a regular pointer into a dynamic pointer. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
 	a("compile", T::function_pointer, T::AST_pointer), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
 	{"run_function", T::dynamic_pointer, T::function_pointer},
 	{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, T::dynamic_pointer}, //concatenate the interiors of two dynamic pointers
@@ -118,10 +118,9 @@ constexpr AST_info AST_descriptor[] =
 	a("convert_to_AST", T::AST_pointer, T::integer, parameter_no_type_check, T::dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
 	a("store", T::null, parameter_no_type_check, parameter_no_type_check), //pointer, then value.
 	//{"load_n", special_return, parameter_no_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject, etc. or Type.
-	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both. todo
-	//{"copy_into_dynamic", T::dynamic}, for AST. grabs all the fields. todo. this is also necessary, because pointers have integer fields.
-	//{"write_into_AST", T::integer, T::integer, T::dynamic}, //writes a field. the integer comes first because it logically decides the field.
-	//{"test_null"}. good for types, ASTs, functions, dynamics, integers, etc. except not: our if statement should do this automatically.
+	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both
+	//{"load_static_from_AST", T::dynamic_pointer, T::AST_pointer},
+	//{"write_into_AST", T::integer, T::integer, T::AST_pointer}, //writes a field. the integer comes first because it logically decides the field.
 	//
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*

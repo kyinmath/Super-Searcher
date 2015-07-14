@@ -430,7 +430,7 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 		}
 	case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
 		finish(builder->CreateCall(llvm_function(generate_random, int64_type()), std::vector<l::Value*>{}, s("random")));
-	case ASTn("if"):
+	case ASTn("if"): //it's vitally important that this can check pointers, so that we can tell if they're nullptr.
 		{
 			//since the fields are conditionally executed, the temporaries generated in each branch are not necessarily referenceable.
 			//therefore, we must clear the stack between each branch.
@@ -701,21 +701,14 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 			write_into_place(value_collection(field_results[1].IR, get_size(field_results[1].type)), memory_location);
 			finish(0);
 		}
-	case ASTn("dynamic"):
+	case ASTn("dynamify"):
 		{
-			uint64_t size_of_object = get_size(field_results[0].type);
-			if (size_of_object >= 1)
+			if (field_results[0].type == 0)
+				finish(l::ConstantArray::get(llvm_array(2), std::vector<l::Constant*>{llvm_integer(0), llvm_integer(0)}));
+			if (field_results[0].type->tag == Typen("pointer"))
 			{
-				l::Value* allocator = llvm_function(allocate, int64_type()->getPointerTo(), int64_type());
-				l::Value* dynamic_object = builder->CreateCall(allocator, std::vector<l::Value*>{llvm_integer(size_of_object)}, s("dyn_allocate_memory"));
-
-				//store the returned value into the acquired address
-				l::Value* dynamic_object_address = builder->CreatePtrToInt(dynamic_object, int64_type());
-				write_into_place(value_collection(field_results[0].IR, size_of_object), dynamic_object);
-
-				//create a pointer to the type of the dynamic pointer. but we serialize the pointer to be an integer.
-				//note that the type is already unique.
-				l::Constant* integer_type_pointer = llvm_integer((uint64_t)field_results[0].type);
+				l::Value* dynamic_object_address = field_results[0].IR;
+				l::Constant* integer_type_pointer = llvm_integer((uint64_t)field_results[0].type->fields[0].ptr);
 
 				//we now serialize both objects to become integers.
 				l::Value* undef_value = l::UndefValue::get(llvm_array(2));
@@ -723,11 +716,7 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 				l::Value* full_value = builder->CreateInsertValue(first_value, dynamic_object_address, std::vector < unsigned > { 1 });
 				finish(full_value);
 			}
-			else
-			{
-				//zero array, for null dynamic object.
-				finish(l::ConstantArray::get(llvm_array(2), std::vector<l::Constant*>{llvm_integer(0), llvm_integer(0)}));
-			}
+			else return_code(type_mismatch, 0);
 		}
 	case ASTn("dynamic_conc"):
 		{

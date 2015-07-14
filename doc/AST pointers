@@ -99,6 +99,8 @@ Benchmarks:
 	https://stackoverflow.com/questions/2538070/atomic-operation-cost 310 cycles for atomic operation, 2 per AST.
 		except not anymore!!
 	https://stackoverflow.com/questions/7612292/how-bad-it-is-to-keep-calling-malloc-and-free 408 cycles for malloc/free combo. only one necessary; "malloc" a bunch of memory at once.
+	On quad core laptop with 4GB of memory glibc can do roughly 1.5 million malloc/free pairs per second.
+	On a crappy ARM board with a single core glibc can do 300 000 malloc/free pairs per second.
 maybe the "get AST" function produces the complete copy automatically? no, sometimes (in the far future) you just want to look.
 
 garbage collection:

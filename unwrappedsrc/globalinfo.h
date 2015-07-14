@@ -11,7 +11,7 @@ extern llvm::raw_ostream* llvm_console;
 using std::string;
 
 extern bool VERBOSE_DEBUG;
-[[noreturn]] inline void error(const string& Str) { std::cout << "Error: " << Str << '\n'; abort(); } //std::cout, because we want error messages even when default console output is turned off. which sets failbit on cerr.
+[[noreturn]] inline constexpr void error(const string& Str) { std::cout << "Error: " << Str << '\n'; abort(); } //std::cout, because we want error messages even when default console output is turned off. which sets failbit on cerr.
 #ifdef _MSC_VER
 #define thread_local
 #endif
@@ -29,7 +29,7 @@ inline std::string s(std::string k) { return ""; }
 //#if RELEASE
 //inline void check(bool condition, const string& Str) {}
 //#else
-inline void check(bool condition, const string& Str) { if (!condition) error(Str); }
+inline constexpr void check(bool condition, const string& Str) { if (!condition) error(Str); }
 //#endif
 
 extern bool OPTIMIZE;
