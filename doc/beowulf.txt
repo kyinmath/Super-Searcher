@@ -1,6 +1,6 @@
 I want a switch. and a lot of ethernet cables.
 
-HDD is good. user can store psat versions and then copy them.
+HDD is good. user can store past versions and then copy them.
 
 Wireless is bad. requires ethernet cards (expensive). and:
 "Be very aware that data rates on wireless links (claims of tens of Mbps notwithstanding) are truly low.  AND, there's a huge latency.  Ping times for short packets) between nodes (with the nodes side by side) are in the 100 millisecond range for the first ping, then drop on successive pings to tens of milliseconds." March 2006.

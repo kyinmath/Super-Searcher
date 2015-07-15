@@ -107,7 +107,8 @@ constexpr AST_info AST_descriptor[] =
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
 	a("convert_to_AST", T::AST_pointer, T::integer, parameter_no_type_check, T::dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
 	a("store", T::null, parameter_no_type_check, parameter_no_type_check), //pointer, then value.
-	//{"load_n", special_return, parameter_no_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject, etc. or Type.
+	//{"load_n", special_return, parameter_no_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype.
+	//{"write_n", T::null, parameter_no_type_check, T::integer, parameter_no_type_check},
 	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both
 	//{"load_static_from_AST", T::dynamic_pointer, T::AST_pointer},
 	//{"write_into_AST", T::integer, T::integer, T::AST_pointer}, //writes a field. the integer comes first because it logically decides the field.

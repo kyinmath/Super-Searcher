@@ -315,7 +315,7 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "console") == 0) CONSOLE = true;
 		else if (strcmp(argv[x], "timer") == 0)
 		{
-			runs = 40;
+			runs = 10000;
 		}
 		else if (strcmp(argv[x], "longrun") == 0)
 		{
@@ -338,7 +338,7 @@ int main(int argc, char* argv[])
 		}
 		else if (strcmp(argv[x], "benchmark") == 0)
 		{
-			runs = 40;
+			runs = 10000;
 			DEBUG_GC = false;
 			console.setstate(std::ios_base::failbit);
 			console.rdbuf(nullptr);
@@ -348,7 +348,7 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "limited") == 0) //write "limited label", where "label" is the AST tag you want. you can have multiple tags like "limited label limited random", putting "limited" before each one.
 		{
 			LIMITED_FUZZ_CHOICES = true;
-			runs = 5;
+			runs = 500;
 			allowed_tags.push_back(ASTn(argv[++x]));
 		}
 		else if (strcmp(argv[x], "gctight") == 0)  GC_TIGHT = true;
@@ -382,19 +382,6 @@ int main(int argc, char* argv[])
 		}
 	} a;
 
-	/*
-	AST get1("integer", nullptr, 1); //get the integer 1
-	AST get2("integer", nullptr, 2);
-	AST get3("integer", nullptr, 3);
-	AST addthem("add", nullptr, &get1, &get2); //add integers 1 and 2
-
-
-	AST getif("if", &addthem, &get1, &get2, &get3); //first, execute addthem. then, if get1 is non-zero, return get2. otherwise, return get3.
-	AST helloworld("hello", &getif); //first, execute getif. then output "Hello World!"
-	compiler_object compiler;
-	compiler.compile_AST(&helloworld);
-	*/
-
 	if (CONSOLE)
 	{
 		while (1)
@@ -415,19 +402,15 @@ int main(int argc, char* argv[])
 			compile_returning_legitimate_object(compile_result, (uint64_t)end);
 			auto run_result = run_null_parameter_function(compile_result[0]); //even if it's 0, it's fine.
 			if (compile_result[1] != 0)
-			{
 				std::cout << "wrong! error code " << compile_result[1] << "\n";
-			}
 			else
-			{
 				output_array((uint64_t*)run_result[1], get_size((Type*)run_result[0]));
-			}
 		}
 	}
 
 	std::clock_t start = std::clock();
-	fuzztester(runs * 100);
-	std::cout << runs* 100 << " time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
+	fuzztester(runs);
+	std::cout << runs << " time: " << (std::clock() - start) / (double)CLOCKS_PER_SEC << '\n';
 	return 0;
 	//default mode
 }
