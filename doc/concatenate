@@ -12,3 +12,13 @@ for the user, some objects usually belong together. like nodes in a tree. for re
 	concatenations are useless locally. it's only when you put them in the heap, and pass them to functions, that they matter.
 	so: when should we pass a concatenation from function to function, such that the object is not recursive?
 however, it doesn't make sense if we force things to become dynamic before concatenating them. that requires a lot of steps: making pointers to them (hard), changing the pointer to dynamic (hard), and then finally concatenating them.
+
+
+dynamic_conc() cannot be allowed to alias with the old pointer. that is because this will make changes sometimes materialize and sometimes not for the other pointers.
+should the dynamic pointer be first or second?
+...and in the actual object, should the dynamic object go before the static object, or after?
+	probably before. the dynamic is expected to be heavy. the static should be appended since memory grows to the right. well, we can have options later if necessary.
+
+
+what's the point of having dynamic_conc? why not more general functions? arbitrary manipulation of dynamic objects?
+	I think, because all of those can be achieved by dynamic_conc.

@@ -58,11 +58,8 @@ struct AST_info
 		return new_copy.make_pointer_fields(pointer_fields - x);
 	}
 
-	template<typename... Args> constexpr int field_count(Args... args)
-	{ return sizeof...(args); }
-
 	template<typename... Args> constexpr AST_info(const char a[], ctt r, Args... incoming_fields)
-		: name(a), return_object(r), parameter_types{incoming_fields...}, pointer_fields(field_count(incoming_fields...)), fields_to_compile(field_count(incoming_fields...)) {}
+		: name(a), return_object(r), parameter_types{incoming_fields...}, pointer_fields(sizeof...(incoming_fields)), fields_to_compile(sizeof...(incoming_fields)) {}
 	//in AST_descriptor[], fields_to_compile and pointer_fields are normally set to the number of parameter types specified.
 	//	however, they can be overridden by make_fields_to_compile() and make_pointer_fields()
 
@@ -106,7 +103,7 @@ constexpr AST_info AST_descriptor[] =
 	{"dynamify", T::dynamic_pointer, parameter_no_type_check}, //turns a regular pointer into a dynamic pointer. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
 	a("compile", T::function_pointer, T::AST_pointer), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
 	{"run_function", T::dynamic_pointer, T::function_pointer},
-	{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, T::dynamic_pointer}, //concatenate the interiors of two dynamic pointers
+	{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, parameter_no_type_check}, //concatenate the interiors of two dynamic pointers
 	a("goto", special_return).make_pointer_fields(3), //first field is label, second field is success, third field is failure
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
 	a("convert_to_AST", T::AST_pointer, T::integer, parameter_no_type_check, T::dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.

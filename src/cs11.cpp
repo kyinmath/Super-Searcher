@@ -156,7 +156,7 @@ unsigned compiler_object::compile_AST(uAST* target)
 
 void compiler_object::emit_dtors(uint64_t desired_stack_size)
 {
-	//todo
+	//we can make a basic block with the instructions, then copy it over when needed.
 }
 
 void compiler_object::clear_stack(uint64_t desired_stack_size)
@@ -639,9 +639,6 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 			}
 
 			Type* final_type = get_unique_type(concatenate_types(std::vector < Type* > {half[0].type, half[1].type}), true);
-			console << "dynamic types\n";
-			output_type(final_type);
-			output_type(u::dynamic_pointer);
 			finish_special_stack_handled(final_value, final_type);
 		}
 
@@ -673,29 +670,25 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 		}
 	case ASTn("dynamic_conc"):
 		{
-			l::Value* type[2];
-			l::Value* pointer[2];
-			for (int x : {0, 1})
-			{
-				//can't gep because it's not in memory
-				type[x] = builder->CreateExtractValue(field_results[x].IR, std::vector<unsigned>{0}, s("type pointer of dynamic"));
-				pointer[x] = builder->CreateExtractValue(field_results[x].IR, std::vector<unsigned>{1}, s("object pointer of dynamic"));
-			}
+			l::Value* type;
+			l::Value* pointer;
+				type = builder->CreateExtractValue(field_results[0].IR, std::vector<unsigned>{0}, s("type pointer of dynamic"));
+				pointer = builder->CreateExtractValue(field_results[0].IR, std::vector<unsigned>{1}, s("object pointer of dynamic"));
 
 			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
 			//if ever the optimization changes, we might be in trouble.
 			std::vector<l::Type*> return_types{int64_type(), int64_type()};
 			l::Type* return_type = l::StructType::get(*context, return_types);
-			l::Value* dynamic_conc_function = llvm_function(concatenate_dynamic, return_type, int64_type(), int64_type(), int64_type(), int64_type());
+			l::Value* dynamic_conc_function = llvm_function(concatenate_dynamic, return_type, int64_type(), int64_type(), int64_type());
 
-			std::vector<l::Value*> arguments{type[0], pointer[0], type[1], pointer[1]};
+			l::Value* static_type = llvm_integer((uint64_t)field_results[1].type);
+
+			std::vector<l::Value*> arguments{type, pointer, static_type};
 			l::Value* result_of_conc = builder->CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
 
-
-			//todo: does uncommenting these things produce a bug?
-			//Type* dynamic_type = get_non_convec_unique_type(Typen("dynamic pointer"));
-
-			//finish_special(result_of_conc, dynamic_type);
+			l::Value* integer_pointer_to_object = builder->CreateExtractValue(result_of_conc, std::vector<unsigned>{1}, s("pointer to object"));
+			l::Value* pointer_to_object = builder->CreateIntToPtr(integer_pointer_to_object, int64_type()->getPointerTo());
+			write_into_place({field_results[1].IR, get_size(field_results[1].type)}, pointer_to_object);
 			finish(result_of_conc);
 		}
 	case ASTn("compile"):

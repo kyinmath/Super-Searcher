@@ -2,6 +2,8 @@ CPP_FILES := $(wildcard ../src/*.cpp)
 ADDITIONAL_CXX_FLAGS_MISSING_FROM_CPP_FLAGS_FOR_LLVM_CONFIG := -fomit-frame-pointer -fvisibility-inlines-hidden -fno-exceptions
 LLVM_CONFIG_CXX_SUBSTITUTE := -I/usr/include  -fPIC -fvisibility-inlines-hidden -Wall -W -Wno-unused-parameter -Wwrite-strings -Wcast-qual -Wno-missing-field-initializers -pedantic -Wno-long-long -Wno-uninitialized -Wno-comment -std=c++11 -ffunction-sections -fdata-sections -O3   -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
 
+#Unity build far faster than normal build (11s vs 23s)
+
 all: ../src/*
 	rm -rf build
 	mkdir build

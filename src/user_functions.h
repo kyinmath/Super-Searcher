@@ -166,22 +166,19 @@ inline void run_null_parameter_function_bogus(uint64_t func_int)
 }*/
 
 //each parameter is a pointer
-inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_type, uint64_t first_pointer, uint64_t second_type, uint64_t second_pointer)
+inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_type, uint64_t old_pointer, uint64_t second_type)
 {
-	uint64_t* pointer[2] = {(uint64_t*)first_pointer, (uint64_t*)second_pointer};
+	uint64_t* pointer = (uint64_t*)old_pointer;
 	Type* type[2] = {(Type*)first_type, (Type*)second_type};
 
-	if (type[0] == 0) return std::array<uint64_t, 2>{{second_type, second_pointer}};
-	else if (type[1] == 0) return std::array<uint64_t, 2>{{first_type, first_pointer}};
 	uint64_t size[2];
 	for (int x : { 0, 1 })
 	{
 		size[x] = get_size((Type*)type[x]);
 	}
-	check((size[0] != 0) && (size[1] != 0), "dynamic pointers should have zero in the base pointer only");
+	if (size[0] + size[1] == 0) return {{0, 0}};
 	uint64_t* new_dynamic = allocate(size[0] + size[1]);
-	for (uint64_t idx = 0; idx < size[0]; ++idx) new_dynamic[idx] = pointer[0][idx];
-	for (uint64_t idx = 0; idx < size[1]; ++idx) new_dynamic[idx + size[0]] = pointer[1][idx];
+	for (uint64_t idx = 0; idx < size[0]; ++idx) new_dynamic[idx] = pointer[idx];
 	return std::array<uint64_t, 2>{{(uint64_t)concatenate_types(std::vector<Type*>{type[0], type[1]}), (uint64_t)new_dynamic}};
 }
 

@@ -61,7 +61,7 @@ void fuzztester(unsigned iterations)
 			else error("fuzztester doesn't know how to make this special type, so I'm going to panic");
 		}
 		uAST* test_AST = new_AST(tag, fuzztester_roots.at(prev_AST), fields);
-		output_AST_console_version a(test_AST);
+		output_AST_console_version(test_AST);
 		fuzztester_roots.pop_back(); //delete the null we put on the back
 		finiteness = FINITENESS_LIMIT;
 		if (!FUZZTESTER_NO_COMPILE)
@@ -221,7 +221,7 @@ class source_reader
 		//check(next_token == "]", "failed to have ]");
 
 		if (READER_VERBOSE_DEBUG)
-			output_AST_console_version a(new_type_location);
+			output_AST_console_version(new_type_location);
 
 		//get an AST name if any.
 		if (input.peek() != ' ' && input.peek() != '\n' && input.peek() != ']' && input.peek() != '[' && input.peek() != '{' && input.peek() != '}')

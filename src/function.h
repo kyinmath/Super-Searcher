@@ -29,7 +29,6 @@ struct function
 	}
 };
 
-//%discarded: functions should have no idea what their type is. instead, the type is stated in pointers to the function.
 inline std::ostream& operator<< (std::ostream& o, const function& fred)
 {
 	return o << "function at " << &fred << " with AST " << fred.the_AST << " return " << fred.return_type << " fptr " << fred.fptr << " jit " << fred.thread_jit << '\n';
