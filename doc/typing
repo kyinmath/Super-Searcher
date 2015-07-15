@@ -1,0 +1,32 @@
+At the moment, every fundamental building block object has no destructor and no constructor.
+	thus, copying objects is a simple bit copy.
+	
+every object must be constructed on creation of the memory location. this isn't optimal, but it makes compilation much simpler.
+http://en.wikipedia.org/wiki/Definite_assignment_analysis
+
+
+Comment (dynamic pointer)
+comments in the type are important. for example: "what follows is a backreference table". or, "this is a goodness indicator". or, "this is a lock". or, "pointer to the function used to handle this".
+	then the user doesn't have to go pattern-matching. instead, he can directly insert the machinery. and he can tell what an object is.
+
+Concatenation tree:
+--Horrible for memory
+--Horrible for actually finding which element is in first place. you need to do a lot of recursion and stack-keeping. and it consumes a ton of memory (even we have trouble doing it), and it kills finiteness.
+--Horrible for type comparisons
+--Horrible for canonicalization. you have many different type objects referring to the same thing. the extra information of this extra structure is largely worthless.
++ok for appending to the beginning or the end as long as you can use a new type.
+Linked list:
+Ok for memory
+----Difficult to make changes at either end, because building an object requires you to know everything that it points to.
+	should it be backwards or forward? the difference is how different pointer types can RVO into each other.
+	forward, because the first elements are the most important; the end can be cut off.
+	or backward, because cutting off the ends is far easier when it's backward.
+		and constructing it will be virtually impossible if the pointers point forward. for example, if you want to copy a type but change a little bit at the end (perhaps appending), you have to know everything before you can start building anything. which requires a big stack.
+		but then, how do you get the first element? we need a stack again? stacks are expensive...
+Vector:
++best for memory
++allows for getting the "nth" element. jump to whatever element you want in a single step; no need for massive recursion.
+	for example, with an array, you know you want the 5th element. you don't care about any of the other elements.
++++++++++can actually support vectors
+basically, a multi-branch concatenate() type? like with Vanier's basic blocks.
+	and then we force the first level to be flat, so that there's no recursion trying to find types.

@@ -1,0 +1,10 @@
+we need to deallocate/reallocate the module each time the AST changes, which means we must know where it is.
+but the module location isn't something we want to expose to the user.
+after you compile the function, the module belongs to the ExecutionEngine. you must delete it using the ExecutionEngine/MCJIT's removeModule()
+temporary patch: we just have a map from functions to modules.
+OR: we can delete the module entirely? http://lists.cs.uiuc.edu/pipermail/llvmdev/2014-October/077814.html
+
+
+
+Note: there are no explicit labels in the IR. Instead, labels are automatically generated and numbered after terminating instructions like return or goto, which must exist - there is no fall-through. Then, the Builder must be shuffled around to each basic block so that it can insert code in the correct place, then the blocks must be inserted into the function.
+also, even if the insertion point is null, creating branches to a label will insert predicates in that label. and null predicates cause problems.

@@ -1,0 +1,5 @@
+a vector is good in general. simple long-chain types are not that good, because you must make a new type every single time you add (since types are immutable)
+	although...if we can guarantee that vector types are always private, so one dynamic object <=> one private type, and disallow copying types, then that will be awesome.
+	and it'll be invisible to the user as well.
+		this will also allow invisible spying on additions to the vector. that's good, but are there downsides?
+		ASTs might occasionally embed dynamic pointers using double indirection (dynamic to dynamic, thus storing the second dynamic as fixed), and in that case it's mostly fine.

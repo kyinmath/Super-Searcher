@@ -1,0 +1,96 @@
+__Judgment starting configuration__
+
+vector: judgment
+	repairing overflows, bugs, etc. but not overly critical
+vector: super emergency judgment
+	for repairing infinite loops, which cripple the user
+
+random generation:
+random generation ought to produce useful things.
+that is, successful things should be reinforced. roll a random number to check if you should duplicate. (use a fixed random number generator, like adding together previous progress)
+	that means you should store your running history.
+things that are unsuccessful should be marginalized. that includes AST makers that consistently fail to produce valid ASTs.
+
+
+We have backpropagation judgment.
+Decide on something good, then work backward to make changes.
+Estimate the effects of a single (random) change, and then scale linearly. Take input from any judgment notes.
+If a memory value has no writers, then judgment should mess with the value. It's a judgment-modified value.
+	if the memory value has writers then you mess with the writers
+
+We have random-mutation judgment. This randomly decides to add functions or remove functions.
+It holds special consideration for judgment and essential functions. After each war, it randomly changes these if the user has multiplied.
+	Especially, it likes to modify the relative activity of each type of judgment.
+	And, it will randomly modify/add the runnable function vectors.
+It tries to randomly add in memory dependencies, fires to random neurons, or coupled read-writes.
+It likes to increase complexity of a function if backpropagation is doing a lot of modification to it.
+It likes to change "probationary" functions, which are often created by expansion judgment.
+to change specific functions into other specific functions (maybe reading the judgment notes).
+Duplicate a function into two functions, then make the original function randomly choose one of the two targets
+randomly create readers and writers to judgment notes, for the various judgment mechanisms. Readers are especially popular.
+
+We have expansion judgment, which makes new functions. try to use the if() statement and randomness a lot.
+split the callers and have them call one of the new functions. or maybe have them randomly choose.
+	sometimes you can duplicate an entire subgraph of functions.
+function pointers can be created by pulling out addresses from existing function calls
+sometimes make lots of new structures too. place these underneath the "new" section.
+	do judgment furiously on these new structures. if they are useful, then move them somewhere else. Otherwise, delete them after a while.
+
+We have backpropagation/forward-propagation relevance judgment.
+%If we decide that two things should be connected, we lower the power of anything that doesn't go from point to point.
+If we decide that two things should be connected, we increase the power of their connections and ask random judgment to add some connections between them.
+
+We have country judgment, which will be random for now.
+
+We have rollback judgment.
+Rollback judgment pays special attention to the random-mutation judgment stream.
+	Some changes are likely to have long-lasting effects. For example, judgment changes will be felt for a while, so rollback must determine what exactly the relevant problem is.
+Rollback judgment also likes to edit random-mutation judgment to make things happen more often or less often.
+
+backpropagation can't manage pathways that are shut down.
+
+We have rerun judgment.
+read the input history and then go! hopefully our input history is 1. localized somewhere and 2. stored nicely
+
+no modification constants. but normal values have:
+certainty, tendency, is certainty going down
+	certainty is obvious.
+	tendency: if you make a bunch of small moves in a direction, then probably you should start to make big moves.
+	if certainty is not going down enough, then maybe it's time to add complexity
+	what if you're overfitting or underfitting? how do we detect this?
+what about overjumping?
+	overjumping: swinging back and forth
+	underjumping: continuing in a single direction
+	perfect jumping: random, no correlation
+
+
+we still need some form of cells, so that ideas can come together in a network
+for example, idea search, which simply fires around and adds things up.
+	now it's better; user can parallelize instead of only thinking about one thing at a time
+
+We want functions that access the same resources to share threads, for concurrency (not to block each other) and locality.
+
+function processing should be like an insertable queue. You put items somewhere in the queue, and then run the queue when you want.
+since we don't want a million pointers in a real sortable, insertable structure, the main system simply organizes it into a bunch of "timepoint" vectors of functions, which are periodically cycled downward.
+
+
+let's say you duplicate a group of objects. then, pointers within that group should point to the new group
+
+if the thread runs individual functions instead of an entire vector, then it's easy to see what the problem is.
+also, it's easy to stop threads, interrupt.
+
+somehow, try to _version_ the functions. so if something goes into an infinite loop, then undo the last change.
+
+if a function fails, then it probably wants to throw an exception. the main thread handler will catch the exception and not kill the runnable function, but set the function off to the side, for later trial.
+	if a function fails too many times, the thread sends the runnable function to judgment for inspection.
+
+user: on first UT failure, put the problematic delayed fire in a special location, so judgment knows there is something wrong.
+
+USER:
+	user should remember "snippets of code" and sort them by usefulness.
+forloop? because, to setup the incrementor, decrement it, and then check it, is all part of a single concept, that deserves to be in one place
+delayed function call + sending originating function address + maybe something else, like an identifier
+AES random value generator, using a thread-local value as input
+	AES with built-in modulo. Get a random number between 0 and N-1, without biases.
+	this is nonreconstructible.
+function judgment history

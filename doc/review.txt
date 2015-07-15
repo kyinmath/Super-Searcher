@@ -1,0 +1,15 @@
+how do set up a review system for upstream projects like the kernel and llvm?
+there should be incentives for catching bugs.
+	then, they should be able to judge themselves. declaring "I have N bugs". then compare.
+disputes will go to me. I set a penalty, which should be high, so that people will submit accurate reports. except...
+	I will make mistakes. we don't want people to be able to force each other into agreeing with poor judgments (ultimatum game)
+	so it should be high, but not obscene.
+
+what about ambiguous bugs? one will have it, and one won't.
+	then, maybe we let them agree to compromise? so in what way is this better than having a gradient of bug severity? and won't it create conflicts over whether to compromise or not?
+
+
+
+
+if there's only one copy of the source code, it's vulnerable to someone sneaking in changes after rooting the computer (like Linux kernel).
+	even if there are many copies, they should be compared to each other.

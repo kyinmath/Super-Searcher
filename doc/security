@@ -1,0 +1,10 @@
+remember, Intel has a VNC server. since everything is already there, it would be trivial for them to backdoor their CPUs?
+
+they can do microcode updates on CPUs in the wild...
+	maybe a reason not to give bots admin control; they'd take over the computer for all future users as well.
+	or any control really. sandbox completely, because some control = admin control. Windows is as leaky as a sponge.
+
+but linux is vulnerable too. and clang, and any of the services used. intel probably is a small concern.
+	moreover, they're vulnerable even non maliciously.
+
+problem: if the user doesn't have admin, someone from outside can come in and compromise things. then it's root vs non root.

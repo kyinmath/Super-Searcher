@@ -1,0 +1,9 @@
+
+dynamic objects vs dynamic pointers?
+	dynamic objects I think, mainly want to be overwritten.
+	ASTs actually want dynamic objects, not pointers.
+	recursive types want dynamic pointers.
+the main issue is that if there are dynamic objects, an object's size can't be inferred from just its type.
+
+
+dynamic objects are absolutely useless. can't store them except at the end of a type. locally, they can just be optimized dynamic pointers.

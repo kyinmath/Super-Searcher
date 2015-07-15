@@ -1,0 +1,11 @@
+dynamic_conc is pretty inefficient because it makes lots of copies. but for now, we don't care too much
+
+let's say you're browsing through the Big Tree of Stuff, and you get a dynamic pointer. it contains some structure and a function.
+	how does the dynamic pointer assert into a static type?
+
+
+dynamic objects must be able to handle nullptr.
+	to support recursive objects
+	to support variable numbers of arguments, such as for convert_to_AST.
+
+null types are useful for function return types. and for scope().

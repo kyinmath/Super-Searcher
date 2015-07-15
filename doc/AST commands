@@ -1,0 +1,82 @@
+()reverse_concatenate for constructing out of order
+()sizeof Type, which counts the memory it occupies. maybe we should also have a version that counts other overhead.
+	this is what's used to find the size of a normal dynamic object
+()return, which does an early return
+()compile AST(AST). can fail.
+	compiled ASTs are placed directly in their targets, and compilation might fail, thus creating a branch. however, you can COPY an already-compiled AST with guaranteed success (if the type is known to match).
+	what should it return? we want to return some error objects. and the function pointer as well. the problem is that returning multiple things requires a dynamic pointer, which causes lots of trouble, because then you have to extract, test, etc. which makes it hugely difficult to create this randomly.
+	should 0 be an allowable function pointer? if so, it allows for guaranteed success of compile_AST, which makes it much better for random creation. we can still have a failure case even. and maybe even a success case?
+		sure, we can just have a general "handle" case, no need to split into failure and success. the second branch of compile_AST exposes the error object. if the user wants, he can branch or not.
+		but then, what's the point of having a special branch? why not return everything together?
+		if we do that, it's difficult to separate the error information and the actual desired object. in contrast, having only the interesting thing be the return object is good.
+()get return type of function. if you want the return type of an AST, you must compile it first (which checks for correctness as well)
+()get the Nth offset element of a pointer, with specified width. so: start offset, then width.
+()get system values(int, int), returns int:
+	0 = # of AST tags
+	1, N = # of AST fields for tag N
+	2 = # of type tags
+	3 = finiteness
+	4 = number of users
+	5 = working size memory
+	6 = system clock
+	7, N = AES encode
+	8, N = AES decode
+	9 = my user ID inside the country (unique)
+	10 = country ID (unique)
+	11 = country size, number of countries, who is the controller in your country, who are the other users in the country
+	12 = suicide. however, requires some kind of confirmation. otherwise, it'll be super bad for the user to luck into this.
+()GC schedule
+
+()get pointer to function for event driven framework. a specific function is run on an event. possible events:
+	user start
+	other user crash (maybe GC OOM, system OOM, or something)
+	generic running
+	message
+
+
+
+__dynamic object
+()append-in-place only. fails if no space.
+()Truncate(X). going down to X.
+	problem: this isn't possible. so how will something like a stack be done? user will have to keep track of a separate "size" object, whereas the size of the dynamic object will simply be for memory management...
+()change_reserved_memory
+()get_reserved_memory_size()
+()get Nth element.
+
+
+How is country competition going to work? King is not very good, because it has problems with single-point-of-failure.
+	we need a voting system.
+	however, some things require single point of contact. for example, controlling a machine, or competing against other countries.
+		unfortunately, having only a single king around means he has no competition to improve himself. if the other subusers in a country want a better king, it's hard, because nobody else has experience with kingship.
+Country-wide judgment
+	Overwrite user with other user (if you overwrite yourself, the new person becomes the king)
+%Delete user (can be overwritten later). You can't delete yourself; somebody has to be the king.
+%delegate kingship
+%revolution, if you are not king.
+%vote for king.
+communicate with me (encrypted)
+how much RAM does the system support
+
+You get your own filesystem that you can read and write to (but not execute). You have a special NFS folder that people can read from. You can move stuff from virtual drive <--> filesystem.
+	NFS folder is vulnerable to denial of service.
+	A lot of the file access is filesystem-to-your-own-filesystem transfer, then reading directly from your own filesystem. But you can still bypass the disk and load directly to RAM.
+
+Your allowed computer is on a different physical machine for isolation, security, and increased computing power at the cost of latency.
+Virtual machines are not to be trusted, because they are insufficiently tested.
+
+user to user communication: raw sockets. (no UDP)
+boost asio.
+encryption, how? this is an admin issue, because the user should be able to identify itself authoritatively.
+	when a new user is placed online, I manually give the user its private key.
+	then, I use my own encryption key to tell all the users the public key.
+How does the user communicate with me? This is also crucial. My computer must respond in a fixed, expected way.
+Revolution: threshold, 1 to N-1, that when reached, kills the king. Should be invisible to the king.
+
+no scope(). because label allows the user to do goto to a lot of places.
+
+machine input (mouse and keyboard) and output (screen)
+	size of each screen
+
+inputs: sight, sound, access to computer, memory usage, cpu usage, real time, country actions (kings, war results, person transfer, country changes (size or number), new user creation)
+	later: temperature, touch
+outputs: vocal (64 channels for now), mouse, access to virtual machine

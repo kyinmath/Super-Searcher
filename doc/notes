@@ -1,0 +1,29 @@
+potential bugs:
+search for "-1", that might be non-uint64_t, or might not! standard permits both, which gives different values.
+search for "unsigned", since all of those aren't uint64_t
+
+we need an AST that can call functions. this works using the static_object AST
+
+JuliaLang: https://github.com/JuliaLang/julia/issues/54#issuecomment-1391348
+"I checked the vmkit source to see how they handle this for java, and they emit a check for zero with every integer divide. We probably have to do this too."
+https://groups.google.com/d/msg/llvm-dev/1FOyTcEJ3FI/nCsWOyNIUjkJ
+"There is another undefined case too, which is the minimum integer divided by -1."
+C++ standard 5.6.4 "if the quotient a/b is representable in the type of the result, (a/b)*b + a%b is equal to a ; otherwise, the behavior of both a/b and a%b is undefined"
+
+we definitely shouldn't have the requirement that a function's cheap pointer parameters must last longer than its return object.
+	because if that's so, we'd have trouble passing in something like a std::vector<>&, which is a cheap pointer, if the vector was created just for the object.
+	or if we immut a full object and receive a cheap pointer: we can't pass it in.
+
+all of our operations are atomic now. that means that we can just kill off threads that are in infinite loops?
+	no, we have to unwind locks. those still aren't truly atomic.
+	but we can goto out of a =.
+this is made especially easy because our backreferences no longer exist, so the position is irrelevant.
+compile_AST can have a goto to the untaken branch of an if statement.
+
+
+20.3.3/8 in C++03
+"For templates greater, less, greater_equal, and less_equal, the specializations for any pointer type yield a total order, even if the built-in operators <, >, <=, >= do not."
+
+the random AST generator should succeed as often as possible. thus, ASTs should be super easy to build, with very limited checking.
+PROBLEM: pointers go one way in ASTs, except for goto() which goes forward with labels.
+	this also breaks our console input, since we can no longer defer the reading of addresses until after the dependencies are processed.

@@ -1,0 +1,43 @@
+
+must full pointers point to the beginning of the object?
+	+garbage collection is faster, with our bitset. only need to check the first bit to see if you already checked that object.
+	+in the future, we'll want mutators to know where the object is, for concurrent GC. will that require knowing the full object?
+	-less expressivity. so: what's the cost precisely?
+		you can't store the pointer on the heap. when might we want this? for ASTs?
+		actually, when might you want big objects on the heap at all? when they logically belong together. for example, one of our big compilation objects (passes).
+		in that case, you want to see everything together. then, would there be exceptional cases where you want pointers to just the internals, and to be able to also store these pointers? in those cases, you would be explicitly throwing away information about the overall object.
+	and then, what about vectors?
+		sure, that seems to work fine with dynamic objects, since the dynamic type can be changed in-place.
+		ASTs embed the type inside, but maybe we can just treat them differently.
+if so, maybe they'd want to point to the entire object. this is so that after you've checked an object, you know you've handled every field. but this messes with vector truncation
+
+in addition, C++ cannot have pointers to the interior of a vector, and that's fine.
+subobject pointers generally don't exist in GC languages
+
+should subobject pointers allow for chunks, instead of single objects?
+	this makes things hard.
+
+
+
+if you get a subobject of an object, you count the number of objects to pass, not the number of uint64_t s to pass.
+because we want to ensure that every possible input number is valid. with uint64_t offsets, you might end up in the middle of a vector.
+	while getting the size of the vector might be useful, it's better off in a special "get vector size" function.
+especially good for dynamic type objects: this will drastically reduce the number of unsuccessful attempts
+and good since we can change sizes of objects like functions.
+
+
+
+
+should full pointers be allowed to refer to only part of the type?
++can append junk at the end
+-can't run the dtor straight on full pointers? but dtors are prohibited anyway.
+	even in Java, finalizers are super expensive, not reliable, and never used in production. https://stackoverflow.com/questions/158174/why-would-you-ever-implement-finalize
+-garbage collector fails? no, it can handle it.
+NO. if you want funny subtypes, that's what cheap_pointer is for.
+	but if we want to run the dtor straight, then we also can't do implicit conversions of fully_immut objects such as expandable vectors and regular vectors. same for RVO type_check conversion.
+it's the difference between knowing where the memory allocator is, and having to work backwards to find it. if the full pointer doesn't know where the object is truly located, it has to investigate, which is complicated.
+That means: since every full pointer knows exactly what the target type is, there is absolutely no reason why we must be able to get a target's type from the pointer address. our backreferences are gone too.
+
+
+maybe we can write into function pointers using the usual store(). we'd normally want to attempt the same for ASTs and Types, but those are impossible (variable size, and immut, respectively)
+	the problem is that the notation is not really correct. you're writing a pointer into another pointer, instead of an object into an object like store() normally does.

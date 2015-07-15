@@ -1,0 +1,52 @@
+Warren Buffett: what matters is not how wealthy you are, but the prior probabilities.
+	so even if a user does well, we can ask him for the reasons behind it, to eliminate chance.
+
+what can I reward if an external agent tries to compromise a user, and the user reports it?
+
+what happens if I open up the archives to all the users, read-only?
+	less incentive to innovate, since your ideas will be stolen
+	but, more sharing?
+	and more looking for bugs.
+
+what if the external agent tries to compromise by offering a superior solution to a game I'm running, bundled with malware?
+	for example, suppose I'm running Go, and there's superior Go software out there. so the external agent offers the Go software and malware together. if you run the package, you win, but you're compromised for the future.
+
+let the robots BUY a life.
+advantage: I have a rough idea of how much their lives are worth.
+example: I want to give rewards in the case that a robot does something bad. then it's good to not pay too much, or else the robot will benefit from doing bad and then collecting the reward
+disadvantage: if an external agent pays 4 billion a turn in return for the robots executing something, then the external agent can successfully compromise the entire system.
+for example, if the external agent gives a DRM system that must be run, where the DRM is attached to the malware. then the external agent can verify if the user went through with the deal. the user can't dissect it. that's very very bad.
+	the user might also dissect it poorly and have some compromising agents left.
+
+example: let's say we have a task. producing ammo.
+if you succeed, you get +0.001 life. then we test it. if kB, you get -1 life. but these numbers are going to suck.
+	so we let the robots bid on them. bid on the life removal.
+
+nonactable information.
+I want to know. so it's cost-free for the robots to tell me information that would otherwise incriminate them.
+	if I get this information from other sources though, it's time to roll.
+
+also, keep turnover statistics.
+so if the information would have been acquired in 1 day anyway, then just apply the information now, but apply a reduced punishment.
+	because delayed punishments are less effective than immediate punishments.
+
+
+user policy changes:
+for example, let's say the rate of punishment for non-informed secret problems, is 120%.
+but if I am convinced by some good argument that it should be 130%, then the arguer gets a big boost. it's deeply valuable to me.
+
+what kind of "secret problem" must be reported?
+	it should be ones that I care about...
+	suppose you break a pillar, it won't go detected, I should get it fixed. then should be reported.
+	whenever the information might lead to better decisions.
+but suppose fixing it makes the problem undetectable. how do we prevent robots from abusing this system?
+
+let's say a user threatens to kill me if I don't boost his life. suppose the threat is very credible.
+	what should be the appropriate response?
+
+on end of lifetime, we can't have a single ruler, because it'll be like the old English monarchy.
+	the ruler always appropriates all surplus, so nobody has any incentive to produce.
+	see North and Weingast.
+thus, the ruler must have credible limits on his power.
+
+we also must avoid any single source of power. such as a virus that compromises everyone.

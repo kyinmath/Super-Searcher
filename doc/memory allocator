@@ -1,0 +1,22 @@
+the only objects which require finalizers are functions.
+therefore, we simply shove functions in a special memory section. when garbage collecting, we delete them specially
+
+possibly, the reason why our gyarfas ghetto-dynarray is slow is because it doesn't use the stack.
+
+tracing allocation
+++++:if we don't have reference counting, then our code doesn't need to know about it!
+	that means we don't have to insert a lot of rubbish LLVM code.
+	what's more, we don't have to keep track of any dtors at all anymore.
+++reference counting is reported to be very slow, experimentally.
+	I guess it is the difference between keeping track at that instant, requiring constant updating when information changes (perfect state), and keeping track later and looking for batched information in random places.
+	http://blogs.msdn.com/b/brada/archive/2005/02/11/371015.aspx
+
+
+compacting GC:
+we don't know where the pointers in compiled functions are. we'd have to recompile things if we moved them. although it probably isn't difficult to figure this stuff out.
+	in fact, the only possible pointers that can cause recompilation are those in static objects.
+Under moving, "Any object that uses its address for anything is suspect. For example, many objects have identity-equality, and typically hash() just returns the object's address. But that's not OK under compaction, because an object's hash must not change."
+	advantage: super fast allocation. although the current non-moving scheme is pretty fast as well.
+we don't actually need a complete moving GC. we can move just the elements whose addresses aren't fixed in functions, since we now know exactly which those are.
+	so we preserve bump allocation, locality, and everything.
+	however, vector expansion would need to be special.

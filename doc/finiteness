@@ -1,0 +1,21 @@
+the admin takes care of finiteness instead, by looking for loops in the nonfailable-call directed graph.
+since there IS a canonical way to do it. so we don't ask the user to handle this crap and pollute finiteness everywhere.
+	for the user to specify where failure points should be, we have call_failable and call_guaranteed.
+
+implementation:
+	we have a partial order (DAG). we assign a bunch of integers everywhere to try to create a total order from this partial order.
+	when we insert, we push around existing integers until we can fit.
+	to try to detect if we can't fit, we keep track of what we've pushed.
+
+each function is an entry in a set. it contains: an integer giving it a total order, and two sets of connections - in and out.
+	we use an integer instead of another set, because we don't have to find objects by their finiteness.
+the fastest way to add a node is to add it along with all of its connections.
+	that way, you can find the proper cutoff in the connections that makes you move the least number of existing nodes.
+	
+finiteness "proof":
+	1. finitely many threads
+	2. each thread can run a fixed function, that is not really fixed. because of AST modification limits, the fixed functions can change a finite (fixed) number of times
+	3. fixed functions still may run for long times. the only limit is memory, so it can grow to absurd values. so we have finiteness, but not the super-finiteness that we want.
+		also, function 1 can call function 2 10 times, which calls function 3 10 times, ...
+		which leads to 10^N function calls.
+if you unroll a loop 3 times, you may also want to just add 3 every loop, at the beginning. no need for precision; finiteness is a loose mistress.

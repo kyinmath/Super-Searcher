@@ -1,0 +1,21 @@
+from x64 ABI: functions returning large structs naturally get passed a reference pointer.
+and functions returning small objects (<= 8bytes) return it in a register. which is fine, because we should copy them anyway, and we can't get pointers to them.
+
+function parameter is spilled if the address is taken. so for full pointers with backreferences (which no longer exist), it'd be spilled automatically.
+take care, if the llvm function parameters copy, then trouble with full pointers, which have issues with when to create backreferences.
+	we actually can define the copy ctor. so like C++, we can copy when desirable. but this is a hack...
+	since the user can't get the object's address until it's been passed to the function, this doesn't matter so much.
+caller cleans up the constructed data?
+	yes. it knows whether pointers are stack or heap pointers.
+	otherwise, we'd have callee cleanup to reduce code bloat
+	and, it makes writing our C++ functions easier.
+
+function return, the concatenation arguments are returned fully. the caller owns them.
+function parameter is reference-only. the device that passes them in owns them, because it's the only one that knows what type they really are.
+Problem: we haven't updated our type_check function to reflect this. you can get a reference to a full pointer as a cheap pointer.
+
+finiteness: you can only freely call a function whose finiteness number is greater than yours.
+finiteness can only be moved upwards. thus, any function which calls in can never have its assumption violated.
+however, finiteness still must be visible from the origin.
+but, this will result in gradual rot as finiteness moves up invariantly. most likely, the user will be allowed to "rebase" himself during a clean sweep, by moving every number down simultaneously
+

@@ -1,0 +1,47 @@
+initial learning will come through automated artificial selection for simplistic pattern recognition.
+it has to be as fast as possible, yet still retain potential for improvement.
+
+idea for automatic testing:
+1. the admin, separately, creates a random function that sprays out a huge amount of data. it has some global integers. the function reads the global integers, maybe tweaks them, then uses data to set other global integers. the user only gets to see half of the global integers.
+then, the user tries to do its best to fit the half of the integers that it can see.
+	generally, there should be some that are easy and some that are difficult. there's a lot of variance in the difficulty of fitting these random functions.
+	what's more, the function should change gradually as time goes on. each little module changes how it reads/manipulates/stores the integers, so the user must adapt.
+this competition should be head-to-head. otherwise, there's huge variance in the difficulty of problems that appear.
+how it works: this emphasizes judgment testing, which is first order, which is awesome.
+	judgment should try a lot of different functions. the one that works wins.
+		this has the benefit of: being able to self-test goodness. which lets you try lots of functions.
+		disadvantage: it's win-or-lose. no half-way. and no metric of how well you're doing, until you actually win.
+
+thus, ideally:
+1. the test is something the user can compare for himself, and run lots of tries on. like a race, such that its results don't interact with some bottleneck like another player
+2. the test gives a gradient of results.
+	we can actually try this a bit. in our automatic testing, we add a bunch of different values together, all equally weighted. so being close to the right value actually means something.
+3. test is fast.
+
+head to head competition of NP complete problems.
+IQ tests
+doing basic arithmetic (addition subtraction etc.)
+short answer questions (what is the tallest building in the world?) (develops internet access)
+identification (what is this object? an apple? what is this number?)
+speech transcription
+book transcription
+matching texts fed through the IO system with texts seen through vision
+playing games (Go, poker, number recognition)
+sokoban
+word games (crosswords, unscramble, find the word)
+speaking
+
+olympiad problems
+
+playing Go: you get a total amount of time for a single round-robin cycle. At the end of the cycle, your time resets.
+At any point you can pass. When you pass, you submit a score you think is correct.
+	Passing is beneficial because it saves you time.
+
+humor
+
+
+goals:
+understanding of text and speech
+production of text and speech
+decision making and problem solving (logic)
+taking in information from the outside

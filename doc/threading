@@ -1,0 +1,28 @@
+what's the advantage of more threads vs more processes?
+threads: "free" (atomic) and invasive communication. no need for acceptance from both ends.
+	ASTs and Types still can't be overwritten in the other case, because they have variable size. but it's the same here.
+processes: isolation. automatic cross-thread boundaries. separate sovereigns; no free manipulation of others.
+	no need for atomics, such as when writing values out to heap memory.
+	no need for atomics with the unique type tree
+	no need for atomics with functions
+		which means even though our functions are immut, they can still be modified.
+		which means we can builfd recursive functions that can call themselves. otherwise, we'd need a lock on those functions
+	easy to kill parts; a logical boundary. the sub-user culling can be farmed out to the cross-user culling
+		which means we only need a single CPU per country. which makes each logical unit more fault-tolerant.
+	easy to collect memory on death.
+	easy to collect memory normally, pausefree. the chance that everyone is down for GC is super low. no more pause time.
+		this means we can do GC tricks like moving GC.
+	higher throughput, since our GC is massively simplified. we can have long pauses without worrying, since there are so many distinct, self-functioning units.
+		no need for write barriers, which means pointers don't have to update trees every time they manipulate anything
+	out-of-control things are isolated, since acceptance is required from both ends. this lets us place a full system on only a single CPU, instead of requiring multiple discrete systems.
+	much less potential for programmer (me) error, since the threading is entirely gone. no threads, no thread ASTs, no memory fences, etc.
+	less potential for outside error, such as data races in llvm, or the kernel. smaller attack surface
+	we'd need communication anyway, since users in a country need to communicate during a competition. now, since we can fit every user on a single machine, it's far easier.
+		much faster country communication, since each user is so much lighter in threads, so I can fit the entire country on a single system.
+	less AST complexity, since no need to manage the different threads. a layer of interference has disappeared. otherwise, there would be functionality duplicated between thread culling and user culling, and many more ASTs to worry about
+	dynamic objects can be overwritten freely, since there are no more datarace worries
+	functions can be overwritten freely (as long as you remember the old one somewhere so you can GC it).
+	user does not need to worry about dataraces and guard against them, which would be generally impossible for the user to do. there are short term benefits to randomly deleting locks, and long term consequences. the user can't keep these guards alive. having high security on the locks would mean extra information, which means super expensive locks.
+	parameter-less functions work, because you can make the parameters in a stack-like fashion without worrying about other functions mishandling the global variables you're touching.
+	super easy atomics for us. no memory fences at all. that means we can reorder instructions like a total mofo with zero thought, by making write_into_single super delayed.
+	event-driven framework. no need for specific threads.

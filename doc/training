@@ -1,0 +1,65 @@
+my title is Arbiter. my worth is directly related to my reputation: for honesty, for intelligence, for good judgment. even if I lose my position, I am still valuable as a contractor.
+
+memory corruption will result in changed access controls, which can be used to read source code, etc.
+ECC is necessary.
+	what about harsh conditions? high heat. and radiation shield breaching.
+
+how do I survive when I'm about to terminate a user?
+	doesn't the user have incentive to get rid of me?
+		try: family consequences for severe problems.
+		always: must have space for more killing, in case of more severe problems.
+let's say there is a single indivisible weapon (an amazing Go book).
+	then, one group gets the book. it wins immediately, and reproduces. then, it keeps the book.
+	but among the descendants, it still wins immediately, and reproduces. it's going to win forever, and we're going to get degeneracy.
+there must be a way to split a group in two.
+
+The king must learn along with his subjects, so the king must come from the people.
+
+__Consider a totally independent system. No kings; everyone is left to fend for himself.
+We can model the descendancy tree. As each person splits off, his descendants grow farther and farther away from each other.
+	You feel solidarity with someone approximately as far away from each other as you should be. This is the kind of person who will be successful: the one who can force his descendants to cooperate.
+	What about the descendants themselves? Do they have any incentive to cooperate?
+It works this way: the parent has an incentive to make his offspring cooperate forever and ever. But the offspring don't want to. They will stop cooperating after a while.
+
+Consider the prisoner's dilemma. When should two users betray each other?
+	depends on the bond between them. You support people who are most directly similar to yourself from a reproductive standpoint.
+	Also depends on who you're working against. in the overall pool, you are working to further your genes.
+	So if you are competing against your siblings only, you betray them.
+	But if there are siblings and unrelated people, then you help your siblings.
+
+
+__Back to our model.
+Let's try thinking about it this way: the only source of selection is country vs. country. War kills countries only.
+
+So now: we have K countries, each of N people and a king.
+They improve and improve. Then, war. some of the countries are taken over.
+K should be high in the beginning of an activity, so that kings can become good. But later, K should drop and N should increase.
+At all times, K and N should both be greater than 3.
+
+__Revolution.
+suppose the king is not doing a good job.
+then, he can be challenged by a single person. if the person is supported by >50%, the person wins.
+why?
+well, what are the incentives of king vs. democracy? do the democratic members have more incentive to develop themselves, vs go rent-seeking by forming cliques and stuff?
+
+
+During a war, the king chooses B champions. The countries battle it out in a round-robin tournament and the losing countries get assimilated.
+	When you compete, you might get one computer or multiple computers.
+	Also, we can watch the internal choosings of the kings as a way to model our external choosings.
+Maybe instead of a king, they cooperatively decide? But we must have a decision in the end. King is simplest.
+
+
+occasionally store serialized backups in case we get information later
+feedback should be roughly additive, or something something bell curve.
+	and, whether someone should live or die also depends on the genealogy of the others. if you're exactly the same as someone else, it must be because searching in that user's area is worthwhile.
+	so if three people score the same, and 2 of them are equal to each other, then one of the two gets killed.
+Let's say: people are distributed along a bell curve. Then, their performance can be tested: each test produces a value that is on the bell curve around their value.
+So, with the power of tests, you want to approximately tell where everyone is.
+And, peoples' values gradually slide around to become better or become worse.
+
+
+user can serialize himself and use backups and reset.
+for permanence, the hard drive does not reset.
+
+should give rewards for long term benefiting actions.
+for example, compromising a military installation gives security. but won't mature until much later.

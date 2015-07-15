@@ -1,0 +1,33 @@
+1. we have a directed-judgment function. it randomly gets things (how) and then modifies them. it should have some purpose. 
+to do this, it picks a function, looks for static-object ASTs, and changes them. but it remembers the old values.
+	then it runs the simulation, assigns goodness, and decides to revert or not.
+	it creates random functions, and inserts calls to them.
+		random AST creation is mostly by copying existing sets of ASTs, then maybe making some individual random tweaks
+	there is a huge mess of global integers that are randomly modified. basically, neurotransmitter levels. there are some functions which store constant values into them, some functions which grab some levels and then randomly store into other levels.
+	loops should be able to modify their condition somehow, and are under great suspicion.
+how can it find ASTs? that's because all the ASTs must be stored in a vector.
+	they should all be versioned, as well. with some level of "goodness". when you fail to make a change, the "stability" value goes up. high stability = low rate of changing.
+2. we have a goodness function. somehow, it produces an evaluation of how well you did, and encodes them in some global variables somewhere.
+	then, the directed-judgment function uses these special goodness values to do something.
+3. random-judgment function.
+	randomly changes the goodness function and the directed-judgment function, and itself. also gets values from goodness, to randomly decide its behavior.
+	it also makes copies of the directed-judgment function, occasionally kills them.
+	these functions ought to be run in parallel.
+4. culling function. we don't want memory to explode. so this takes especially useless functions and throws them away.
+how do we decide which functions should be called?
+	there should be some "reset" functions, that happen when something really bad happens. after a long string of badness, these functions are called.
+problem: we can't take in negative feedback, only positive feedback. this is because our changes don't have true negatives, since they're random and arbitrary.
+problem: how should threads be started? what functions should be run?
+
+_Barebones starting point
+1. system thread
+	updates the urgencies of the various vectors, controls threads, gets suspicious of infinite loops
+3. if anything becomes too big, kill it
+4. Fires send the originating function, the specific location in the AST, and a unique firing signature (so that you can backtrace the call stack).
+
+Revolution and kingship. necessary, because judgment can't repair itself.
+eventually, we'll want some kind of sexual reproduction. well, that's hard.
+
+
+copy ASTs. replace some chains of ASTs with chains of other ASTs.
+memorize a part of an AST, then insert it into another function (DNA splicing)
