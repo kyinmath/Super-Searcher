@@ -27,7 +27,9 @@ in our AST structure, the pointers point backwards, because forward makes them i
 in that case, maybe it is better to have a vector basic block.
 	+no first pointer
 	+can jump to the first element in the basic block, without needing to burn through finiteness
+	+no need for a special command to get the previous BB element.
 	---lack of linked list means that inserting instructions in the middle is ridiculous. for example, my compile_IR ufnction would be totally unmodifiable.
+
 
 
 if we get an element from an AST. we should receive a pointer_to_AST, for example if we request previous_AST, and should not receive a dynamic object.

@@ -745,6 +745,23 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 			}
 			else finish_special(nullptr, nullptr);
 		}
+	case ASTn("load_N"):
+		{
+			Type* type_of_pointer = field_results[0].type;
+			switch (type_of_pointer->tag)
+			{
+			case Typen("pointer"):
+				_t("dynamic pointer", 0, 2), //dynamic pointer. first field is the pointer to the type, second field is a pointer to the object. if either is null, both are null together.
+				//ordering is so that type pointer is at a fixed position; the dynamic object can be made an array if necessary, such as with ASTs
+				{"AST pointer", 0, 1}, //just a pointer. (a full pointer)
+				//the actual object has 2+fields: tag, then previous, then some fields.
+				{"type pointer", 0, 1},
+				//actual object is tag + fields.
+				{"function pointer", 0, 1}, //points to the function object. the purpose of not specifying the return/parameter type is given in "doc/AST pointers"
+				default:
+					return_code(type_mismatch, 0);
+			}
+		}
 	}
 	error("fell through switches");
 }
