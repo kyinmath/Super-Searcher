@@ -93,11 +93,10 @@ constexpr AST_info AST_descriptor[] =
 	//{"hello", T::null},
 	{"print_int", T::null, T::integer},
 	a("if", special_return, T::integer).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
-	{"scope", T::null, parameter_no_type_check}, //fulfills the purpose of {} from C++. does label make this obsolete? this doesn't have collisions, but it's not much of a benefit...
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
 	{"subtract", T::integer, T::integer, T::integer},
-	{"random", T::integer}, //returns a random integer
-	a("pointer", special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like the name of an object
+	{"random", T::integer}, //produces a random integer. will be made obsolete by the AES function?
+	a("pointer", special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
 	a("load", special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
 	a("concatenate", special_return).make_pointer_fields(2), //squashes two objects together to make a big object
 	{"dynamify", T::dynamic_pointer, parameter_no_type_check}, //turns a regular pointer into a dynamic pointer. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
@@ -120,7 +119,7 @@ constexpr AST_info AST_descriptor[] =
 	{ "divuu", 3 }, //2x int, subAST* on failure
 	{ "divus", 3 },
 	{ "divsu", 3 },
-	{ "divss", 3 },
+	{ "divss", 3 }, warning: some of these might have integer division by -1. and (1 << 31) / -1 is segfault.
 	{ "decr", 1 },
 	{ "less", 2 },
 	{ "lteq", 2 },

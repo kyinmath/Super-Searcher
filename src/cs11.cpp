@@ -569,8 +569,6 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 			}
 			finish_special_stack_handled(Failure_IR.IR, Failure_IR.type);
 		}
-	case ASTn("scope"):
-		finish(nullptr);
 	case ASTn("pointer"):
 		{
 			auto found_AST = objects.find(target->fields[0].ptr);
