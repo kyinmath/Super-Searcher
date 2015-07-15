@@ -74,7 +74,6 @@ unsigned compiler_object::compile_AST(uAST* target)
 	auto return_object = generate_IR(target, false);
 	if (return_object.error_code) return return_object.error_code;
 
-	turn_full(return_object.Value_references);
 	return_type = return_object.type;
 	check(return_type == get_unique_type(return_type, false), "compilation returned a non-unique type");
 	//can't be u::does_not_return, because goto can't go forward past the end of a function.
@@ -205,7 +204,7 @@ currently, the finish() macro takes in the array itself, not the pointer-to-arra
 Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, memory_location desired)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
-#define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, memory_location(), u::null, false, std::unordered_set<memory_allocation*>{}, false); } while (0)
+#define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, memory_location(), u::null, false); } while (0)
 	//if (stack_degree == 2) stack_degree = 0; //we're trying to diagnose the memory problems with label. this does nothing.
 
 	if (VERBOSE_DEBUG)
@@ -261,11 +260,11 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 		desired = memory_location(base, 0);
 	}
 
-	struct full_lifetime_handler
+	struct allocation_handler
 	{
 		memory_allocation* k;
-		full_lifetime_handler(memory_allocation* kl) : k(kl) { }
-		~full_lifetime_handler()
+		allocation_handler(memory_allocation* kl) : k(kl) { }
+		~allocation_handler()
 		{
 			if (k != nullptr) //memory allocation is active
 			{
@@ -274,22 +273,15 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 					k->allocation->eraseFromParent();
 					return;
 				}
-				if (k->references_to_me > 0)
-					k->self_is_full = true;
 				k->cast_base();
 			}
 		}
 	} dtor_handle(base);
 
-
 	//after compiling the previous elements in the basic block, we find the lifetime of this element
 	//this actually starts at 2, but that's fine.
 	uint64_t final_stack_position = object_stack.size();
 
-	
-	std::unordered_set<memory_allocation*> references; //if the return object is a pointer that might point to an alloca, this remembers it.
-	bool full_reference = false; //if the return object is a pointer that might point to a full object.
-	
 	bool passthrough = false; //if true: I'm not constructing anything; I'm just passing through values. for example, if() and concatenate(), vs random()
 
 	///end default values
@@ -336,10 +328,6 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 			}
 			if (stack_degree == 1 && move_to_stack) //otherwise, do nothing.
 			{
-				//we can't defer RVO all the way to the stack_degree = 2. but we can move it up one to concatenate() if we want. maybe we won't bother.
-
-				desired.base->references.insert(references.begin(), references.end());
-				desired.base->full_reference_possible |= full_reference;
 				desired.store(value_collection(return_value, size_of_return));
 			}
 
@@ -357,15 +345,15 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 			if (stack_degree >= 1)
 			{
 				object_stack.push({target, true});
-				auto insert_result = objects.insert({target, Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type, true, std::unordered_set<memory_allocation*>{}, false)});
+				auto insert_result = objects.insert({target, Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type, true)});
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication, 10);
-				return Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type, true, std::unordered_set<memory_allocation*>{}, false);
+				return Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type, true);
 			}
 			else //stack_degree == 0
 			{
 				object_stack.push({target, false});
-				return Return_Info(IRgen_status::no_error, return_value, memory_location(), type, false, references, full_reference);
+				return Return_Info(IRgen_status::no_error, return_value, memory_location(), type, false);
 			}
 		}
 		else return Return_Info();
@@ -479,10 +467,6 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 			builder->SetInsertPoint(MergeBB);
 			if (stack_degree == 0)
 			{
-				references = then_IR.Value_references;
-				references.insert(else_IR.Value_references.begin(), else_IR.Value_references.end());
-				full_reference = then_IR.Value_full_reference_possible || else_IR.Value_full_reference_possible;
-
 				l::Value* endPN = llvm_create_phi(then_IR.IR, else_IR.IR, then_IR.type, else_IR.type, ThenBB, ElseBB);
 				finish_special(endPN, result_type);
 			}
@@ -577,8 +561,6 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 
 			if (stack_degree == 0)
 			{
-				references = Failure_IR.Value_references;
-				full_reference = Failure_IR.Value_full_reference_possible;
 			}
 			else
 			{
@@ -598,7 +580,7 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 			Type* new_pointer_type = get_non_convec_unique_type(Typen("pointer"), found_AST->second.type);
 
 			l::Value* final_result = builder->CreatePtrToInt(found_AST->second.place.get_location(), int64_type(), s("flattening pointer"));
-			references.insert(objects.find(target->fields[0].ptr)->second.place.base);
+			objects.find(target->fields[0].ptr)->second.place.base->turn_full();
 			finish_special(final_result, new_pointer_type);
 		}
 	case ASTn("load"):
@@ -610,14 +592,10 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 			//I think atomic load is automatic on x64, but we don't need it anyway on a single-threaded app.
 			if (AST_to_load.memory_location_active == false)
 			{
-				references = AST_to_load.Value_references;
-				full_reference = AST_to_load.Value_full_reference_possible;
 				finish_special(AST_to_load.IR, AST_to_load.type);
 			}
 			else
 			{
-				references = AST_to_load.place.base->references;
-				full_reference = AST_to_load.place.base->full_reference_possible;
 				llvm::Value* final_value = load_from_memory(AST_to_load.place.get_location(), get_size(AST_to_load.type));
 				finish_special(final_value, AST_to_load.type);
 			}
@@ -633,7 +611,7 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 				memory_allocation* minibase = &allocations.back();
 				desired = memory_location(minibase, 0);
 			}
-			full_lifetime_handler stack_degree_zero(stack_degree == 0 ? desired.base : nullptr);
+			allocation_handler stack_degree_zero(stack_degree == 0 ? desired.base : nullptr);
 			uint64_t original_offset = desired.offset;
 			Return_Info half[2];
 			for (int x : {0, 1})
@@ -652,9 +630,6 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 				desired.base->size = final_size;
 				desired.base->cast_base();
 				final_value = load_from_memory(desired.get_location(), final_size);
-				references = half[0].Value_references;
-				references.insert(half[1].Value_references.begin(), half[1].Value_references.end());
-				full_reference = half[0].Value_full_reference_possible || half[1].Value_full_reference_possible;
 			}
 			else
 			{
@@ -675,27 +650,6 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 			if (field_results[0].type == nullptr) return_code(type_mismatch, 0);
 			if (field_results[0].type->tag != Typen("pointer")) return_code(type_mismatch, 0);
 			if (type_check(RVO, field_results[1].type, field_results[0].type->fields[0].ptr) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
-			if (field_results[0].Value_full_reference_possible)
-			{
-				turn_full(field_results[1].Value_references);
-			}
-			else //time to add references
-			{
-				for (auto& storage_location : field_results[0].Value_references)
-				{
-					//add all the references from field_results[1] to each possible storage location.
-					
-					if (storage_location->self_is_full)
-					{
-						turn_full(field_results[1].Value_references);
-						break;
-					}
-					for (auto& target_location : field_results[1].Value_references)
-					{
-						add_reference(storage_location->references, storage_location->full_reference_possible, target_location);
-					}
-				}
-			}
 			llvm::Value* memory_location = builder->CreateIntToPtr(field_results[0].IR, int64_type()->getPointerTo());
 
 			write_into_place(value_collection(field_results[1].IR, get_size(field_results[1].type)), memory_location);
@@ -710,9 +664,6 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 				l::Value* dynamic_object_address = field_results[0].IR;
 				l::Constant* integer_type_pointer = llvm_integer((uint64_t)field_results[0].type->fields[0].ptr);
 
-				references = field_results[0].Value_references;
-				full_reference = field_results[0].Value_full_reference_possible;
-				
 				l::Value* undef_value = l::UndefValue::get(llvm_array(2));
 				l::Value* first_value = builder->CreateInsertValue(undef_value, integer_type_pointer, std::vector < unsigned > { 0 });
 				l::Value* full_value = builder->CreateInsertValue(first_value, dynamic_object_address, std::vector < unsigned > { 1 });
@@ -802,7 +753,6 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 				l::Constant* object;
 				if (size_of_object > 1) object = l::ConstantArray::get(llvm_array(size_of_object), values);
 				else object = values[0];
-				full_reference = true;
 				finish_special(object, type_of_object);
 			}
 			else finish_special(nullptr, nullptr);

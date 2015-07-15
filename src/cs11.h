@@ -85,22 +85,4 @@ public:
 
 
 
-	//miscellaneous
-
-
-	//don't I need to know myself as well? because I need to get rid of the reference once I've made it full.
-	//this is really rubbish. what I want to turn full is a uAST*, not a Return_Info. however, we need to delete the references after turning them full.
-	//that can be done outside the function
-	void turn_full(std::unordered_set< memory_allocation*>& address_list)
-	{
-		for (auto& address : address_list)
-		{
-			if (address->self_is_full) continue; //it's already off the stack, so if it was appropriate to be full, it would already be.
-			address->self_is_full = true;
-			if (address->size)
-				address->cast_base();
-			turn_full(address->references);
-		}
-		address_list.clear();
-	}
 };

@@ -11,28 +11,28 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="unwrappedsrc\cs11.cpp" />
-    <ClCompile Include="unwrappedsrc\memory.cpp" />
-    <ClCompile Include="unwrappedsrc\testdriver.cpp" />
-    <ClCompile Include="unwrappedsrc\types.cpp" />
-    <ClCompile Include="unwrappedsrc\type_creator.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="unwrappedsrc\ASTs.h" />
-    <ClInclude Include="unwrappedsrc\cs11.h" />
-    <ClInclude Include="unwrappedsrc\debugoutput.h" />
-    <ClInclude Include="unwrappedsrc\function.h" />
-    <ClInclude Include="unwrappedsrc\globalinfo.h" />
-    <ClInclude Include="unwrappedsrc\helperfunctions.h" />
-    <ClInclude Include="unwrappedsrc\lock.h" />
-    <ClInclude Include="unwrappedsrc\memory.h" />
-    <ClInclude Include="unwrappedsrc\orc.h" />
-    <ClInclude Include="unwrappedsrc\types.h" />
-    <ClInclude Include="unwrappedsrc\type_creator.h" />
-    <ClInclude Include="unwrappedsrc\user_functions.h" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="ClassDiagram.cd" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\ASTs.h" />
+    <ClInclude Include="src\cs11.h" />
+    <ClInclude Include="src\debugoutput.h" />
+    <ClInclude Include="src\function.h" />
+    <ClInclude Include="src\globalinfo.h" />
+    <ClInclude Include="src\helperfunctions.h" />
+    <ClInclude Include="src\lock.h" />
+    <ClInclude Include="src\memory.h" />
+    <ClInclude Include="src\orc.h" />
+    <ClInclude Include="src\types.h" />
+    <ClInclude Include="src\type_creator.h" />
+    <ClInclude Include="src\user_functions.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\cs11.cpp" />
+    <ClCompile Include="src\memory.cpp" />
+    <ClCompile Include="src\testdriver.cpp" />
+    <ClCompile Include="src\types.cpp" />
+    <ClCompile Include="src\type_creator.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A3908F65-10ED-4CB5-AC9B-B1D10CDAB936}</ProjectGuid>

@@ -1,10 +1,14 @@
-with concatenate(), we want to concatenate small objects to create a larger object. however, we don't want to copy things over and over. thus, we utilize RVO.
-if stack_degree = 2, it calls get_size, which creates a stack that remembers all size information. the purpose is so that if we have a large tree of concatenate()s, we don't want to get_size over and over. thus, we preserve the size_information in a stack.
-if stack_degree = 1, then it retrieves the size of the object from the stack instead of calling get_size.
-if stack_degree = 0, it first builds the object inside stack memory, so that we have RVO. then, it copies the object from stack memory to become a pointer.
 
-
-In the future:
-the tag "concatenate" treats size finding in a special way. since get_size() works recursively on child nodes in a tree, we don't want to run get_size() over and over for all the child nodes in a tree. therefore, get_size() stores the sizes of "concatenate" objects in a stack, to be retrieved later.
-furthermore, this creates an alloca if stack_degree = 2.
-	this should happen for if statements too. any time we do a recursive check, it's a good idea to store.
+concatenate() was formerly necessary for passing in values to functions, but we don't have function parameters anymore.
+concatenate(), or something like it, is necessary for passing in values to create_AST().
+	although in this case, a vector would be more useful.
+are static concatenations any good? you may want to dynamically concatenate multiple objects. however, you can just do dynamic concatenation and the admin will optimize it out.
+compilation() returns errors, but that is also dynamic.
+	no, it's not. it returns both an error code and a dynamic object.
+	well, we can bake the error code into the dynamic object. but that will require us to add a special failure case "in case" the error code fails.
+	we could also remove the error code entirely.
+other than that, no ASTs return concatenations.
+for the user, some objects usually belong together. like nodes in a tree. for recursive types, we can rely on dynamic pointers. but what about other types?
+	concatenations are useless locally. it's only when you put them in the heap, and pass them to functions, that they matter.
+	so: when should we pass a concatenation from function to function, such that the object is not recursive?
+however, it doesn't make sense if we force things to become dynamic before concatenating them. that requires a lot of steps: making pointers to them (hard), changing the pointer to dynamic (hard), and then finally concatenating them.

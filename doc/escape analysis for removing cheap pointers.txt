@@ -4,37 +4,39 @@ as we get pointers floating around, we track the memory_allocations they point t
 		this is simply determined by checking the memory_allocation when it goes out of scope. if there are still pointers to it, it is forced to become full.
 then, we force the return object and memory_location to become full, by ReplaceInstWithInst on the memory_location, and then forcing upwards the self_lifetime and target_lifetime of the target.
 
-concatenate() was formerly necessary for passing in values to functions, but we don't have function parameters anymore.
-concatenate(), or something like it, is necessary for passing in values to create_AST().
-	although in this case, a vector would be more useful.
-are static concatenations any good? you may want to dynamically concatenate multiple objects. however, you can just do dynamic concatenation and the admin will optimize it out.
-compilation() returns errors, but that is also dynamic.
-	no, it's not. it returns both an error code and a dynamic object.
-	well, we can bake the error code into the dynamic object. but that will require us to add a special failure case "in case" the error code fails.
-	we could also remove the error code entirely.
-other than that, no ASTs return concatenations.
-for the user, some objects usually belong together. like nodes in a tree. for recursive types, we can rely on dynamic pointers. but what about other types?
-	concatenations are useless locally. it's only when you put them in the heap, and pass them to functions, that they matter.
-	so: when should we pass a concatenation from function to function, such that the object is not recursive?
-however, it doesn't make sense if we force things to become dynamic before concatenating them. that requires a lot of steps: making pointers to them (hard), changing the pointer to dynamic (hard), and then finally concatenating them.
 
-idea: we disallow getting pointer offsets entirely, load only?
-	then, what will happen to dynamic pointers?
+problem: loops work with pointer targeting?
+suppose we have pointers A, B. memory locations C, D.
+B points to C. then B is stored in A; A points to C.
+then B is changed to point to D, and then we loop.
+	now, the problem is that in the loop, A will be changed to point to D as well.
+
+so when a pointer A is copied into another pointer B, we can't just copy the lifetimes. B has to remember a pointer to A's unordered set.
+	when A goes out of scope, its references must all be spilled into B.
+	this can be placed into A's destructor. right now, the destructor simply decreases references. we should force it to spill before dropping all its references.
 
 
-a vector is good in general. simple long-chain types are not that good, because you must make a new type every single time you add (since types are immutable)
-	although...if we can guarantee that vector types are always private, so one dynamic object <=> one private type, and disallow copying types, then that will be awesome.
-	and it'll be invisible to the user as well.
-		this will also allow invisible spying on additions to the vector. that's good, but are there downsides?
-		ASTs might occasionally embed dynamic pointers using double indirection (dynamic to dynamic, thus storing the second dynamic as fixed), and in that case it's mostly fine.
+http://lists.cs.uiuc.edu/pipermail/llvmdev/2010-July/033013.html:
+That depends what you mean by "escape". The LLVM concept of 'capture' 
+means, "did the pointer outlive the function call?" We use this in an 
+interprocedural context, for example, you can call strlen() with a 
+pointer and rest assured that no copies of the pointer were made.
 
-dynamic objects vs dynamic pointers?
-	dynamic objects I think, mainly want to be overwritten.
-	ASTs actually want dynamic objects, not pointers.
-	recursive types want dynamic pointers.
+While this is useless for malloc elimination in the general case (you 
+care whether the callee might call free() not just whether it makes a 
+copy) in your case with no explicit frees I think it's probably 
+equivalent. The API is in include/llvm/Analysis/CaptureTracking.h, and 
+link to libAnalysis.
+	so llvm can do escape analysis for us. however, we'd have to somehow let llvm know that certain constants are global addresses.
 
-instead of dynamify(), we can have convert_pointer_to_dynamic_pointer().
-	so you load the pointer, then you convert that pointer. seems good.
+escape analysis is not easy. thus, we'll just do it very primitively, and not bother with much.
+	any time you take a pointer to an allocation, that allocation is assumed to be captured, and should be moved to the heap.
+
+
+
+our old escape analysis actually cost 20% run time! holy crap!
+our escape analysis was really prone to bugs. every case had to be considered. things like dynamic_conc were ridiculous.
+
 
 
 

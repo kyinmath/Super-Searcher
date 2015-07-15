@@ -118,12 +118,10 @@ struct memory_allocation
 	llvm::Instruction* allocation = create_empty_alloca(); //AllocaInst* a = alloca i64, size, or an allocate() address
 	uint64_t size = 0;
 
-	bool self_is_full = 0; //use turn_full(). don't manipulate this directly.
-	uint64_t references_to_me = 0; //how many pointers exist to this memory location. if the memory location tries to fall off the stack while references still exist, it is made into a full pointer.
+private:
+	bool self_is_full = false; //use turn_full(). don't manipulate this directly.
+public:
 	uint64_t version = 1; //used to version the allocation. when the allocation changes, the cached offsets of memory_location need to change as well.
-
-	std::unordered_set<memory_allocation*> references; //outward references. this memory allocation contains pointers that points to these things.
-	bool full_reference_possible;
 
 	void cast_base() //if this should be a heap alloca, mark self_is_full before calling this.
 	{
@@ -141,6 +139,14 @@ struct memory_allocation
 
 		++version;
 		allocation = new_alloca;
+	}
+	void turn_full()
+	{
+		if (self_is_full == false)
+		{
+			self_is_full = true;
+			cast_base();
+		}
 	}
 };
 
@@ -194,18 +200,6 @@ inline llvm::Value* load_from_memory(llvm::Value* location, uint64_t size)
 	return undef_value;
 }
 
-
-inline void add_reference(std::unordered_set<memory_allocation*>& references, bool& full_reference_possible, memory_allocation* base)
-{
-	if (base->self_is_full)
-	{
-		full_reference_possible = true;
-		return;
-	}
-	++(base->references_to_me);
-	references.insert(base);
-}
-
 //every time IR is generated, this holds the relevant return info.
 struct Return_Info
 {
@@ -221,48 +215,19 @@ struct Return_Info
 	Type* type;
 	bool memory_location_active;
 
-	//if memory_location_active == 1, the references are in the memory_location. this is because they are bound to the actual object.
-	//otherwise, they are here in Value_references
-	//so these references are by the IR if it's a temp object, and they're by the memory_allocation if it's not.
-
-	//this should eventually be changed to an unordered_set, to prevent exponential doubling of the vector size.
-	std::unordered_set<memory_allocation*> Value_references; //if this points to any memory locations that might be on the stack, then these are the uASTs.
-	//those memory locations may nevertheless be in the heap anyway. however, we guarantee that any memory location that is on the stack must be here.
-	//if escape analysis tells you the memory location needs to become full, then go over there and change things.
-
-	bool Value_full_reference_possible; //you might be pointing to a full object. used for store(), where we must update references. if this is true, then instead of updating references, we force the stored pointer's references to become full immediately.
-	//prefer: if a reference can be found, place it in the vector, which accepts all references. the bool is a last-ditch effort to catch unknowable things, and results in slowdowns. it's for when there isn't a meaningful reference to be found.
-	//this also only exists if memory_location_active = 0
 
 	//either b or m must be null. both of them can't be active at the same time.
-	Return_Info(IRgen_status err, llvm::Value* b, memory_location m, Type* t, bool o, std::unordered_set<memory_allocation*> bases, bool full)
-		: error_code(err), IR(b), place(m), type(t), memory_location_active(o), Value_full_reference_possible(full)
+	Return_Info(IRgen_status err, llvm::Value* b, memory_location m, Type* t, bool o)
+		: error_code(err), IR(b), place(m), type(t), memory_location_active(o)
 	{
-		if (!memory_location_active)
-		{
-			for (auto* const & memory : bases)
-				add_reference(Value_references, Value_full_reference_possible, memory);
-		}
-		else for (auto* const & memory : bases)
-			add_reference(place.base->references, place.base->full_reference_possible, memory);
 	}
 
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
-	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), memory_location_active(false), Value_full_reference_possible(false) {}
+	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), memory_location_active(false) {}
 
 
-	~Return_Info()
-	{
-		if (!memory_location_active)
-		{
-			for (auto* const& memory : Value_references)
-				--(memory->references_to_me);
-		}
-		else for (auto* const& memory : place.base->references)
-			--(memory->references_to_me);
-	}
 };
 
 

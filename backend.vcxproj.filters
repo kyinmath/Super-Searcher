@@ -15,61 +15,61 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="unwrappedsrc\cs11.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="unwrappedsrc\types.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="unwrappedsrc\testdriver.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="unwrappedsrc\memory.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="unwrappedsrc\type_creator.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="unwrappedsrc\types.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\debugoutput.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\cs11.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\lock.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\ASTs.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\function.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\memory.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\orc.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\type_creator.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\user_functions.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\globalinfo.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="unwrappedsrc\helperfunctions.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
     <None Include="ClassDiagram.cd" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\ASTs.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\cs11.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\debugoutput.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\function.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\globalinfo.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\helperfunctions.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\lock.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\memory.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\orc.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\type_creator.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\types.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\user_functions.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\cs11.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\memory.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\testdriver.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\type_creator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\types.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
