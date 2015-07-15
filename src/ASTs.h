@@ -93,7 +93,7 @@ constexpr AST_info AST_descriptor[] =
 	//{"hello", T::null},
 	{"print_int", T::null, T::integer},
 	a("if", special_return, T::integer).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
-	{"scope", T::null, parameter_no_type_check}, //fulfills the purpose of {} from C++
+	{"scope", T::null, parameter_no_type_check}, //fulfills the purpose of {} from C++. does label make this obsolete? this doesn't have collisions, but it's not much of a benefit...
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
 	{"subtract", T::integer, T::integer, T::integer},
 	{"random", T::integer}, //returns a random integer
@@ -112,8 +112,8 @@ constexpr AST_info AST_descriptor[] =
 	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both
 	//{"load_static_from_AST", T::dynamic_pointer, T::AST_pointer},
 	//{"write_into_AST", T::integer, T::integer, T::AST_pointer}, //writes a field. the integer comes first because it logically decides the field.
-	//type of function. this is a function thing instead of an AST thing, because compilation verifies correctness, which is necessary for the return type to be meaningful.
-	//
+	//{"type_of_function", T::type_pointer, T::function}, this is a function thing instead of an AST thing, because compilation verifies correctness, which is necessary for the return type to be meaningful.
+	//a("do_after", T::special_return, parameter_no_type_check).make_pointer_fields(2),
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
 	{ "mul", 2 },
@@ -173,7 +173,7 @@ inline Type* get_AST_fields_type(uint64_t tag)
 
 inline Type* get_AST_full_type(uint64_t tag)
 {
-	return concatenate_types(std::vector<Type*>{u::integer, u::AST_pointer, get_AST_fields_type(tag)});
+	return concatenate_types({u::integer, u::AST_pointer, get_AST_fields_type(tag)});
 }
 
 #include "memory.h"

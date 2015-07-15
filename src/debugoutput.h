@@ -1,5 +1,6 @@
 /*
 output_AST_and_previous() shows an AST and everything it depends on.
+output_AST_console_version() is a superior AST printer.
 output_Type_and_previous() is similar.
 Module->print(*llvm_console, nullptr) prints the generated llvm code.
 */
@@ -22,7 +23,7 @@ public:
 	basic_onullstream() :
 		std::basic_ios<cT, traits>(&m_sbuf),
 		std::basic_ostream<cT, traits>(&m_sbuf)
-	{ // note: the original code is missing the required this->
+	{
 		this->init(&m_sbuf);
 	}
 
@@ -66,7 +67,6 @@ inline void output_type_and_previous(Type* target)
 //only call on a non-nullptr target. outputs a single AST.
 inline void output_AST(uAST* target)
 {
-	//uAST* target = locked_target->bypass(); //ignore all locks
 	if (target == nullptr)
 	{
 		console << "null AST\n";
@@ -100,7 +100,6 @@ inline void output_AST_and_previous(uAST* target)
 	if (target->preceding_BB_element != nullptr)
 		output_AST_and_previous(target->preceding_BB_element);
 	unsigned number_of_further_ASTs = AST_descriptor[target->tag].pointer_fields;
-	//boost::irange may be useful, but pulling in unnecessary (possibly-buggy) code is bad
 	for (unsigned x = 0; x < number_of_further_ASTs; ++x)
 		if (target->fields[x].ptr != nullptr)
 			output_AST_and_previous(target->fields[x].ptr);

@@ -6,7 +6,7 @@ valgrind
 	valgrind ./toy benchmark
 	found memory errors! very useful. search for "==" and read-error or whatever.
 cppcheck
-	cppcheck ../unwrappedsrc/
+	cppcheck ../src/
 coverity
 viva64
 

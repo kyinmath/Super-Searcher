@@ -99,8 +99,8 @@ unsigned compiler_object::compile_AST(uAST* target)
 			llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(size_of_return));
 			for (uint64_t a = 0; a < size_of_return; ++a)
 			{
-				llvm::Value* integer_transfer = builder->CreateExtractValue(return_object.IR, std::vector < unsigned > { (unsigned)a });
-				undef_value = builder->CreateInsertValue(undef_value, integer_transfer, std::vector < unsigned > { (unsigned)a });
+				llvm::Value* integer_transfer = builder->CreateExtractValue(return_object.IR,  { (unsigned)a });
+				undef_value = builder->CreateInsertValue(undef_value, integer_transfer,  { (unsigned)a });
 			};
 			builder->CreateRet(undef_value);
 		}
@@ -414,10 +414,10 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 	case ASTn("print_int"):
 		{
 			l::Value* printer = llvm_function(print_uint64_t, void_type(), int64_type());
-			finish(builder->CreateCall(printer, std::vector<l::Value*>{field_results[0].IR})); //, s("print"). can't give name to void-return functions
+			finish(builder->CreateCall(printer, {field_results[0].IR})); //, s("print"). can't give name to void-return functions
 		}
 	case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
-		finish(builder->CreateCall(llvm_function(generate_random, int64_type()), std::vector<l::Value*>{}, s("random")));
+		finish(builder->CreateCall(llvm_function(generate_random, int64_type()), {}, s("random")));
 	case ASTn("if"): //it's vitally important that this can check pointers, so that we can tell if they're nullptr.
 		{
 			//since the fields are conditionally executed, the temporaries generated in each branch are not necessarily referenceable.
@@ -638,7 +638,7 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 				final_value = nullptr;
 			}
 
-			Type* final_type = get_unique_type(concatenate_types(std::vector < Type* > {half[0].type, half[1].type}), true);
+			Type* final_type = get_unique_type(concatenate_types({half[0].type, half[1].type}), true);
 			finish_special_stack_handled(final_value, final_type);
 		}
 
@@ -655,15 +655,15 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 	case ASTn("dynamify"):
 		{
 			if (field_results[0].type == 0)
-				finish(l::ConstantArray::get(llvm_array(2), std::vector<l::Constant*>{llvm_integer(0), llvm_integer(0)}));
+				finish(l::ConstantArray::get(llvm_array(2), {llvm_integer(0), llvm_integer(0)}));
 			if (field_results[0].type->tag == Typen("pointer"))
 			{
 				l::Value* dynamic_object_address = field_results[0].IR;
 				l::Constant* integer_type_pointer = llvm_integer((uint64_t)field_results[0].type->fields[0].ptr);
 
 				l::Value* undef_value = l::UndefValue::get(llvm_array(2));
-				l::Value* first_value = builder->CreateInsertValue(undef_value, integer_type_pointer, std::vector < unsigned > { 0 });
-				l::Value* full_value = builder->CreateInsertValue(first_value, dynamic_object_address, std::vector < unsigned > { 1 });
+				l::Value* first_value = builder->CreateInsertValue(undef_value, integer_type_pointer, { 0 });
+				l::Value* full_value = builder->CreateInsertValue(first_value, dynamic_object_address,  { 1 });
 				finish(full_value);
 			}
 			else return_code(type_mismatch, 0);
@@ -672,8 +672,8 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 		{
 			l::Value* type;
 			l::Value* pointer;
-				type = builder->CreateExtractValue(field_results[0].IR, std::vector<unsigned>{0}, s("type pointer of dynamic"));
-				pointer = builder->CreateExtractValue(field_results[0].IR, std::vector<unsigned>{1}, s("object pointer of dynamic"));
+				type = builder->CreateExtractValue(field_results[0].IR, {0}, s("type pointer of dynamic"));
+				pointer = builder->CreateExtractValue(field_results[0].IR, {1}, s("object pointer of dynamic"));
 
 			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
 			//if ever the optimization changes, we might be in trouble.
@@ -686,7 +686,7 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 			std::vector<l::Value*> arguments{type, pointer, static_type};
 			l::Value* result_of_conc = builder->CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
 
-			l::Value* integer_pointer_to_object = builder->CreateExtractValue(result_of_conc, std::vector<unsigned>{1}, s("pointer to object"));
+			l::Value* integer_pointer_to_object = builder->CreateExtractValue(result_of_conc, {1}, s("pointer to object"));
 			l::Value* pointer_to_object = builder->CreateIntToPtr(integer_pointer_to_object, int64_type()->getPointerTo());
 			write_into_place({field_results[1].IR, get_size(field_results[1].type)}, pointer_to_object);
 			finish(result_of_conc);
@@ -697,13 +697,12 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 
 			llvm::AllocaInst* return_holder = create_actual_alloca(3);
 			llvm::Value* forcing_return_type = builder->CreatePointerCast(return_holder, int64_type()->getPointerTo(), "forcing return type");
-			builder->CreateCall(compile_function, std::vector<l::Value*>{forcing_return_type, field_results[0].IR}); //, s("compile"). void type means no name allowed
+			builder->CreateCall(compile_function, {forcing_return_type, field_results[0].IR}); //, s("compile"). void type means no name allowed
 			auto return_object = builder->CreateLoad(return_holder);
 			finish(return_object);
 		}
 	case ASTn("convert_to_AST"):
 		{
-
 			l::Value* previous_AST;
 			if (type_check(RVO, field_results[1].type, nullptr) == type_check_result::perfect_fit) //previous AST is nullptr.
 				previous_AST = llvm_integer(0);
@@ -712,25 +711,23 @@ Return_Info compiler_object::generate_IR(uAST* target, unsigned stack_degree, me
 			else return_code(type_mismatch, 1);
 
 
-			l::Value* type = builder->CreateExtractValue(field_results[2].IR, std::vector < unsigned > {0}, s("type of hopeful AST"));
-			l::Value* pointer = builder->CreateExtractValue(field_results[2].IR, std::vector < unsigned > {1}, s("fields of hopeful AST"));
+			l::Value* type = builder->CreateExtractValue(field_results[2].IR, {0}, s("type of hopeful AST"));
+			l::Value* pointer = builder->CreateExtractValue(field_results[2].IR, {1}, s("fields of hopeful AST"));
 
 			l::Value* converter = llvm_function(dynamic_to_AST, int64_type(), int64_type(), int64_type(), int64_type(), int64_type());
 			std::vector<l::Value*> arguments{field_results[0].IR, previous_AST, type, pointer};
 			l::Value* AST_result = builder->CreateCall(converter, arguments, s("converter"));
 
 			finish(AST_result);
-
 		}
 	case ASTn("run_function"):
 		{
-			llvm::Type* agg_type = llvm::StructType::get(*context, std::vector < llvm::Type* > {{int64_type(), int64_type()}});
+			llvm::Type* agg_type = llvm::StructType::get(*context,  {{int64_type(), int64_type()}});
 			llvm::Value* runner = llvm_function(run_null_parameter_function, agg_type, int64_type());
-			l::Value* run_result = builder->CreateCall(runner, std::vector < l::Value* > {field_results[0].IR});
+			l::Value* run_result = builder->CreateCall(runner,  {field_results[0].IR});
 
 			finish(run_result);
 		}
-			
 	case ASTn("load_object"): //bakes in the value into the compiled function. changes by the function are temporary.
 		{
 			Type* type_of_object = (Type*)target->fields[0].ptr;

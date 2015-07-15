@@ -101,11 +101,11 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 		BasicBlock *BB(BasicBlock::Create(*context, "entry", trampoline));
 		new_builder.SetInsertPoint(BB);
 		Value* target_function = llvm_function(fptr, llvm_type(size_of_return));
-		Value* result_of_call = new_builder.CreateCall(target_function, std::vector < llvm::Value* > {});
+		Value* result_of_call = new_builder.CreateCall(target_function, {});
 
 		//START DYNAMIC
 		llvm::Value* allocator = llvm_function(allocate, int64_type()->getPointerTo(), int64_type());
-		llvm::Value* dynamic_object_raw = builder->CreateCall(allocator, std::vector < llvm::Value* > {llvm_integer(size_of_return)});
+		llvm::Value* dynamic_object_raw = builder->CreateCall(allocator, {llvm_integer(size_of_return)});
 		llvm::Type* target_pointer_type = llvm_type(size_of_return)->getPointerTo();
 		llvm::Value* dynamic_object = builder->CreatePointerCast(dynamic_object_raw, target_pointer_type);
 
@@ -179,7 +179,7 @@ inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_type, uint64_t
 	if (size[0] + size[1] == 0) return {{0, 0}};
 	uint64_t* new_dynamic = allocate(size[0] + size[1]);
 	for (uint64_t idx = 0; idx < size[0]; ++idx) new_dynamic[idx] = pointer[idx];
-	return std::array<uint64_t, 2>{{(uint64_t)concatenate_types(std::vector<Type*>{type[0], type[1]}), (uint64_t)new_dynamic}};
+	return std::array<uint64_t, 2>{{(uint64_t)concatenate_types({type[0], type[1]}), (uint64_t)new_dynamic}};
 }
 
 
@@ -201,7 +201,7 @@ inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t type, u
 	{
 		if (type_check(RVO, 0, get_AST_fields_type(tag)) != type_check_result::perfect_fit)
 			return 0;
-		return (uint64_t)new_AST(tag, (uAST*)previous, std::vector<uAST*>{});
+		return (uint64_t)new_AST(tag, (uAST*)previous, {});
 	}
 	else if (tag != ASTn("load_object"))
 	{

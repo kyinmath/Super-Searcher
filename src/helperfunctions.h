@@ -131,7 +131,7 @@ public:
 		else
 		{
 			llvm::Value* allocator = llvm_function(allocate, int64_type()->getPointerTo(), int64_type());
-			new_alloca = llvm::CallInst::Create(allocator, std::vector<llvm::Value*>{llvm_integer(size)});
+			new_alloca = llvm::CallInst::Create(allocator, {llvm_integer(size)});
 		}
 
 		llvm::BasicBlock::iterator ii(allocation);
@@ -195,7 +195,7 @@ inline llvm::Value* load_from_memory(llvm::Value* location, uint64_t size)
 		llvm::Value* integer_transfer;
 		llvm::Value* new_location = builder->CreateConstInBoundsGEP1_64(location, a);
 		integer_transfer = builder->CreateLoad(new_location);
-		undef_value = builder->CreateInsertValue(undef_value, integer_transfer, std::vector < unsigned > { (unsigned)a });
+		undef_value = builder->CreateInsertValue(undef_value, integer_transfer, { (unsigned)a });
 	};
 	return undef_value;
 }
