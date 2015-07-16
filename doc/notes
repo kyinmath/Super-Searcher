@@ -16,7 +16,7 @@ JuliaLang: https://github.com/JuliaLang/julia/issues/54#issuecomment-1391348
 "I checked the vmkit source to see how they handle this for java, and they emit a check for zero with every integer divide. We probably have to do this too."
 https://groups.google.com/d/msg/llvm-dev/1FOyTcEJ3FI/nCsWOyNIUjkJ
 "There is another undefined case too, which is the minimum integer divided by -1."
-C++ standard 5.6.4 "if the quotient a/b is representable in the type of the result, (a/b)*b + a%b is equal to a ; otherwise, the behavior of both a/b and a%b is undefined"
+C++ standard 5.6.4 "if the quotient a/b is representable in the type of the result, (a/b)*b + a%b is equal to a; otherwise, the behavior of both a/b and a%b is undefined"
 
 can just kill off threads that are in infinite loops, leaving the user in a valid state?
 	no, we have to handle dtors.

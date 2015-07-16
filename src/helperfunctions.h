@@ -64,18 +64,29 @@ template<typename... should_be_type_ptr, typename fptr> inline llvm::Value* llvm
 
 //we already typechecked and received 3. then, they're the same size, unless one of them is T::does_not_return
 //thus, we check for T::nonexistent
-inline llvm::Value* llvm_create_phi(llvm::Value* first, llvm::Value* second, Type* first_t, Type* second_t, llvm::BasicBlock* firstBB, llvm::BasicBlock* secondBB)
+inline llvm::Value* llvm_create_phi(llvm::ArrayRef<llvm::Value*> values, llvm::ArrayRef<Type*> types, llvm::ArrayRef<llvm::BasicBlock*> basic_blocks)
 {
-	uint64_t size1 = get_size(first_t);
-	uint64_t size2 = get_size(second_t);
+	check(values.size() == types.size(), "wrong number of arguments");
+	check(values.size() == basic_blocks.size(), "wrong number of arguments");
+	check(values.size() >= 2, "why even bother making a phi");
+	uint64_t choices = values.size();
+	if (types[0] == nullptr) return nullptr;
+	uint64_t eventual_size;
+	std::set<uint64_t> legitimate_values; //ones that aren't T::does_not_return
+	for (uint64_t idx = 0; idx < choices; ++idx)
+	{
+			if (types[idx]->tag != Typen("does not return"))
+			{
+				legitimate_values.insert(idx);
+				eventual_size = get_size(types[idx]);
+			}
+	}
+	if (legitimate_values.size() == 0) return nullptr;
+	if (legitimate_values.size() == 1) return values[*legitimate_values.begin()];
 
-	//these are in case one of them is T::does_not_return
-	if (size2 == 0) return first;
-	if (size1 == 0) return second;
-
-	llvm::PHINode* PN = builder->CreatePHI(size1 == 1 ? (llvm::Type*)i64_type() : llvm_array(size1), 2); //phi with two incoming variables
-	PN->addIncoming(first, firstBB);
-	PN->addIncoming(second, secondBB);
+	llvm::PHINode* PN = builder->CreatePHI(eventual_size == 1 ? (llvm::Type*)i64_type() : llvm_array(eventual_size), legitimate_values.size()); //phi with two incoming variables
+	for (uint64_t idx : legitimate_values)
+		PN->addIncoming(values[idx], basic_blocks[idx]);
 	return PN;
 }
 

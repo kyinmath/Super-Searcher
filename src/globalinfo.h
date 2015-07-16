@@ -26,7 +26,7 @@ inline std::string s(std::string k) { return ""; }
 //#if RELEASE
 //inline void check(bool condition, const string& Str) {}
 //#else
-inline constexpr void check(bool condition, const string& Str) { if (!condition) error(Str); }
+inline constexpr void check(bool condition, const string& Str = "") { if (!condition) error(Str); }
 //#endif
 
 extern bool OPTIMIZE;

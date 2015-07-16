@@ -402,6 +402,52 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 	case ASTn("add"): finish(builder->CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
 	case ASTn("subtract"): finish(builder->CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
 	case ASTn("increment"): finish(builder->CreateAdd(field_results[0].IR, llvm_integer(1), s("increment")));
+	case ASTn("multiply"): finish(builder->CreateMul(field_results[0].IR, field_results[1].IR, s("multiply")));
+	case ASTn("udiv"):
+		{
+			l::Value* comparison = builder->CreateICmpNE(field_results[1].IR, llvm_integer(0), s("division by zero check"));
+			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
+			l::BasicBlock *SuccessBB = l::BasicBlock::Create(*context, s("finiteness success"), TheFunction);
+			l::BasicBlock *ZeroBB = l::BasicBlock::Create(*context, s("finiteness failure"), TheFunction);
+			l::BasicBlock *MergeBB = l::BasicBlock::Create(*context, s("merge"), TheFunction);
+			builder->CreateCondBr(comparison, SuccessBB, ZeroBB);
+
+			builder->SetInsertPoint(SuccessBB);
+			llvm::Value* division = builder->CreateUDiv(field_results[0].IR, field_results[1].IR);
+			builder->CreateBr(MergeBB);
+			SuccessBB = builder->GetInsertBlock();
+
+			builder->SetInsertPoint(ZeroBB);
+			llvm::Value* default_val = llvm_integer(0);
+			builder->CreateBr(MergeBB);
+			ZeroBB = builder->GetInsertBlock();
+
+			builder->SetInsertPoint(MergeBB);
+			finish(llvm_create_phi({division, default_val}, {u::integer, u::integer}, {SuccessBB, ZeroBB}));
+		}
+
+	case ASTn("urem"): //copied from divu. except that we have URem, and the default value is the value itself instead of zero. this is to preserve (x / k) * k + x % k = x, and to preserve mod agreeing with equivalence classes on Z.
+		{
+			l::Value* comparison = builder->CreateICmpNE(field_results[1].IR, llvm_integer(0), s("division by zero check"));
+			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
+			l::BasicBlock *SuccessBB = l::BasicBlock::Create(*context, s("finiteness success"), TheFunction);
+			l::BasicBlock *ZeroBB = l::BasicBlock::Create(*context, s("finiteness failure"), TheFunction);
+			l::BasicBlock *MergeBB = l::BasicBlock::Create(*context, s("merge"), TheFunction);
+			builder->CreateCondBr(comparison, SuccessBB, ZeroBB);
+
+			builder->SetInsertPoint(SuccessBB);
+			llvm::Value* division = builder->CreateURem(field_results[0].IR, field_results[1].IR);
+			builder->CreateBr(MergeBB);
+			SuccessBB = builder->GetInsertBlock();
+
+			builder->SetInsertPoint(ZeroBB);
+			llvm::Value* default_val = field_results[0].IR;
+			builder->CreateBr(MergeBB);
+			ZeroBB = builder->GetInsertBlock();
+
+			builder->SetInsertPoint(MergeBB);
+			finish(llvm_create_phi({division, default_val}, {u::integer, u::integer}, {SuccessBB, ZeroBB}));
+		}
 	case ASTn("print_int"):
 		{
 			l::Value* printer = llvm_function(print_uint64_t, void_type(), i64_type());
@@ -454,11 +500,10 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 			builder->CreateBr(MergeBB);
 			ElseBB = builder->GetInsertBlock();
 
-			// Emit merge block.
 			builder->SetInsertPoint(MergeBB);
 			if (stack_degree == 0)
 			{
-				l::Value* endPN = llvm_create_phi(then_IR.IR, else_IR.IR, then_IR.type, else_IR.type, ThenBB, ElseBB);
+				l::Value* endPN = llvm_create_phi({then_IR.IR, else_IR.IR}, {then_IR.type, else_IR.type}, {ThenBB, ElseBB});
 				finish_special(endPN, result_type);
 			}
 			else
@@ -475,7 +520,6 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 
 	case ASTn("label"):
 		{
-			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
 			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
 
 			// Create blocks for the then and else cases.  Insert the block into the function, or else it'll leak when we return_code
@@ -540,9 +584,6 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 
 			emit_dtors(info.stack_size);
 			builder->CreateBr(labelsearch->second.block);
-			builder->ClearInsertionPoint();
-
-
 			builder->SetInsertPoint(FailureBB);
 
 			Return_Info Failure_IR = generate_IR(target->fields[2].ptr, stack_degree != 0, desired);
@@ -763,7 +804,6 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 					finish_special(result_type, u::type_pointer);
 				}
 			case Typen("function pointer"):
-
 				if (llvm::ConstantInt* k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
 				{
 					uint64_t offset = k->getZExtValue();

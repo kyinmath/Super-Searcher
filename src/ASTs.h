@@ -94,7 +94,10 @@ constexpr AST_info AST_descriptor[] =
 	a("if", special_return, T::integer).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
 	{"subtract", T::integer, T::integer, T::integer},
-	{"random", T::integer}, //produces a random integer. will be made obsolete by the AES function?
+	{"multiply", T::integer, T::integer, T::integer},
+	{"udiv", T::integer, T::integer, T::integer},
+	{"urem", T::integer, T::integer, T::integer},
+	{"random", T::integer}, //produces a random integer. will be made obsolete by the AES function? no, that would require counter mode, which isn't really possible without a global counter.
 	a("pointer", special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
 	a("load", special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
 	a("concatenate", special_return).make_pointer_fields(2), //squashes two objects together to make a big object
@@ -115,11 +118,7 @@ constexpr AST_info AST_descriptor[] =
 	//a("do_after", T::special_return, parameter_no_type_check).make_pointer_fields(2),
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
-	{ "mul", 2 },
-	{ "divuu", 3 }, //2x int, subAST* on failure
-	{ "divus", 3 },
-	{ "divsu", 3 },
-	{ "divss", 3 }, warning: some of these might have integer division by -1. and (1 << 31) / -1 is segfault.
+	{ "divss", 3 }, warning: integer division by -1 must be considered. (1 << 31) / -1 is segfault.
 	{ "decr", 1 },
 	{ "less", 2 },
 	{ "lteq", 2 },

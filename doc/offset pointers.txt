@@ -28,7 +28,7 @@ because we want to ensure that every possible input number is valid. with uint64
 especially good for dynamic type objects: this will drastically reduce the number of unsuccessful attempts
 and good since we can change sizes of objects like functions.
 
-load_N is going to make 6/7 different branches. should we allow these branches to return things?
+load_N is going to make 6/7 different branches for dynamic objects. should we allow these branches to return things?
 	if we do, we'd have to match them all up, then make a big phi.
 	it could be bad if there are useful functions with side effects that nevertheless return something. 
 

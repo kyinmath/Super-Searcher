@@ -38,11 +38,9 @@ void marky_mark(uint64_t* memory, Type* t);
 void initialize_roots();
 void sweepy_sweep();
 
-constexpr uint64_t header_size = 0; //no headers for now
-
 uint64_t* allocate(uint64_t size)
 {
-	uint64_t true_size = size + header_size;
+	uint64_t true_size = size;
 	auto k = free_memory.lower_bound(true_size);
 	if (k == free_memory.end())
 	{
@@ -57,9 +55,9 @@ uint64_t* allocate(uint64_t size)
 		free_memory.erase(k); //block is no longer free
 	else	if (found_size >= true_size) //it's a bit too big
 	{
-		if (found_size < size + 2 * header_size + 1) //if you get the element, there'll be a dead space that's too small for any allocation
+		if (found_size < size + 1) //if you get the element, there'll be a dead space that's too small for any allocation
 		{
-			k = free_memory.upper_bound(size + 2 * header_size); //find a better spot. must be >= size + 2 header + 1
+			k = free_memory.upper_bound(size); //find a better spot. must be >= size + 2 header + 1
 			if (k == free_memory.end()) error("OOM");
 			found_size = k->first;
 			found_place = k->second;
@@ -72,7 +70,7 @@ uint64_t* allocate(uint64_t size)
 
 	if (DEBUG_GC)
 	{
-		for (uint64_t* check_value = found_place; check_value < found_place + header_size; ++check_value)
+		for (uint64_t* check_value = found_place; check_value < found_place; ++check_value)
 		{
 			if ((*check_value != collected_special_value) && (*check_value != initial_special_value))
 			{
@@ -81,13 +79,9 @@ uint64_t* allocate(uint64_t size)
 			}
 		}
 	}
-	
-	if (header_size) //necessary to silence messages about tautological comparisons
-		for (uint64_t x = 0; x < header_size; ++x)
-			found_place[x] = 6666666ull; //mark and sweep allocator, so mark it. we never use this though.
 
-	if (VERBOSE_GC) console << "allocating region " << found_place + header_size << " size, not including header " << size << '\n';
-	return found_place + header_size;
+	if (VERBOSE_GC) console << "allocating region " << found_place << " size, " << size << '\n';
+	return found_place;
 }
 
 int first_zero(uint64_t mask)
@@ -294,7 +288,7 @@ void sweepy_sweep()
 		auto next_memory = living_objects.lower_bound(memory_incrementor);
 		if (next_memory == living_objects.end())
 			break;
-		uint64_t* ending_location = next_memory->first - header_size;
+		uint64_t* ending_location = next_memory->first;
 		if (VERBOSE_GC)
 		{
 			if (memory_incrementor != ending_location)

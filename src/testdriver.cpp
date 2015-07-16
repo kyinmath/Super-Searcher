@@ -122,7 +122,6 @@ panic time!
 using std::string; //this can't go inside source_reader for stupid C++ reasons
 class source_reader
 {
-
 	std::unordered_map<string, uAST*> ASTmap = {{"0", nullptr}}; //from name to location. starts with 0 = nullptr.
 	std::unordered_map<uAST**, string> goto_delay; //deferred binding of addresses, for goto. we can only see the labels at the end.
 	uAST* delayed_binding_special_value = (uAST*)1; //because of alignment, pointers to uAST must be multiples of 8
@@ -248,7 +247,7 @@ class source_reader
 		uAST* current_previous = nullptr;
 		if (create_brace_at_end == false)
 		{
-			if (std::cin.peek() == '\n') std::cin.ignore(1);
+			if (input.peek() == '\n') input.ignore(1);
 			for (string next_word = get_token(); next_word != ""; next_word = get_token())
 			{
 				current_previous = read_single_AST(current_previous, next_word);
@@ -284,6 +283,40 @@ public:
 	}
 };
 
+//no StringRef because stringstreams can't take it
+std::array<uint64_t, 2> compile_string(std::string input_string)
+{
+	std::stringstream div_test_stream;
+	div_test_stream << input_string << '\n';
+	source_reader k(div_test_stream, '\n');
+	uAST* end = k.read();
+	check(end != nullptr, "failed to make AST");
+	finiteness = FINITENESS_LIMIT;
+	uint64_t compile_result[3];
+	compile_returning_legitimate_object(compile_result, (uint64_t)end);
+	check(compile_result[1] == 0, "failed to compile");
+	return run_null_parameter_function(compile_result[0]); //even if it's 0, it's fine.
+}
+
+void test_suite()
+{
+	{
+		//random value. then check that (x / k) * k + x % k == x
+		auto run_result = compile_string("[random]a [subtract [add [multiply [udiv [load a] [imv 4]] [imv 4]] [urem [load a] [imv 4]]] [load a]]");
+		check((Type*)run_result[0] == u::integer, "div test failed type");
+		check(*(uint64_t*)run_result[1] == 0, "div test failed value");
+	}
+	{
+		auto run_result = compile_string("[imv 0]b [label]a [print_int [load b]] [store [pointer b] [add [load b] [imv 1]]] [goto a] [load b]");
+		check((Type*)run_result[0] == u::integer, "failed type");
+		check(*(uint64_t*)run_result[1] == FINITENESS_LIMIT, "failed value");
+	}
+
+	test_unique_types();
+	debugtypecheck(T::does_not_return);
+
+}
+
 int main(int argc, char* argv[])
 {
 	//tells LLVM the generated code should be for the native platform
@@ -297,16 +330,6 @@ int main(int argc, char* argv[])
 	c = &c_holder;
 
 	bool BENCHMARK = false;
-	//these do nothing
-	//assert(0);
-	//assert(1);
-
-	//used for testing ASTn's error reporting
-	/*switch (2)
-	{
-	case ASTn("fiajewoar"):
-	break;
-	}*/
 	for (int x = 1; x < argc; ++x)
 	{
 		if (strcmp(argv[x], "interactive") == 0) INTERACTIVE = true;
@@ -363,8 +386,7 @@ int main(int argc, char* argv[])
 
 	if (!BENCHMARK)
 	{
-		test_unique_types();
-		debugtypecheck(T::does_not_return);
+		test_suite();
 	}
 
 	struct cleanup_at_end
