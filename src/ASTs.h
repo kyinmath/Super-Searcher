@@ -32,7 +32,7 @@ struct AST_info
 	ctt return_object; //if this type is null, do not check it using the generic method - check it specially.
 	ctt parameter_types[max_fields_in_AST];
 
-	unsigned pointer_fields; //how many field elements are pointers.
+	uint64_t pointer_fields; //how many field elements are pointers.
 	//for ASTs, this means pointers to other ASTs. for Types, this means pointers to other Types.
 	//this forces fields_to_compile downward if it is too high. by default, they are equal.
 	constexpr AST_info make_pointer_fields(int x)
@@ -44,9 +44,9 @@ struct AST_info
 		return new_copy;
 	}
 
-	unsigned fields_to_compile; //we may not always compile all pointers, such as with "copy".
+	uint64_t fields_to_compile; //we may not always compile all pointers, such as with "copy".
 
-	unsigned additional_special_fields = 0; //these fields come after the pointer fields. they are REAL types, not AST return types.
+	uint64_t additional_special_fields = 0; //these fields come after the pointer fields. they are REAL types, not AST return types.
 	//for example, if you have a Type* in the second field and a normal AST* in the first field, then this would be 1.
 	//then, in the argument list, you'd put a Type* in the second parameter slot.
 
@@ -88,9 +88,8 @@ keep AST names to one word only, because our console input takes a single word f
 */
 constexpr AST_info AST_descriptor[] =
 {
-	a("load_object", special_return, T::dynamic_pointer).make_special_fields(1), //immediate value, like "int x = 40". loaded value can be modified in-function, but any changes are temporary.
+	a("imv", special_return, T::dynamic_pointer).make_special_fields(1), //immediate value, like "int x = 40". loaded value can be modified in-function, but any changes are temporary.
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
-	//{"hello", T::null},
 	{"print_int", T::null, T::integer},
 	a("if", special_return, T::integer).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
@@ -106,8 +105,8 @@ constexpr AST_info AST_descriptor[] =
 	a("goto", special_return).make_pointer_fields(3), //first field is label, second field is success, third field is failure
 	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
 	a("convert_to_AST", T::AST_pointer, T::integer, parameter_no_type_check, T::dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
-	a("store", T::null, parameter_no_type_check, parameter_no_type_check), //pointer, then value.
-	{"load_n", special_return, parameter_no_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype.
+	{"store", T::null, parameter_no_type_check, parameter_no_type_check}, //pointer, then value.
+	{"load_subobj", special_return, parameter_no_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields.
 	//{"write_n", T::null, parameter_no_type_check, T::integer, parameter_no_type_check},
 	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both
 	//{"load_static_from_AST", T::dynamic_pointer, T::AST_pointer},

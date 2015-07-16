@@ -4,7 +4,7 @@
 #include <stack>
 #include "globalinfo.h"
 #include "types.h"
-#include "user_functions.h"
+#include "runtime.h"
 #include "function.h"
 
 
@@ -83,7 +83,7 @@ uint64_t* allocate(uint64_t size)
 	}
 	
 	if (header_size) //necessary to silence messages about tautological comparisons
-		for (int x = 0; x < header_size; ++x)
+		for (uint64_t x = 0; x < header_size; ++x)
 			found_place[x] = 6666666ull; //mark and sweep allocator, so mark it. we never use this though.
 
 	if (VERBOSE_GC) console << "allocating region " << found_place + header_size << " size, not including header " << size << '\n';
@@ -187,7 +187,7 @@ void start_GC()
 		if (living_objects.find((uint64_t*)unique_type) == living_objects.end())
 		{
 			console << "erasing it\n";
-			unsigned erased = type_hash_table.erase(unique_type);
+			uint64_t erased = type_hash_table.erase(unique_type);
 			check(erased == 1, "erased wrong number of elements");
 		}
 
@@ -334,7 +334,7 @@ void sweepy_sweep()
 		if (diffmask)
 		{
 			if (VERBOSE_GC) console << "diffmask " << diffmask << '\n';
-			for (unsigned offset = 0; offset < 64; ++offset)
+			for (uint64_t offset = 0; offset < 64; ++offset)
 				if (diffmask & (1ull << offset))
 				{
 					if (VERBOSE_GC) console << "offset is " << offset << ' ';
@@ -362,7 +362,8 @@ namespace u
 	Type* type = get_unique_type(T::type, false);
 	Type* AST_pointer = get_unique_type(T::AST_pointer, false);
 	Type* function_pointer = get_unique_type(T::function_pointer, false);
+	Type* type_pointer = get_unique_type(T::type_pointer, false);
 };
 
 //this comes below the types, to prevent static fiasco.
-std::vector< Type* > unique_type_roots{u::does_not_return, u::integer, u::dynamic_pointer, u::type, u::AST_pointer, u::function_pointer};
+std::vector< Type* > unique_type_roots{u::does_not_return, u::integer, u::dynamic_pointer, u::type, u::AST_pointer, u::function_pointer, u::type_pointer};

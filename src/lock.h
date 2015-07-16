@@ -3,7 +3,7 @@
 class mutex_lock
 {
 	enum { UNLOCKED, LOCKED };
-	std::atomic<unsigned> lock;
+	std::atomic<uint64_t> lock;
 public:
 	mutex_lock() : lock(UNLOCKED) {}
 	bool attempt_grab()

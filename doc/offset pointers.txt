@@ -17,6 +17,9 @@ subobject pointers generally don't exist in GC languages
 should subobject pointers allow for chunks, instead of single objects?
 	this makes things hard.
 
+offset doesn't have the integer baked in. thus, the load_N can't succeed, even on a pointer with fixed type.
+	that is, we're unable to get the type at runtime.
+	well, we can check if the integer is a Const integer. that's what we do now.
 
 
 if you get a subobject of an object, you count the number of objects to pass, not the number of uint64_t s to pass.
@@ -25,7 +28,9 @@ because we want to ensure that every possible input number is valid. with uint64
 especially good for dynamic type objects: this will drastically reduce the number of unsuccessful attempts
 and good since we can change sizes of objects like functions.
 
-
+load_N is going to make 6/7 different branches. should we allow these branches to return things?
+	if we do, we'd have to match them all up, then make a big phi.
+	it could be bad if there are useful functions with side effects that nevertheless return something. 
 
 
 should full pointers be allowed to refer to only part of the type?

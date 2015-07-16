@@ -1,6 +1,6 @@
 #include "globalinfo.h"
 #include "cs11.h"
-#include "user_functions.h"
+#include "runtime.h"
 #include "debugoutput.h"
 #include <llvm/Support/raw_ostream.h> 
 
@@ -31,7 +31,7 @@ finally, if the created AST successfully compiles, it is added to the vector of 
 todo: this scheme can't produce forward references, which are necessary for goto. that is, a goto points to an AST that's created after it.
 and, it can't produce [concatenate [int]a [load a]]. that requires speculative creation of multiple ASTs simultaneously.
 */
-void fuzztester(unsigned iterations)
+void fuzztester(uint64_t iterations)
 {
 	uint64_t max_fuzztester_size = 1;
 	while (iterations)
@@ -39,11 +39,11 @@ void fuzztester(unsigned iterations)
 		--iterations; //this is here, instead of having "iterations--", so that integer-sanitizer doesn't complain
 		fuzztester_roots.push_back(nullptr); //we this is so that we always have something to find, when we're looking for previous_ASTs
 		//create a random AST
-		unsigned tag = mersenne() % ASTn("never reached");
+		uint64_t tag = mersenne() % ASTn("never reached");
 		if (LIMITED_FUZZ_CHOICES)
 			tag = allowed_tags[mersenne() % allowed_tags.size()];
-		unsigned pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
-		unsigned prev_AST = generate_exponential_dist() % fuzztester_roots.size(); //perhaps: prove that exponential_dist is desired.
+		uint64_t pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
+		uint64_t prev_AST = generate_exponential_dist() % fuzztester_roots.size(); //perhaps: prove that exponential_dist is desired.
 		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
 		//but does exponential falloff solve this problem in the way we want?
 
@@ -203,7 +203,7 @@ class source_reader
 					goto_delay.insert(make_pair(&((uAST*)(new_type_location))->fields[field_num].ptr, delayed_binding_name));
 				}
 			}
-			else //it's a static object, "load_object". make an integer
+			else //it's a static object, "imv". make an integer
 			{
 				if (AST_type == 0 && field_num == 0)
 				{
@@ -293,7 +293,7 @@ int main(int argc, char* argv[])
 
 	std::unique_ptr<llvm::TargetMachine> TM_backer(llvm::EngineBuilder().selectTarget());
 	TM = TM_backer.get();
-	thread_local KaleidoscopeJIT c_holder(TM); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
+	KaleidoscopeJIT c_holder(TM); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
 	c = &c_holder;
 
 	bool BENCHMARK = false;
@@ -373,7 +373,7 @@ int main(int argc, char* argv[])
 			start_GC(); //this cleanup is to let Valgrind know that we've legitimately taken care of all memory.
 
 			uint64_t total_successful_compiles = 0;
-			for (unsigned x = 0; x < ASTn("never reached"); ++x)
+			for (uint64_t x = 0; x < ASTn("never reached"); ++x)
 			{
 				total_successful_compiles += hitcount[x];
 				std::cout << "tag " << x << " " << AST_descriptor[x].name << ' ' << hitcount[x] << '\n';

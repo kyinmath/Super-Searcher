@@ -10,6 +10,7 @@ namespace T
 	constexpr Type internal::type;
 	constexpr Type internal::AST_pointer;
 	constexpr Type internal::function_pointer;
+	constexpr Type internal::type_pointer;
 };
 
 /* this checks if a new reference can be bound to an old reference.

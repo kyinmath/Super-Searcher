@@ -27,7 +27,7 @@ inline void compile_returning_legitimate_object(uint64_t* memory_location, uint6
 	auto return_location = (std::array<uint64_t, 3>*) memory_location;
 	uAST* target = (uAST*)int_target;
 	compiler_object a;
-	unsigned error = a.compile_AST(target);
+	uint64_t error = a.compile_AST(target);
 	
 	if (error)
 	{
@@ -91,7 +91,7 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 		std::unique_ptr<llvm::Module> M(new llvm::Module(GenerateUniqueName("jit_module_"), mini_context));
 		builder_context_stack b(&new_builder, &mini_context); //for safety
 		using namespace llvm;
-		FunctionType *func_type(FunctionType::get(int64_type(), false));
+		FunctionType *func_type(FunctionType::get(i64_type(), false));
 
 		std::string function_name = GenerateUniqueName("");
 		Function *trampoline(Function::Create(func_type, Function::ExternalLinkage, function_name, M.get()));
@@ -104,14 +104,14 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 		Value* result_of_call = new_builder.CreateCall(target_function, {});
 
 		//START DYNAMIC
-		llvm::Value* allocator = llvm_function(allocate, int64_type()->getPointerTo(), int64_type());
+		llvm::Value* allocator = llvm_function(allocate, i64_type()->getPointerTo(), i64_type());
 		llvm::Value* dynamic_object_raw = builder->CreateCall(allocator, {llvm_integer(size_of_return)});
 		llvm::Type* target_pointer_type = llvm_type(size_of_return)->getPointerTo();
 		llvm::Value* dynamic_object = builder->CreatePointerCast(dynamic_object_raw, target_pointer_type);
 
 		//store the returned value into the acquired address
 		builder->CreateStore(result_of_call, dynamic_object);
-		llvm::Value* dynamic_object_address = builder->CreatePtrToInt(dynamic_object, int64_type());
+		llvm::Value* dynamic_object_address = builder->CreatePtrToInt(dynamic_object, i64_type());
 		builder->CreateRet(dynamic_object_address);
 		///FINISH DYNAMIC
 
@@ -127,43 +127,6 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 		return std::array < uint64_t, 2 > {{(uint64_t)return_type, result}};
 	}
 }
-/*
-inline void run_null_parameter_function_bogus(uint64_t func_int)
-{
-	auto func = (function*)func_int;
-	void* fptr = func->fptr;
-	if (VERBOSE_GC) console << "fptr is " << fptr << '\n';
-	uint64_t size_of_return = get_size(func->return_type);
-	if (!DONT_ADD_MODULE_TO_ORC && !DELETE_MODULE_IMMEDIATELY)
-	{
-		if (size_of_return == 1)
-		{
-			uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
-			console << "Evaluated to " << FP() << '\n';
-		}
-		else if (size_of_return > 1)
-		{
-			using std::array;
-			switch (size_of_return)
-			{
-			case 2: cout_array(((array<uint64_t, 2>(*)())(intptr_t)fptr)()); break; //theoretically, this ought to break. array<2> = {int, int}
-			case 3: cout_array(((array<uint64_t, 3>(*)())(intptr_t)fptr)()); break; //this definitely does break.
-			case 4: cout_array(((array<uint64_t, 4>(*)())(intptr_t)fptr)()); break;
-			case 5: cout_array(((array<uint64_t, 5>(*)())(intptr_t)fptr)()); break;
-			case 6: cout_array(((array<uint64_t, 6>(*)())(intptr_t)fptr)()); break;
-			case 7: cout_array(((array<uint64_t, 7>(*)())(intptr_t)fptr)()); break;
-			case 8: cout_array(((array<uint64_t, 8>(*)())(intptr_t)fptr)()); break;
-			case 9: cout_array(((array<uint64_t, 9>(*)())(intptr_t)fptr)()); break;
-			default: console << "function return size is " << size_of_return << " and C++ seems to only take static return types\n"; break;
-			}
-		}
-		else
-		{
-			void(*FP)() = (void(*)())(intptr_t)fptr;
-			FP();
-		}
-	}
-}*/
 
 //each parameter is a pointer
 inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_type, uint64_t old_pointer, uint64_t second_type)
@@ -203,7 +166,7 @@ inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t type, u
 			return 0;
 		return (uint64_t)new_AST(tag, (uAST*)previous, {});
 	}
-	else if (tag != ASTn("load_object"))
+	else if (tag != ASTn("imv"))
 	{
 		uAST* dyn_object = (uAST*)object;
 		Type* dyn_type = (Type*)type;
@@ -221,3 +184,41 @@ inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t type, u
 }
 
 inline void print_uint64_t(uint64_t x) {console << x << '\n';}
+
+inline uint64_t AST_subfield(uAST* a, uint64_t offset)
+{
+	if (a == nullptr) return 0;
+	uint64_t size = AST_descriptor[a->tag].pointer_fields; //we're not using the total fields type, because if it's a imv, we don't grab it.
+	if (offset >= size) return 0;
+	else return a->fields[offset].num;
+}
+
+inline uint64_t type_subfield(Type* a, uint64_t offset)
+{
+	if (a == nullptr) return 0;
+	if (a->tag == Typen("con_vec"))
+	{
+		uint64_t size = a->fields[0].num; //we're not using the total fields type, because if it's a imv, we don't grab it.
+		if (offset >= size) return 0;
+		else return a->fields[offset + 1].num;
+	}
+	else
+	{
+		if (offset == 0)
+			return (uint64_t)a;
+		else return 0;
+	}
+}
+
+
+inline uAST* AST_from_function(function* a)
+{
+	if (a == nullptr) return nullptr;
+	return deep_AST_copier(a->the_AST).result;
+}
+
+inline Type* type_from_function(function* a)
+{
+	if (a == nullptr) return nullptr;
+	return a->return_type;
+}

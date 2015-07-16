@@ -88,7 +88,7 @@ inline void output_AST_and_previous(uAST* target)
 	}
 
 	//this makes you not output any AST that has been output before. it prevents infinite loops
-	static thread_local std::set<uAST*> AST_list;
+	static std::set<uAST*> AST_list;
 	if (AST_list.find(target) != AST_list.end())
 	{
 		console << target << '\n';
@@ -99,8 +99,8 @@ inline void output_AST_and_previous(uAST* target)
 	output_AST(target);
 	if (target->preceding_BB_element != nullptr)
 		output_AST_and_previous(target->preceding_BB_element);
-	unsigned number_of_further_ASTs = AST_descriptor[target->tag].pointer_fields;
-	for (unsigned x = 0; x < number_of_further_ASTs; ++x)
+	uint64_t number_of_further_ASTs = AST_descriptor[target->tag].pointer_fields;
+	for (uint64_t x = 0; x < number_of_further_ASTs; ++x)
 		if (target->fields[x].ptr != nullptr)
 			output_AST_and_previous(target->fields[x].ptr);
 }
@@ -133,7 +133,7 @@ struct output_AST_struct
 		else AST_list.insert(target);
 
 		if (target->preceding_BB_element != nullptr) determine_references(target->preceding_BB_element);
-		for (unsigned x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x) determine_references(target->fields[x].ptr);
+		for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x) determine_references(target->fields[x].ptr);
 	}
 
 	//the purpose of "might be end in BB" is to decide whether to output {} or not.
@@ -158,7 +158,7 @@ struct output_AST_struct
 			output << ' ';
 		}
 		output << "[" << AST_descriptor[target->tag].name;
-		unsigned x = 0;
+		uint64_t x = 0;
 		for (; x < AST_descriptor[target->tag].pointer_fields; ++x)
 		{
 			output << ' ';

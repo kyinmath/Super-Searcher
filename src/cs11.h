@@ -15,16 +15,13 @@
 #include "globalinfo.h"
 #include "helperfunctions.h"
 
-#ifdef _MSC_VER
-#define thread_local
-#endif
-extern thread_local std::mt19937_64 mersenne;
-extern thread_local uint64_t finiteness;
+extern  std::mt19937_64 mersenne;
+extern  uint64_t finiteness;
 constexpr uint64_t FINITENESS_LIMIT = 10;
 uint64_t generate_exponential_dist();
 
 
-extern thread_local KaleidoscopeJIT* c;
+extern KaleidoscopeJIT* c;
 
 class compiler_object
 {
@@ -58,21 +55,17 @@ class compiler_object
 	//this runs the dtors. it's called by clear_stack, but also called by goto, which jumps stacks.
 	void emit_dtors(uint64_t desired_stack_size);
 
-
-
-	Return_Info generate_IR(uAST* user_target, unsigned stack_degree, memory_location desired = memory_location());
-
-
+	Return_Info generate_IR(uAST* user_target, uint64_t stack_degree, memory_location desired = memory_location());
 	
 public:
 	compiler_object() : J(*c), error_location(nullptr), new_context(new llvm::LLVMContext()) {}
-	unsigned compile_AST(uAST* target); //we can't combine this with the ctor, because it needs to return an int
+	uint64_t compile_AST(uAST* target); //we can't combine this with the ctor, because it needs to return an int
 
 	void* fptr; //the end fptr.
 
 	//exists when IRgen_status has an error.
 	uAST* error_location;
-	unsigned error_field; //which field in error_location has the error
+	uint64_t error_field; //which field in error_location has the error
 
 	//these exist on successful compilation. guaranteed to be uniqued and in the heap.
 	//currently, parameters are not implemented
@@ -80,9 +73,5 @@ public:
 	Type* parameter_type = nullptr;
 	KaleidoscopeJIT::ModuleHandleT result_module;
 
-
 	std::unique_ptr<llvm::LLVMContext> new_context;
-
-
-
 };

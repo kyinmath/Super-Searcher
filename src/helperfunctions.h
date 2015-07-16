@@ -17,36 +17,37 @@ enum IRgen_status {
 	missing_label, //tried to goto a label, but the label was not found
 	label_incorrect_stack, //tried to goto a label, but the stack elements didn't match
 	label_duplication, //a label was pointed to in the tree twice
-	store_pointer_lifetime_mismatch, //tried to store a short-lasting object in a long-lasting memory location
+	oversized_offset, //when offsetting a pointer, you gave an excessively large offset
+	requires_constant //when offsetting a pointer, you gave something that wasn't a constant
 };
 
 //solely for convenience
-inline llvm::IntegerType* int64_type() { return llvm::Type::getInt64Ty(*context); }
+inline llvm::IntegerType* i64_type() { return llvm::Type::getInt64Ty(*context); }
 inline llvm::Type* void_type() { return llvm::Type::getVoidTy(*context); }
 
 inline llvm::Constant* llvm_integer(uint64_t value)
 {
-	return llvm::ConstantInt::get(int64_type(), value);
+	return llvm::ConstantInt::get(i64_type(), value);
 }
 
 inline llvm::ArrayType* llvm_array(uint64_t size)
 {
 	check(size != 0, "tried to get 0 size llvm array");
-	return llvm::ArrayType::get(int64_type(), size);
+	return llvm::ArrayType::get(i64_type(), size);
 }
 
 inline llvm::Type*  llvm_type(uint64_t size)
 {
 	check(size != 0, "tried to get 0 size llvm type");
 	if (size > 1) return llvm_array(size);
-	else return int64_type();
+	else return i64_type();
 }
 
 inline llvm::Type* llvm_type_including_void(uint64_t size)
 {
 	if (size == 0) return void_type();
 	if (size > 1) return llvm_array(size);
-	else return int64_type();
+	else return i64_type();
 }
 
 
@@ -72,7 +73,7 @@ inline llvm::Value* llvm_create_phi(llvm::Value* first, llvm::Value* second, Typ
 	if (size2 == 0) return first;
 	if (size1 == 0) return second;
 
-	llvm::PHINode* PN = builder->CreatePHI(size1 == 1 ? (llvm::Type*)int64_type() : llvm_array(size1), 2); //phi with two incoming variables
+	llvm::PHINode* PN = builder->CreatePHI(size1 == 1 ? (llvm::Type*)i64_type() : llvm_array(size1), 2); //phi with two incoming variables
 	PN->addIncoming(first, firstBB);
 	PN->addIncoming(second, secondBB);
 	return PN;
@@ -112,7 +113,9 @@ llvm::AllocaInst* create_empty_alloca();
 
 //how to use a memory allocation:
 //change its size continually as you add elements to it.
-//at the end, use cast_base() to make it the correct size.
+//to use this, put one in the deque, so that it can be pointed to for the entire duration of the function. the reason we do this is because the memory_allocation represents an object, which may be lifted to become a heap object. later, if we want to do optimization, we should have a representation for the object.
+//create an allocation_handler, whose destructor will call cast_base() if appropriate, and call eraseFromParent() if appropriate.
+//use turn_full if we ever get a reference to it.
 struct memory_allocation
 {
 	llvm::Instruction* allocation = create_empty_alloca(); //AllocaInst* a = alloca i64, size, or an allocate() address
@@ -127,10 +130,10 @@ public:
 	{
 		llvm::Instruction* new_alloca;
 		if (!self_is_full)
-			new_alloca = new llvm::AllocaInst(int64_type(), llvm_integer(size));
+			new_alloca = new llvm::AllocaInst(i64_type(), llvm_integer(size));
 		else
 		{
-			llvm::Value* allocator = llvm_function(allocate, int64_type()->getPointerTo(), int64_type());
+			llvm::Value* allocator = llvm_function(allocate, i64_type()->getPointerTo(), i64_type());
 			new_alloca = llvm::CallInst::Create(allocator, {llvm_integer(size)});
 		}
 
@@ -195,7 +198,7 @@ inline llvm::Value* load_from_memory(llvm::Value* location, uint64_t size)
 		llvm::Value* integer_transfer;
 		llvm::Value* new_location = builder->CreateConstInBoundsGEP1_64(location, a);
 		integer_transfer = builder->CreateLoad(new_location);
-		undef_value = builder->CreateInsertValue(undef_value, integer_transfer, { (unsigned)a });
+		undef_value = builder->CreateInsertValue(undef_value, integer_transfer, {(unsigned)a});
 	};
 	return undef_value;
 }
@@ -214,20 +217,13 @@ struct Return_Info
 
 	Type* type;
 	bool memory_location_active;
-
-
 	//either b or m must be null. both of them can't be active at the same time.
 	Return_Info(IRgen_status err, llvm::Value* b, memory_location m, Type* t, bool o)
-		: error_code(err), IR(b), place(m), type(t), memory_location_active(o)
-	{
-	}
-
+		: error_code(err), IR(b), place(m), type(t), memory_location_active(o) {}
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
 	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), memory_location_active(false) {}
-
-
 };
 
 
@@ -248,13 +244,13 @@ we create a many-element allocation instead of an array allocation, because we n
 inline llvm::AllocaInst* create_empty_alloca() {
 	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
-	return TmpB.CreateAlloca(int64_type(), llvm_integer(0));
+	return TmpB.CreateAlloca(i64_type(), llvm_integer(0));
 }
 
 inline llvm::AllocaInst* create_actual_alloca(uint64_t size) {
 	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
-	return TmpB.CreateAlloca(int64_type(), llvm_integer(size));
+	return TmpB.CreateAlloca(i64_type(), llvm_integer(size));
 }
 
 struct builder_context_stack
@@ -270,6 +266,8 @@ struct builder_context_stack
 		context = old_context;
 	}
 };
+
+
 
 //makes a deep copy of ASTs.
 struct deep_AST_copier
@@ -291,7 +289,7 @@ private:
 
 			target->preceding_BB_element = internal_copy(target->preceding_BB_element);
 			for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
-				target->fields[x].ptr = internal_copy(target->fields[x].ptr);				
+				target->fields[x].ptr = internal_copy(target->fields[x].ptr);
 		}
 		else target = search_for_copy->second;
 		return target;

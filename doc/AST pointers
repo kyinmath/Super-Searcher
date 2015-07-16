@@ -28,7 +28,8 @@ in that case, maybe it is better to have a vector basic block.
 	+no first pointer
 	+can jump to the first element in the basic block, without needing to burn through finiteness
 	+no need for a special command to get the previous BB element.
-	---lack of linked list means that inserting instructions in the middle is ridiculous. for example, my compile_IR ufnction would be totally unmodifiable.
+	---lack of linked list means that inserting instructions in the middle is ridiculous. for example, my compile_IR function would be totally unmodifiable.
+Types are different because there's no reason to modify them in the middle.
 
 
 

@@ -3,6 +3,7 @@
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
+#include "llvm/ExecutionEngine/Orc/NullResolver.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"
 #include "llvm/IR/DataLayout.h"
@@ -16,7 +17,7 @@
 #include <sstream>
 inline std::string GenerateUniqueName(const std::string &Root)
 {
-	thread_local static uint64_t i = 0;
+	static uint64_t i = 0;
 	std::ostringstream NameStream;
 	NameStream << Root << ++i;
 	//console << "name is " << NameStream.str() << '\n';
@@ -55,17 +56,8 @@ public:
 
 	ModuleHandleT addModule(std::unique_ptr<llvm::Module> M)
 	{
-		// We need a memory manager to allocate memory and resolve symbols for this
-		// new module. Create one that resolves symbols by looking back into the JIT.
 		//later, if we want optimization, we'll need to change this back
-		//there's also something called a NullResolver now.
-		auto Resolver = llvm::orc::createLambdaResolver([&](const std::string &Name)
-		{
-			if (auto Sym = findSymbol(Name))
-				return llvm::RuntimeDyld::SymbolInfo(Sym.getAddress(), Sym.getFlags());
-			error("return llvm::RuntimeDyld::SymbolInfo(nullptr)");
-		},
-			[](const std::string &S) { return nullptr; });
+		std::unique_ptr<llvm::orc::NullResolver> Resolver((new llvm::orc::NullResolver()));
 		return CompileLayer.addModuleSet(singletonSet(std::move(M)), llvm::make_unique<llvm::SectionMemoryManager>(), std::move(Resolver));
 	}
 

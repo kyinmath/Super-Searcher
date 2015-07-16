@@ -25,7 +25,7 @@
     <ClInclude Include="src\orc.h" />
     <ClInclude Include="src\types.h" />
     <ClInclude Include="src\type_creator.h" />
-    <ClInclude Include="src\user_functions.h" />
+    <ClInclude Include="src\runtime.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\cs11.cpp" />

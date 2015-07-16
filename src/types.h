@@ -49,7 +49,6 @@ union int_or_ptr
 //don't mark it const, because Visual Studio starts complaining about const correctness.
 #ifdef _MSC_VER
 #define constexpr
-#define thread_local
 #endif
 
 //for whatever reason, strcmp is not constexpr. so we do this
@@ -59,7 +58,7 @@ constexpr bool static_strequal(const char str1[], const char str2[])
 struct Type_info
 {
 	const char* name;
-	const unsigned pointer_fields; //how many field elements of the type object must be pointers
+	const uint64_t pointer_fields; //how many field elements of the type object must be pointers
 
 	//size of the actual object. ~0ull if special
 	const uint64_t size;
@@ -69,7 +68,6 @@ struct Type_info
 
 constexpr uint64_t minus_one = ~0ull; //note that a -1 literal, without specifying ll, can either be int32 or int64, so we could be in great trouble.
 
-using _t = Type_info;
 /* Guidelines for new Types:
 you must create an entry in type_check.
 marky_mark.
@@ -78,8 +76,8 @@ constexpr Type_info Type_descriptor[] =
 {
 	{"con_vec", minus_one, minus_one}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types.
 	{"integer", 0, 1}, //64-bit integer
-	_t("pointer", 1, 1), //nullptr prohibited
-	_t("dynamic pointer", 0, 2), //dynamic pointer. first field is type, second field object. if either is null, both are null together. this order fixes the type position, because it must always be read first, even if we optimize the dynamic object to be an array occasionally, such as with ASTs
+	{"pointer", 1, 1}, //nullptr prohibited
+	{"dynamic pointer", 0, 2}, //dynamic pointer. first field is type, second field object. if either is null, both are null together. this order fixes the type position, because it must always be read first, even if we optimize the dynamic object to be an array occasionally, such as with ASTs
 	{"AST pointer", 0, 1}, //can be nullptr. the actual object has tag, then previous, then some fields.
 	{"type pointer", 0, 1}, //can be nullptr. actual object is tag + fields.
 	{"function pointer", 0, 1}, //can be nullptr. the purpose of not specifying the return/parameter type is given in "doc/AST pointers"
@@ -90,7 +88,7 @@ constexpr Type_info Type_descriptor[] =
 
 //gcc 5 doesn't support loops in constexpr
 #if __GNUC__ == 5
-template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const char name[], unsigned number)
+template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const char name[], uint64_t number)
 {
 	if (static_strequal(vector_name[number].name, name)) return number;
 	else if (static_strequal(vector_name[number].name, "never reached")) //this isn't recursive, because the previous if statement returns.
@@ -105,7 +103,7 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
 #else
 template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const char name[])
 {
-	for (unsigned k = 0; 1; ++k)
+	for (uint64_t k = 0; 1; ++k)
 	{
 		if (static_strequal(vector_name[k].name, name)) return k;
 		if (static_strequal(vector_name[k].name, "never reached")) //this isn't recursive, because the previous if statement returns.
@@ -205,6 +203,7 @@ namespace T
 		static constexpr Type type{"type pointer"};
 		static constexpr Type AST_pointer{"AST pointer"};
 		static constexpr Type function_pointer{"function pointer"};
+		static constexpr Type type_pointer{"type pointer"};
 		//static constexpr Type error_object{concatenate_types(std::vector<Type*>{const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer), const_cast<Type* const>(&int_)})};
 		//error_object is int, pointer to AST, int. it's what is returned when compilation fails: the error code, then the AST, then the field.
 	};
@@ -215,6 +214,7 @@ namespace T
 	constexpr Type* type = const_cast<Type* const>(&i::type);
 	constexpr Type* AST_pointer = const_cast<Type* const>(&i::AST_pointer);
 	constexpr Type* function_pointer = const_cast<Type* const>(&i::function_pointer);
+	constexpr Type* type_pointer = const_cast<Type* const>(&i::type_pointer);
 	constexpr Type* null = nullptr;
 };
 
@@ -227,6 +227,7 @@ namespace u
 	extern Type* type;
 	extern Type* AST_pointer;
 	extern Type* function_pointer;
+	extern Type* type_pointer;
 	constexpr Type* null = nullptr;
 };
 Type* concatenate_types(llvm::ArrayRef<Type*> components);
@@ -252,6 +253,21 @@ constexpr uint64_t get_size(Type* target)
 	}
 	error("couldn't get size of type tag, check backtrace for target->tag");
 }
+
+//finds one element in a concatenate. the size offset is returns in return_offset. the size of the object is returned normally.
+inline uint64_t get_size_conc(Type* target, uint64_t offset, uint64_t* return_offset) __attribute__((pure));
+inline uint64_t get_size_conc(Type* target, uint64_t offset, uint64_t* return_offset)
+{
+	check(target != nullptr, "conc");
+	check(target->tag == Typen("con_vec"), "need conc");
+	check(target->fields[0].num > offset, "error: you must check that there are enough types in the conc to handle the offset beforehand");
+	uint64_t initial_offset = 0;
+	for (uint64_t idx = 0; idx < offset; ++idx)
+		initial_offset += get_size(target->fields[idx + 1].ptr);
+	*return_offset = initial_offset;
+	return get_size(target->fields[offset + 1].ptr);
+}
+
 
 enum type_status { RVO, reference }; //distinguishes between RVOing an object, or just creating a reference
 

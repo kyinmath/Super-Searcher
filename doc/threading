@@ -1,6 +1,7 @@
 what's the advantage of more threads vs more processes?
 threads: "free" (atomic) and invasive communication. no need for acceptance from both ends.
 	ASTs and Types still can't be overwritten in the other case, because they have variable size. but it's the same here.
+	no need for 4 copies of the same object
 processes: isolation. automatic cross-thread boundaries. separate sovereigns; no free manipulation of others.
 	no need for atomics, such as when writing values out to heap memory.
 	no need for atomics with the unique type tree
