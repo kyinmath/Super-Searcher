@@ -2,7 +2,6 @@
 ()sizeof Type, which counts the memory it occupies. maybe we should also have a version that counts other overhead.
 	this is what's used to find the size of a normal dynamic object
 ()return, which does an early return
-()get return type of function. if you want the return type of an AST, you must compile it first (which checks for correctness as well)
 ()get system values(int), returns int:
 	= # of AST tags
 	= finiteness

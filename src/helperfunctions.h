@@ -112,7 +112,7 @@ inline void write_into_place(value_collection data, llvm::Value* target)
 			if (single_object.second > 1)
 				integer_transfer = builder->CreateExtractValue(single_object.first, subplace);
 			else integer_transfer = single_object.first;
-			llvm::Value* location = builder->CreateConstInBoundsGEP1_64(target, offset);
+			llvm::Value* location = offset ? builder->CreateConstInBoundsGEP1_64(target, offset, "write") : target;
 			builder->CreateStore(integer_transfer, location);
 			++offset;
 		}
@@ -188,7 +188,7 @@ struct memory_location //used for GEP. good for delaying emission of instruction
 		if (version < base->version)
 		{
 			spot = base->allocation;
-			if (offset) spot = builder->CreateConstInBoundsGEP1_64(base->allocation, offset);
+			if (offset) spot = builder->CreateConstInBoundsGEP1_64(base->allocation, offset, "spot");
 		}
 	}
 	void store(value_collection val)
@@ -207,7 +207,7 @@ inline llvm::Value* load_from_memory(llvm::Value* location, uint64_t size)
 	for (uint64_t a = 0; a < size; ++a)
 	{
 		llvm::Value* integer_transfer;
-		llvm::Value* new_location = builder->CreateConstInBoundsGEP1_64(location, a);
+		llvm::Value* new_location = a ? builder->CreateConstInBoundsGEP1_64(location, a, "load") : location;
 		integer_transfer = builder->CreateLoad(new_location);
 		undef_value = builder->CreateInsertValue(undef_value, integer_transfer, {(unsigned)a});
 	};

@@ -2,6 +2,7 @@
 	still causes extra cast
 [concatenate [imv 1] [imv 2]]
 	causes a ridiculous amount of GEPs
+	in the case of concatenate, stack_degree 2, there's no point in RVO into an existing slot. because you have to load it out from the slot anyway, one at a time.
 
 
 [concatenate [concatenate [integer] [integer]] [integer]]

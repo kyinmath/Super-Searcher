@@ -115,12 +115,13 @@ constexpr AST_info AST_descriptor[] =
 	{"system2", T::integer, T::integer, T::integer},
 	{"agency1", T::null, T::integer}, //this has side effects. it's split out because system reading is not dangerous, and this is. the user generally should worry about running this AST.
 	{"agency2", T::null, T::integer, T::integer},
-	//{"write_n", T::null, parameter_no_type_check, T::integer, parameter_no_type_check},
+	//{"write_n", T::null, parameter_no_type_check, T::integer, parameter_no_type_check}, //
 	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both
 	//{"load_static_from_AST", T::dynamic_pointer, T::AST_pointer},
 	//{"write_into_AST", T::integer, T::integer, T::AST_pointer}, //writes a field. the integer comes first because it logically decides the field.
 	//{"type_of_function", T::type_pointer, T::function}, this is a function thing instead of an AST thing, because compilation verifies correctness, which is necessary for the return type to be meaningful.
 	//a("do_after", T::special_return, parameter_no_type_check).make_pointer_fields(2),
+	//{"return", T::special_return, T::parameter_no_type_check}, have to check that the type matches the actual return type. call all dtors. we can take T::does_not_return, but that just disables the return.
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
 	{ "divss", 3 }, warning: integer division by -1 must be considered. (1 << 31) / -1 is segfault.

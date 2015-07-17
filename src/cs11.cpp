@@ -792,7 +792,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 							uint64_t skip_this_many;
 							uint64_t size_of_load = get_size_conc(type_of_object, offset, &skip_this_many);
 							llvm::Value* pointer_cast = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
-							llvm::Value* place = builder->CreateConstInBoundsGEP1_64(pointer_cast, skip_this_many);
+							llvm::Value* place = skip_this_many ? builder->CreateConstInBoundsGEP1_64(pointer_cast, skip_this_many, "offset") : pointer_cast;
 							finish_special(load_from_memory(place, size_of_load), type_of_object->fields[offset + 1].ptr);
 						}
 					}
