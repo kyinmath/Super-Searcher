@@ -17,7 +17,7 @@ fast: ../src/*
 	mkdir build
 	cp ../src/* build
 	awk 'FNR==1{print ""}1' ../src/*.cpp > build/unity.cpp
-	clang++ -Wall -fno-rtti build/unity.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -g -O3
+	clang++ -g -Wall -fno-rtti -fno-exceptions build/unity.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O3
 	rm -If core
 
 check: ../src/*

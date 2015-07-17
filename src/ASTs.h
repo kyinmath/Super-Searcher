@@ -89,6 +89,8 @@ keep AST names to one word only, because our console input takes a single word f
 constexpr AST_info AST_descriptor[] =
 {
 	a("imv", special_return, T::dynamic_pointer).make_special_fields(1), //immediate value, like "int x = 40". loaded value can be modified in-function, but any changes are temporary.
+	{"zero", T::integer}, //Peano axioms zero
+	{"decrement", T::integer, T::integer}, //Peano axioms increment operation.
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
 	{"print_int", T::null, T::integer},
 	a("if", special_return, T::integer).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
@@ -97,9 +99,8 @@ constexpr AST_info AST_descriptor[] =
 	{"multiply", T::integer, T::integer, T::integer},
 	{"udiv", T::integer, T::integer, T::integer},
 	{"urem", T::integer, T::integer, T::integer},
-	{"random", T::integer}, //produces a random integer. will be made obsolete by the AES function? no, that would require counter mode, which isn't really possible without a global counter.
 	a("pointer", special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
-	a("load", special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it.
+	a("copy", special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it. but...maybe this should take a pointer instead...and then, how will we copy things?
 	a("concatenate", special_return).make_pointer_fields(2), //squashes two objects together to make a big object
 	{"dynamify", T::dynamic_pointer, parameter_no_type_check}, //turns a regular pointer into a dynamic pointer. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
 	a("compile", T::function_pointer, T::AST_pointer), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
@@ -110,6 +111,10 @@ constexpr AST_info AST_descriptor[] =
 	a("convert_to_AST", T::AST_pointer, T::integer, parameter_no_type_check, T::dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
 	{"store", T::null, parameter_no_type_check, parameter_no_type_check}, //pointer, then value.
 	{"load_subobj", special_return, parameter_no_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields.
+	{"system1", T::integer, T::integer}, //find a system value, using only one parameter. this is a read-only operation, with no effects.
+	{"system2", T::integer, T::integer, T::integer},
+	{"agency1", T::null, T::integer}, //this has side effects. it's split out because system reading is not dangerous, and this is. the user generally should worry about running this AST.
+	{"agency2", T::null, T::integer, T::integer},
 	//{"write_n", T::null, parameter_no_type_check, T::integer, parameter_no_type_check},
 	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both
 	//{"load_static_from_AST", T::dynamic_pointer, T::AST_pointer},

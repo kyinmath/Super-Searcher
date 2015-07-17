@@ -19,8 +19,7 @@ std::array<uint64_t, ASTn("never reached")> hitcount;
 std::vector<uint64_t> allowed_tags;
 extern std::deque< uAST*> fuzztester_roots; //for use in garbage collecting. each valid AST that the fuzztester has a reference to must be kept in here
 /**
-The fuzztester generates random ASTs and attempts to compile them.
-the output "Malformed AST" is fine. not all randomly-generated ASTs will be well-formed.
+The fuzztester generates random ASTs and attempts to compile them. not all randomly-generated ASTs will be well-formed.
 
 fuzztester has a vector of pointers to working, compilable ASTs (initially just a nullptr).
 it chooses a random AST tag.
@@ -298,18 +297,60 @@ std::array<uint64_t, 2> compile_string(std::string input_string)
 	return run_null_parameter_function(compile_result[0]); //even if it's 0, it's fine.
 }
 
+//functions passed into here are required to fail compilation.
+void cannot_compile_string(std::string input_string)
+{
+	std::stringstream div_test_stream;
+	div_test_stream << input_string << '\n';
+	source_reader k(div_test_stream, '\n');
+	uAST* end = k.read();
+	check(end != nullptr, "failed to make AST");
+	finiteness = FINITENESS_LIMIT;
+	uint64_t compile_result[3];
+	compile_returning_legitimate_object(compile_result, (uint64_t)end);
+	check(compile_result[1] != 0, "compile success");
+}
+
 void test_suite()
 {
 	{
 		//random value. then check that (x / k) * k + x % k == x
-		auto run_result = compile_string("[random]a [subtract [add [multiply [udiv [load a] [imv 4]] [imv 4]] [urem [load a] [imv 4]]] [load a]]");
+		auto run_result = compile_string("[system1 [imv 2]]a [subtract [add [multiply [udiv [copy a] [imv 4]] [imv 4]] [urem [copy a] [imv 4]]] [copy a]]");
 		check((Type*)run_result[0] == u::integer, "div test failed type");
 		check(*(uint64_t*)run_result[1] == 0, "div test failed value");
 	}
 	{
-		auto run_result = compile_string("[imv 0]b [label]a [print_int [load b]] [store [pointer b] [add [load b] [imv 1]]] [goto a] [load b]");
+		//looping until finiteness ends, increasing a value. tests storing values
+		auto run_result = compile_string("[imv 0]b [label]a [print_int [copy b]] [store [pointer b] [increment [copy b]]] [goto a] [copy b]");
 		check((Type*)run_result[0] == u::integer, "failed type");
 		check(*(uint64_t*)run_result[1] == FINITENESS_LIMIT, "failed value");
+	}
+
+	{
+		//loading a subobject from a concatenation, as well as copys in concatenation
+		auto run_result = compile_string("[concatenate [imv 20]a [increment [copy a]]]co [load_subobj [pointer co] [imv 1]]");
+		check((Type*)run_result[0] == u::integer, "failed type");
+		check(*(uint64_t*)run_result[1] == 20 + 1, "failed value");
+	}
+
+	{
+		//goto forward. should skip the second store, and produce 20.
+		auto run_result = compile_string("[imv 0]b [label {[store [pointer b] [imv 20]] [goto a] [store [pointer b] [imv 40]]}]a [copy b]");
+		check((Type*)run_result[0] == u::integer, "failed type");
+		check(*(uint64_t*)run_result[1] == 20, "failed value");
+	}
+
+	{
+		//clear old unused stack allocas
+		compile_string("[label {[imv 40]a [label]}] [label {a [label]}]");
+		//[imv 40]a is preserved across both fields of the concatenate
+		cannot_compile_string("[concatenate {[imv 40]a [label]} {a [label]}]");
+		cannot_compile_string("[concatenate {[imv 40]a [pointer a]b} b]");
+		cannot_compile_string("[add {[imv 50] [system1 [imv 2]]a} a]");
+
+
+		compile_string("[run_function [compile [convert_to_AST [system1 [imv 2]] [label] {[imv 0]v [dynamify [pointer v]]}]]]");
+		compile_string("[run_function [compile [convert_to_AST [imv 1] [label] [dynamify]]]]"); //produces 1, which should be 0.
 	}
 
 	test_unique_types();

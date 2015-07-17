@@ -46,3 +46,6 @@ That means: since every full pointer knows exactly what the target type is, ther
 
 maybe we can write into function pointers using the usual store(). we'd normally want to attempt the same for ASTs and Types, but those are impossible (variable size, and immut, respectively)
 	the problem is that the notation is not really correct. you're writing a pointer into another pointer, instead of an object into an object like store() normally does.
+
+problem: we need to extract from concatenate, not just from pointer.
+	can we just require the user to make a pointer first?

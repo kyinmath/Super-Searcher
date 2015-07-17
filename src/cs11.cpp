@@ -64,7 +64,7 @@ uint64_t compiler_object::compile_AST(uAST* target)
 	if (VERBOSE_DEBUG) console << "starting compilation\ntarget is " << target << '\n'; //in case it crashes here because target is not valid
 	if (target == nullptr) return IRgen_status::null_AST;
 	using namespace llvm;
-	FunctionType *dummy_type(FunctionType::get(void_type(), false));
+	FunctionType *dummy_type(FunctionType::get(llvm_void(), false));
 
 	Function *dummy_func(Function::Create(dummy_type, Function::ExternalLinkage, "dummy_func", M.get())); //we have to insert the function in the Module so that it doesn't leak when generate_IR fails. things like instructions, basic blocks, and functions are not part of a context.
 
@@ -251,7 +251,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 		if (previous_elements.error_code) return previous_elements;
 	}
 
-	///NOTE: these are the set of default values. they become hidden parameters to finish().
+	///default values. they become hidden parameters to finish().
 	memory_allocation* base = nullptr;
 	if (stack_degree == 2)
 	{
@@ -294,6 +294,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 	//clears dead objects off the stack, and makes your result visible to other ASTs
 	//if it's necessary to create and write to storage_location, we do so.
 	//if stack_degree >= 1, this will ignore return_value and use "memory_location desired" instead
+	//note the hidden default values that are captured; they're listed above in the ///default values section.
 	auto finish_internal = [&](l::Value* return_value, Type* type) -> Return_Info
 	{
 		check(type == get_unique_type(type, false), "returned non unique type in finish()");
@@ -399,9 +400,11 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 	//we generate code for the AST, depending on its tag.
 	switch (target->tag)
 	{
+	case ASTn("zero"): finish(llvm_integer(0));
+	case ASTn("increment"): finish(builder->CreateAdd(field_results[0].IR, llvm_integer(1), s("increment")));
+	case ASTn("decrement"): finish(builder->CreateSub(field_results[0].IR, llvm_integer(1)));
 	case ASTn("add"): finish(builder->CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
 	case ASTn("subtract"): finish(builder->CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
-	case ASTn("increment"): finish(builder->CreateAdd(field_results[0].IR, llvm_integer(1), s("increment")));
 	case ASTn("multiply"): finish(builder->CreateMul(field_results[0].IR, field_results[1].IR, s("multiply")));
 	case ASTn("udiv"):
 		{
@@ -450,11 +453,9 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 		}
 	case ASTn("print_int"):
 		{
-			l::Value* printer = llvm_function(print_uint64_t, void_type(), i64_type());
+			l::Value* printer = llvm_function(print_uint64_t, llvm_void(), llvm_i64());
 			finish(builder->CreateCall(printer, {field_results[0].IR})); //, s("print"). can't give name to void-return functions
 		}
-	case ASTn("random"): //for now, we use the Mersenne twister to return a single uint64.
-		finish(builder->CreateCall(llvm_function(generate_random, i64_type()), {}, s("random")));
 	case ASTn("if"): //it's vitally important that this can check pointers, so that we can tell if they're nullptr.
 		{
 			//since the fields are conditionally executed, the temporaries generated in each branch are not necessarily referenceable.
@@ -560,7 +561,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 			}
 
 			//check finiteness. it's not an AllocaInst apparently (llvm asserts), because it wasn't allocated that way.
-			l::Value* finiteness_pointer = builder->CreateIntToPtr(llvm_integer((uint64_t)&finiteness), i64_type()->getPointerTo());
+			l::Value* finiteness_pointer = builder->CreateIntToPtr(llvm_integer((uint64_t)&finiteness), llvm_i64()->getPointerTo());
 			l::Value* current_finiteness = builder->CreateLoad(finiteness_pointer);
 			l::Value* comparison = builder->CreateICmpNE(current_finiteness, llvm_integer(0), s("finiteness comparison"));
 
@@ -604,11 +605,11 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 			//bool is_full_pointer = false;
 			Type* new_pointer_type = get_non_convec_unique_type(Typen("pointer"), found_AST->second.type);
 
-			l::Value* final_result = builder->CreatePtrToInt(found_AST->second.place.get_location(), i64_type(), s("flattening pointer"));
+			l::Value* final_result = builder->CreatePtrToInt(found_AST->second.place.get_location(), llvm_i64(), s("flattening pointer"));
 			objects.find(target->fields[0].ptr)->second.place.base->turn_full();
 			finish_special(final_result, new_pointer_type);
 		}
-	case ASTn("load"):
+	case ASTn("copy"):
 		{
 			auto found_AST = objects.find(target->fields[0].ptr);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
@@ -665,7 +666,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 			if (field_results[0].type == nullptr) return_code(type_mismatch, 0);
 			if (field_results[0].type->tag != Typen("pointer")) return_code(type_mismatch, 0);
 			if (type_check(RVO, field_results[1].type, field_results[0].type->fields[0].ptr) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
-			llvm::Value* memory_location = builder->CreateIntToPtr(field_results[0].IR, i64_type()->getPointerTo());
+			llvm::Value* memory_location = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 
 			write_into_place(value_collection(field_results[1].IR, get_size(field_results[1].type)), memory_location);
 			finish(0);
@@ -695,26 +696,28 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 
 			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
 			//if ever the optimization changes, we might be in trouble.
-			std::vector<l::Type*> return_types{i64_type(), i64_type()};
+			std::vector<l::Type*> return_types{llvm_i64(), llvm_i64()};
 			l::Type* return_type = l::StructType::get(*context, return_types);
-			l::Value* dynamic_conc_function = llvm_function(concatenate_dynamic, return_type, i64_type(), i64_type(), i64_type());
+			l::Value* dynamic_conc_function = llvm_function(concatenate_dynamic, return_type, llvm_i64(), llvm_i64(), llvm_i64());
 
 			l::Value* static_type = llvm_integer((uint64_t)field_results[1].type);
 
 			std::vector<l::Value*> arguments{type, pointer, static_type};
-			l::Value* result_of_conc = builder->CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
+			l::CallInst* result_of_conc = builder->CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
+			//result_of_conc->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::ReadNone);
+			result_of_conc->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
 
 			l::Value* integer_pointer_to_object = builder->CreateExtractValue(result_of_conc, {1}, s("pointer to object"));
-			l::Value* pointer_to_object = builder->CreateIntToPtr(integer_pointer_to_object, i64_type()->getPointerTo());
+			l::Value* pointer_to_object = builder->CreateIntToPtr(integer_pointer_to_object, llvm_i64()->getPointerTo());
 			write_into_place({field_results[1].IR, get_size(field_results[1].type)}, pointer_to_object);
 			finish(result_of_conc);
 		}
 	case ASTn("compile"):
 		{
-			l::Value* compile_function = llvm_function(compile_returning_legitimate_object, void_type(), i64_type()->getPointerTo(), i64_type());
+			l::Value* compile_function = llvm_function(compile_returning_legitimate_object, llvm_void(), llvm_i64()->getPointerTo(), llvm_i64());
 
 			llvm::AllocaInst* return_holder = create_actual_alloca(3);
-			llvm::Value* forcing_return_type = builder->CreatePointerCast(return_holder, i64_type()->getPointerTo(), "forcing return type");
+			llvm::Value* forcing_return_type = builder->CreatePointerCast(return_holder, llvm_i64()->getPointerTo(), "forcing return type");
 			builder->CreateCall(compile_function, {forcing_return_type, field_results[0].IR}); //, s("compile"). void type means no name allowed
 			auto return_object = builder->CreateLoad(return_holder);
 			finish(return_object);
@@ -732,7 +735,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 			l::Value* type = builder->CreateExtractValue(field_results[2].IR, {0}, s("type of hopeful AST"));
 			l::Value* pointer = builder->CreateExtractValue(field_results[2].IR, {1}, s("fields of hopeful AST"));
 
-			l::Value* converter = llvm_function(dynamic_to_AST, i64_type(), i64_type(), i64_type(), i64_type(), i64_type());
+			l::Value* converter = llvm_function(dynamic_to_AST, llvm_i64(), llvm_i64(), llvm_i64(), llvm_i64(), llvm_i64());
 			std::vector<l::Value*> arguments{field_results[0].IR, previous_AST, type, pointer};
 			l::Value* AST_result = builder->CreateCall(converter, arguments, s("converter"));
 
@@ -740,8 +743,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 		}
 	case ASTn("run_function"):
 		{
-			llvm::Type* agg_type = llvm::StructType::get(*context,  {{i64_type(), i64_type()}});
-			llvm::Value* runner = llvm_function(run_null_parameter_function, agg_type, i64_type());
+			llvm::Type* agg_type = llvm::StructType::get(*context,  {{llvm_i64(), llvm_i64()}});
+			llvm::Value* runner = llvm_function(run_null_parameter_function, agg_type, llvm_i64());
 			l::Value* run_result = builder->CreateCall(runner,  {field_results[0].IR});
 
 			finish(run_result);
@@ -772,34 +775,38 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 			switch (type_of_pointer->tag)
 			{
 			case Typen("pointer"):
-				if (llvm::ConstantInt* k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
 				{
-					uint64_t offset = k->getZExtValue();
-					if (offset == 0)
+					Type* type_of_object = type_of_pointer->fields[0].ptr;
+					if (llvm::ConstantInt* k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
 					{
-						//no concatenation
-						finish_special(load_from_memory(field_results[0].IR, get_size(type_of_pointer)), field_results[0].type);
+						uint64_t offset = k->getZExtValue();
+						if (offset == 0)
+						{
+							//no concatenation
+							finish_special(load_from_memory(field_results[0].IR, get_size(type_of_object)), type_of_object);
+						}
+						else //yes concatenation
+						{
+							if (offset >= type_of_object->fields[0].num)
+								return_code(oversized_offset, 1);
+							uint64_t skip_this_many;
+							uint64_t size_of_load = get_size_conc(type_of_object, offset, &skip_this_many);
+							llvm::Value* pointer_cast = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
+							llvm::Value* place = builder->CreateConstInBoundsGEP1_64(pointer_cast, skip_this_many);
+							finish_special(load_from_memory(place, size_of_load), type_of_object->fields[offset + 1].ptr);
+						}
 					}
-					else //yes concatenation
-					{
-						if (offset >= type_of_pointer->fields[0].num)
-							return_code(oversized_offset, 1);
-						uint64_t skip_this_many;
-						uint64_t size_of_load = get_size_conc(type_of_pointer, offset, &skip_this_many);
-						llvm::Value* place = builder->CreateConstInBoundsGEP1_64(field_results[0].IR, skip_this_many);
-						finish_special(load_from_memory(place, size_of_load), field_results[0].type->fields[offset + 1].ptr);
-					}
+					return_code(requires_constant, 1);
 				}
-				return_code(requires_constant, 1);
 			case Typen("AST pointer"):
 				{
-					llvm::Value* AST_offset = llvm_function(AST_subfield, i64_type(), i64_type(), i64_type());
+					llvm::Value* AST_offset = llvm_function(AST_subfield, llvm_i64(), llvm_i64(), llvm_i64());
 					llvm::Value* result_AST = builder->CreateCall(AST_offset, {field_results[0].IR, field_results[1].IR});
 					finish_special(result_AST, u::AST_pointer);
 				}
 			case Typen("type pointer"):
 				{
-					llvm::Value* type_offset = llvm_function(type_subfield, i64_type(), i64_type(), i64_type());
+					llvm::Value* type_offset = llvm_function(type_subfield, llvm_i64(), llvm_i64(), llvm_i64());
 					llvm::Value* result_type = builder->CreateCall(type_offset, {field_results[0].IR, field_results[1].IR});
 					finish_special(result_type, u::type_pointer);
 				}
@@ -809,12 +816,12 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 					uint64_t offset = k->getZExtValue();
 					if (offset == 0)
 					{
-						llvm::Value* result = builder->CreateCall(llvm_function(AST_from_function, i64_type(), i64_type()), {field_results[0].IR});
+						llvm::Value* result = builder->CreateCall(llvm_function(AST_from_function, llvm_i64(), llvm_i64()), {field_results[0].IR});
 						finish_special(result, u::AST_pointer);
 					}
 					else if (offset == 1)
 					{
-						llvm::Value* result = builder->CreateCall(llvm_function(type_from_function, i64_type(), i64_type()), {field_results[0].IR});
+						llvm::Value* result = builder->CreateCall(llvm_function(type_from_function, llvm_i64(), llvm_i64()), {field_results[0].IR});
 						finish_special(result, u::type_pointer);
 					}
 					else return_code(oversized_offset, 1);
@@ -823,6 +830,32 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 			default:
 				return_code(type_mismatch, 0);
 			}
+		}
+	case ASTn("system1"):
+		{
+			llvm::CallInst* systemquery = builder->CreateCall(llvm_function(system1, llvm_i64(), llvm_i64()), {field_results[0].IR});
+			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
+			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::ReadOnly);
+			finish(systemquery);
+		}
+	case ASTn("system2"):
+		{
+			llvm::CallInst* systemquery = builder->CreateCall(llvm_function(system2, llvm_i64(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
+			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
+			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::ReadOnly);
+			finish(systemquery);
+		}
+	case ASTn("agency1"):
+		{
+			llvm::CallInst* systemquery = builder->CreateCall(llvm_function(agency1, llvm_void(), llvm_i64()), {field_results[0].IR});
+			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
+			finish(systemquery);
+		}
+	case ASTn("agency2"):
+		{
+			llvm::CallInst* systemquery = builder->CreateCall(llvm_function(agency2, llvm_void(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
+			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
+			finish(systemquery);
 		}
 	}
 	error("fell through switches");

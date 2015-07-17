@@ -8,3 +8,5 @@ but linux is vulnerable too. and clang, and any of the services used. intel prob
 	moreover, they're vulnerable even non maliciously.
 
 problem: if the user doesn't have admin, someone from outside can come in and compromise things. then it's root vs non root.
+
+warning: virtual machines may prevent AES-NI from working. thus giving non-constant time AES, which can be broken in 80 rounds.

@@ -91,7 +91,7 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 		std::unique_ptr<llvm::Module> M(new llvm::Module(GenerateUniqueName("jit_module_"), mini_context));
 		builder_context_stack b(&new_builder, &mini_context); //for safety
 		using namespace llvm;
-		FunctionType *func_type(FunctionType::get(i64_type(), false));
+		FunctionType *func_type(FunctionType::get(llvm_i64(), false));
 
 		std::string function_name = GenerateUniqueName("");
 		Function *trampoline(Function::Create(func_type, Function::ExternalLinkage, function_name, M.get()));
@@ -104,14 +104,14 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 		Value* result_of_call = new_builder.CreateCall(target_function, {});
 
 		//START DYNAMIC
-		llvm::Value* allocator = llvm_function(allocate, i64_type()->getPointerTo(), i64_type());
+		llvm::Value* allocator = llvm_function(allocate, llvm_i64()->getPointerTo(), llvm_i64());
 		llvm::Value* dynamic_object_raw = builder->CreateCall(allocator, {llvm_integer(size_of_return)});
 		llvm::Type* target_pointer_type = llvm_type(size_of_return)->getPointerTo();
 		llvm::Value* dynamic_object = builder->CreatePointerCast(dynamic_object_raw, target_pointer_type);
 
 		//store the returned value into the acquired address
 		builder->CreateStore(result_of_call, dynamic_object);
-		llvm::Value* dynamic_object_address = builder->CreatePtrToInt(dynamic_object, i64_type());
+		llvm::Value* dynamic_object_address = builder->CreatePtrToInt(dynamic_object, llvm_i64());
 		builder->CreateRet(dynamic_object_address);
 		///FINISH DYNAMIC
 
@@ -221,4 +221,52 @@ inline Type* type_from_function(function* a)
 {
 	if (a == nullptr) return nullptr;
 	return a->return_type;
+}
+
+inline uint64_t system1(uint64_t par)
+{
+	switch (par)
+	{
+	case 0:
+		return ASTn("never reached");
+	case 1:
+		return finiteness;
+	case 2:
+		return mersenne();
+	default:
+		return 0;
+	}
+}
+inline uint64_t system2(uint64_t first, uint64_t par)
+{
+	switch (first)
+	{
+	case 0:
+		if (par < ASTn("never reached"))
+			return AST_descriptor[par].pointer_fields;
+		else return 0;
+	default:
+		return 0;
+	}
+}
+
+inline void agency1(uint64_t par)
+{
+	switch (par)
+	{
+	case 0:
+	default:
+		return;
+	}
+}
+inline void agency2(uint64_t first, uint64_t par)
+{
+	switch (first)
+	{
+	case 0:
+		console << par << ' ';
+		return;
+	default:
+		return;
+	}
 }

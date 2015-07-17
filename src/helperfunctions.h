@@ -22,32 +22,32 @@ enum IRgen_status {
 };
 
 //solely for convenience
-inline llvm::IntegerType* i64_type() { return llvm::Type::getInt64Ty(*context); }
-inline llvm::Type* void_type() { return llvm::Type::getVoidTy(*context); }
+inline llvm::IntegerType* llvm_i64() { return llvm::Type::getInt64Ty(*context); }
+inline llvm::Type* llvm_void() { return llvm::Type::getVoidTy(*context); }
 
 inline llvm::Constant* llvm_integer(uint64_t value)
 {
-	return llvm::ConstantInt::get(i64_type(), value);
+	return llvm::ConstantInt::get(llvm_i64(), value);
 }
 
 inline llvm::ArrayType* llvm_array(uint64_t size)
 {
 	check(size != 0, "tried to get 0 size llvm array");
-	return llvm::ArrayType::get(i64_type(), size);
+	return llvm::ArrayType::get(llvm_i64(), size);
 }
 
 inline llvm::Type*  llvm_type(uint64_t size)
 {
 	check(size != 0, "tried to get 0 size llvm type");
 	if (size > 1) return llvm_array(size);
-	else return i64_type();
+	else return llvm_i64();
 }
 
 inline llvm::Type* llvm_type_including_void(uint64_t size)
 {
-	if (size == 0) return void_type();
+	if (size == 0) return llvm_void();
 	if (size > 1) return llvm_array(size);
-	else return i64_type();
+	else return llvm_i64();
 }
 
 
@@ -75,16 +75,16 @@ inline llvm::Value* llvm_create_phi(llvm::ArrayRef<llvm::Value*> values, llvm::A
 	std::set<uint64_t> legitimate_values; //ones that aren't T::does_not_return
 	for (uint64_t idx = 0; idx < choices; ++idx)
 	{
-			if (types[idx]->tag != Typen("does not return"))
-			{
-				legitimate_values.insert(idx);
-				eventual_size = get_size(types[idx]);
-			}
+		if (types[idx]->tag != Typen("does not return"))
+		{
+			legitimate_values.insert(idx);
+			eventual_size = get_size(types[idx]);
+		}
 	}
 	if (legitimate_values.size() == 0) return nullptr;
 	if (legitimate_values.size() == 1) return values[*legitimate_values.begin()];
 
-	llvm::PHINode* PN = builder->CreatePHI(eventual_size == 1 ? (llvm::Type*)i64_type() : llvm_array(eventual_size), legitimate_values.size()); //phi with two incoming variables
+	llvm::PHINode* PN = builder->CreatePHI(eventual_size == 1 ? (llvm::Type*)llvm_i64() : llvm_array(eventual_size), legitimate_values.size()); //phi with two incoming variables
 	for (uint64_t idx : legitimate_values)
 		PN->addIncoming(values[idx], basic_blocks[idx]);
 	return PN;
@@ -141,10 +141,10 @@ public:
 	{
 		llvm::Instruction* new_alloca;
 		if (!self_is_full)
-			new_alloca = new llvm::AllocaInst(i64_type(), llvm_integer(size));
+			new_alloca = new llvm::AllocaInst(llvm_i64(), llvm_integer(size));
 		else
 		{
-			llvm::Value* allocator = llvm_function(allocate, i64_type()->getPointerTo(), i64_type());
+			llvm::Value* allocator = llvm_function(allocate, llvm_i64()->getPointerTo(), llvm_i64());
 			new_alloca = llvm::CallInst::Create(allocator, {llvm_integer(size)});
 		}
 
@@ -255,13 +255,13 @@ we create a many-element allocation instead of an array allocation, because we n
 inline llvm::AllocaInst* create_empty_alloca() {
 	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
-	return TmpB.CreateAlloca(i64_type(), llvm_integer(0));
+	return TmpB.CreateAlloca(llvm_i64(), llvm_integer(0));
 }
 
 inline llvm::AllocaInst* create_actual_alloca(uint64_t size) {
 	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
-	return TmpB.CreateAlloca(i64_type(), llvm_integer(size));
+	return TmpB.CreateAlloca(llvm_i64(), llvm_integer(size));
 }
 
 struct builder_context_stack

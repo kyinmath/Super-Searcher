@@ -1,28 +1,8 @@
-[add [integer 1] [random]]
-
-stack storage.
-[integer 0]b [label]a [print_int [load b]] [store [pointer b] [add [load b] [integer 1]]] [goto a]
-	should print an increasing integer, and then stop when finiteness is exhausted
-
-[label {[hello] [compile [convert_to_AST [integer 2] [scope] [dynamic] [goto a]]]}]a
-	should succeed. prints hello
-
-[compile [convert_to_AST [random] [scope] [dynamic [integer 0]]]0x337e790 [load_object 0] 0x337e790]
-
-
-[integer 30]a [print_int [load a]]
-
-[label [goto a]]a
-	produces an integer, since our loop checker is total rubbish
-
-[scope {[integer]a [scope]}] [scope {a [scope]}]
-	should compile. tests clearing old unused stack allocas
-
-
-[concatenate [integer] [integer]] [integer]
+[concatenate [imv 1] [imv 2]] [imv 3]
 	still causes extra cast
+[concatenate [imv 1] [imv 2]]
+	causes a ridiculous amount of GEPs
 
-[concatenate [integer]a [load a]]
 
 [concatenate [concatenate [integer] [integer]] [integer]]
 [concatenate [integer] [concatenate [integer] [integer]]]
@@ -35,11 +15,3 @@ stack storage.
 	usually ought to fail. random > highest possible tag
 [convert_to_AST [integer 7] [scope] [dynamic]]
 	should produce a [random] AST
-
-
-[run_function [compile [convert_to_AST [random] [scope] [dynamic [load_object 0]]]]]
-
-[dynamic_conc {[load_object 40]0x7ffff7f14ed0 [dynamic 0x7ffff7f14ed0]0x7ffff7f14e98} 0x7ffff7f14e98]
-I'm pretty sure this shouldn't compile, because the load_object duplicates its reference.
-	we have a bug somewhere.
-[add {[load_object 50] [random]a} a]

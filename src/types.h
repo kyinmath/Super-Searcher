@@ -71,6 +71,7 @@ constexpr uint64_t minus_one = ~0ull; //note that a -1 literal, without specifyi
 /* Guidelines for new Types:
 you must create an entry in type_check.
 marky_mark.
+dynamic offset AST.
 */
 constexpr Type_info Type_descriptor[] =
 {
