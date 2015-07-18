@@ -49,3 +49,5 @@ maybe we can write into function pointers using the usual store(). we'd normally
 
 problem: we need to extract from concatenate, not just from pointer.
 	can we just require the user to make a pointer first?
+
+loading is good: when getting the inside of a dynamic object, what happens if it's a pointer? you're basically fucked - EXCEPT, when 

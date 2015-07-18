@@ -43,7 +43,7 @@ inline void output_type(const Type* target)
 		console << "null type\n";
 		return;
 	}
-	console << "type " << Type_descriptor[target->tag].name << "(" << target->tag << "), addr " << target << ", ";
+	console << "type " << Type_descriptor[target->ver()].name << "(" << target->ver() << "), addr " << target << ", ";
 	console << "fields";
 	for (auto& x : Type_everything_range(target))
 		console << ' ' << x;

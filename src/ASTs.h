@@ -23,10 +23,11 @@ struct AST_info
 	struct compile_time_typeinfo
 	{
 		special_type state;
-		Type* const type;
+		const int_or_ptr<Type> type;
 		constexpr compile_time_typeinfo(Type* t) : state(normal), type(t) {}
-		constexpr compile_time_typeinfo(special_type s) : state(s), type(0) {}
-		constexpr compile_time_typeinfo() : state(missing_field), type(0) {}
+		constexpr compile_time_typeinfo(uint64_t t) : state(normal), type(t) {}
+		constexpr compile_time_typeinfo(special_type s) : state(s), type(0Ui64) {}
+		constexpr compile_time_typeinfo() : state(missing_field), type(0Ui64) {}
 	};
 	typedef compile_time_typeinfo ctt;
 	ctt return_object; //if this type is null, do not check it using the generic method - check it specially.
@@ -35,10 +36,10 @@ struct AST_info
 	uint64_t pointer_fields; //how many field elements are pointers.
 	//for ASTs, this means pointers to other ASTs. for Types, this means pointers to other Types.
 	//this forces fields_to_compile downward if it is too high. by default, they are equal.
-	constexpr AST_info make_pointer_fields(int x)
+	constexpr AST_info add_pointer_fields(int x)
 	{
 		AST_info new_copy(*this);
-		new_copy.pointer_fields = x;
+		new_copy.pointer_fields += x;
 		if (new_copy.fields_to_compile >= new_copy.pointer_fields)
 			new_copy.fields_to_compile = new_copy.pointer_fields;
 		return new_copy;
@@ -55,7 +56,7 @@ struct AST_info
 	{
 		AST_info new_copy(*this);
 		new_copy.additional_special_fields = x;
-		return new_copy.make_pointer_fields(pointer_fields - x);
+		return new_copy.add_pointer_fields(-x);
 	}
 
 	template<typename... Args> constexpr AST_info(const char a[], ctt r, Args... incoming_fields)
@@ -92,40 +93,42 @@ constexpr AST_info AST_descriptor[] =
 	{"zero", T::integer}, //Peano axioms zero
 	{"decrement", T::integer, T::integer}, //Peano axioms increment operation.
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
+	{"random", T::integer},
 	{"print_int", T::null, T::integer},
-	a("if", special_return, T::integer).make_pointer_fields(3), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
+	a("if", special_return, T::integer).add_pointer_fields(2), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
 	{"subtract", T::integer, T::integer, T::integer},
 	{"multiply", T::integer, T::integer, T::integer},
 	{"udiv", T::integer, T::integer, T::integer},
 	{"urem", T::integer, T::integer, T::integer},
-	a("pointer", special_return).make_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
-	a("copy", special_return).make_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it. but...maybe this should take a pointer instead...and then, how will we copy things?
-	a("concatenate", special_return).make_pointer_fields(2), //squashes two objects together to make a big object
+	a("pointer", special_return).add_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
+	a("copy", special_return).add_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it. but...maybe this should take a pointer instead...and then, how will we copy things?
+	a("concatenate", special_return).add_pointer_fields(2), //squashes two objects together to make a big object
 	{"dynamify", T::dynamic_pointer, parameter_no_type_check}, //turns a regular pointer into a dynamic pointer. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
 	a("compile", T::function_pointer, T::AST_pointer), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
 	{"run_function", T::dynamic_pointer, T::function_pointer},
 	{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, parameter_no_type_check}, //concatenate the interiors of two dynamic pointers
-	a("goto", special_return).make_pointer_fields(3), //first field is label, second field is success, third field is failure
-	a("label", T::null).make_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
+	a("goto", special_return).add_pointer_fields(3), //first field is label, second field is success, third field is failure
+	a("label", T::null).add_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
 	a("convert_to_AST", T::AST_pointer, T::integer, parameter_no_type_check, T::dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
 	{"store", T::null, parameter_no_type_check, parameter_no_type_check}, //pointer, then value.
 	{"load_subobj", special_return, parameter_no_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields.
+	a("dyn_subobj", T::type, T::dynamic_pointer, T::integer).add_pointer_fields(6), //if it's a pointer, we make a special dynamic pointer instead.
 	{"system1", T::integer, T::integer}, //find a system value, using only one parameter. this is a read-only operation, with no effects.
 	{"system2", T::integer, T::integer, T::integer},
 	{"agency1", T::null, T::integer}, //this has side effects. it's split out because system reading is not dangerous, and this is. the user generally should worry about running this AST.
 	{"agency2", T::null, T::integer, T::integer},
-	//{"write_n", T::null, parameter_no_type_check, T::integer, parameter_no_type_check}, //
+	//{"write_n", T::null, parameter_no_type_check, T::integer, parameter_no_type_check}, //writes into pointers
+	//we need a specific "overwrite function" AST, that can't be the usual store. because it might fail, and so we must return an error code.
 	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both
 	//{"load_static_from_AST", T::dynamic_pointer, T::AST_pointer},
 	//{"write_into_AST", T::integer, T::integer, T::AST_pointer}, //writes a field. the integer comes first because it logically decides the field.
-	//{"type_of_function", T::type_pointer, T::function}, this is a function thing instead of an AST thing, because compilation verifies correctness, which is necessary for the return type to be meaningful.
+	//{"type_of_function", T::type, T::function}, this is a function thing instead of an AST thing, because compilation verifies correctness, which is necessary for the return type to be meaningful.
 	//a("do_after", T::special_return, parameter_no_type_check).make_pointer_fields(2),
 	//{"return", T::special_return, T::parameter_no_type_check}, have to check that the type matches the actual return type. call all dtors. we can take T::does_not_return, but that just disables the return.
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
 	{ "divss", 3 }, warning: integer division by -1 must be considered. (1 << 31) / -1 is segfault.
-	{ "decr", 1 },
 	{ "less", 2 },
 	{ "lteq", 2 },
 	{ "less signed", 2 },

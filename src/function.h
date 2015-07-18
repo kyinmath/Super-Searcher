@@ -8,7 +8,7 @@
 extern bool VERBOSE_GC;
 struct function
 {
-	uAST* the_AST; //it's immutable! note that our mark algorithm relies on the exact integer offset of this object being 0
+	uAST* the_AST; //note that our mark algorithm relies on the exact integer offset of this object being 0
 	Type* return_type; //mark algorithm relies on this exact offset as well.
 	Type* parameter_type = 0; //if nonzero, change the mark algorithm
 	void* fptr; //the function pointer

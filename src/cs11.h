@@ -15,8 +15,8 @@
 #include "globalinfo.h"
 #include "helperfunctions.h"
 
-extern  std::mt19937_64 mersenne;
-extern  uint64_t finiteness;
+extern std::mt19937_64 mersenne;
+extern uint64_t finiteness;
 constexpr uint64_t FINITENESS_LIMIT = 10;
 uint64_t generate_exponential_dist();
 
@@ -39,6 +39,18 @@ class compiler_object
 	//maps ASTs to their generated IR and return type.
 	std::unordered_map<uAST*, Return_Info> objects;
 
+	//pair with clear_stack(). returns 1 on error
+	bool new_object(uAST* target, bool referenceable, Return_Info r)
+	{
+		object_stack.push({target, referenceable});
+		if (referenceable)
+		{
+			auto insert_result = objects.insert({target, r});
+			if (!insert_result.second) //collision: AST is already there
+				return 1;
+		}
+		return 0;
+	}
 
 	struct label_info
 	{

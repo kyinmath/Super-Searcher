@@ -1,9 +1,24 @@
-remember, Intel has a VNC server. since everything is already there, it would be trivial for them to backdoor their CPUs?
+Usually, Xeon-series processors have much larger L3 cache and higher multi-core capacity (up to 12) than comparable i-series processors on top of other server/workstation nitty-gritty details and optimizations for server-specific tasks.
+The other benefit of 2011 is more channels for RAM. 8x isn't uncommon and some configurations even use tri-channel memory.
+Additionally, Socket 2011 + Xeon allows for ECC RAM, which is very desirable for server and workstation environments. I would even go so far as to say this is the #2 reason people get 2011+Xeon, and sometimes even the #1 reason.
+Oh, and multi-socket motherboards, sure. If that's your thing.
+So... TL;DR: More cores, more cache, different nitty-gritty features, more RAM channels, ECC RAM, more PCI-E lanes.
 
+
+on Amazon:
+use O3 to obfuscate.
+preferably, obfuscate using something else as well.
+never upload source code.
+objdump --full-contents --section=.comment myprog 
+	then strip it!
+	https://reverseengineering.stackexchange.com/questions/47/can-i-create-an-object-file-using-gcc-that-cannot-be-reverse-engineered
+
+
+
+remember, Intel has a VNC server. since everything is already there, it would be trivial for them to backdoor their CPUs?
 they can do microcode updates on CPUs in the wild...
 	maybe a reason not to give bots admin control; they'd take over the computer for all future users as well.
 	or any control really. sandbox completely, because some control = admin control. Windows is as leaky as a sponge.
-
 but linux is vulnerable too. and clang, and any of the services used. intel probably is a small concern.
 	moreover, they're vulnerable even non maliciously.
 

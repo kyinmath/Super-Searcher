@@ -10,7 +10,6 @@ namespace T
 	constexpr Type internal::type;
 	constexpr Type internal::AST_pointer;
 	constexpr Type internal::function_pointer;
-	constexpr Type internal::type_pointer;
 };
 
 /* this checks if a new reference can be bound to an old reference.
@@ -68,13 +67,13 @@ type_check_result type_check(type_status version, Type* existing_reference, Type
 	}
 	if (iter[0] == iter[1]) return type_check_result::perfect_fit; //easy way out, if lucky. we can't do this later, because our stack might have extra things to look at.
 	if (existing_reference == u::does_not_return) return type_check_result::perfect_fit; //nonexistent means that the code path is never seen.
-	if (existing_reference->tag != Typen("con_vec")) //not a concatenation
+	if (existing_reference->ver() != Typen("con_vec")) //not a concatenation
 	{
-		if (new_reference->tag != Typen("con_vec"))
+		if (new_reference->ver() != Typen("con_vec"))
 			return type_check_once(version, existing_reference, new_reference);
 		else return type_check_result::different;
 	}
-	else if (new_reference->tag != Typen("con_vec")) //then the other one better be a concatenation too
+	else if (new_reference->ver() != Typen("con_vec")) //then the other one better be a concatenation too
 		return type_check_result::different;
 	else
 	{
@@ -121,10 +120,10 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 	*/
 	if (version == RVO)
 	{
-		switch (iter[1]->tag)
+		switch (iter[1]->ver())
 		{
 		case Typen("pointer"):
-			if (iter[0]->tag == iter[1]->tag)
+			if (iter[0]->ver() == iter[1]->ver())
 			{
 				auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
 				if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
@@ -132,7 +131,7 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 			}
 			else return type_check_result::different;
 		case Typen("integer"):
-			if (iter[0]->tag == iter[1]->tag || iter[0]->tag == Typen("pointer") || iter[0]->tag == Typen("type pointer") || iter[0]->tag == Typen("function pointer") || iter[0]->tag == Typen("AST pointer"))
+			if (iter[0]->ver() == iter[1]->ver() || iter[0]->ver() == Typen("pointer") || iter[0]->ver() == Typen("type pointer") || iter[0]->ver() == Typen("function pointer") || iter[0]->ver() == Typen("AST pointer"))
 				return type_check_result::perfect_fit;
 			//maybe we should also allow two uints in a row to take a dynamic pointer?
 			//we'd have to think about that. the current system allows for large types in the new reference to accept pieces, but I don't know if that's the best.
@@ -142,11 +141,11 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 		case Typen("AST pointer"):
 		case Typen("function pointer"):
 		case Typen("type pointer"):
-			if (iter[0]->tag == iter[1]->tag)
+			if (iter[0]->ver() == iter[1]->ver())
 				return type_check_result::perfect_fit;
 			return type_check_result::different;
 		default:
-			error("default switch in fully immut/RVO branch " + std::string(Type_descriptor[iter[1]->tag].name));
+			error("default switch in fully immut/RVO branch " + std::string(Type_descriptor[iter[1]->ver()].name));
 		}
 	}
 
@@ -158,9 +157,9 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 		//for pointers, we cannot pass in fully_immut. because the old reference must be valid too, and we can't point to anything more general than the old reference.
 
 		//first type field must be the same
-		if (iter[1]->tag != iter[0]->tag) return type_check_result::different;
+		if (iter[1]->ver() != iter[0]->ver()) return type_check_result::different;
 
-		switch (iter[1]->tag)
+		switch (iter[1]->ver())
 		{
 		case Typen("pointer"):
 			{
@@ -193,7 +192,7 @@ Type* concatenate_types(llvm::ArrayRef<Type*> components)
 	for (auto& x : components)
 	{
 		if (x == nullptr) continue;
-		if (x->tag == Typen("con_vec"))
+		if (x->ver() == Typen("con_vec"))
 		{
 			uint64_t last_offset_field = x->fields[0].num + 2;
 			for (uint64_t k = 2; k < last_offset_field; ++k)

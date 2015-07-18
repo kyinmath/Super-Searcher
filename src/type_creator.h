@@ -13,7 +13,7 @@ namespace std {
 	{
 		size_t operator () (const Type* f) const noexcept
 		{
-			uint64_t hash = f->tag;
+			uint64_t hash = f->ver();
 			for (uint64_t x = 0; x < total_valid_fields(f); ++x)
 				hash ^= f->fields[x].num;
 			//we're ignoring con_vec, but that's probably ok
@@ -37,7 +37,7 @@ namespace std {
 			if ((l == nullptr) != (r == nullptr)) return false;
 			if ((l == nullptr) && (r == nullptr)) return true;
 
-			if (l->tag != r->tag)
+			if (l->ver() != r->ver())
 				return false;
 
 			uint64_t no_of_fields = total_valid_fields(l);

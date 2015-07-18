@@ -173,9 +173,9 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 	}
 }
 
-/** generate_IR() is the main code that transforms AST into LLVM IR. it is called with the AST to be transformed
+/** generate_IR() transforms ASTs into LLVM IR.
 '
-storage_location is for RVO. if stack_degree says that the return object should be stored somewhere, the location will be "memory_location desired". storage is done by the returning function.
+memory_location is for RVO. if stack_degree says that the return object should be stored somewhere, the location will be "memory_location desired". storage is done by the returning function.
 ASTs that are directly inside basic blocks should allocate their own stack memory, so they are given stack_degree = 2.
 	this tells them to create a memory location and to place the return value inside it. the memory location is returned.
 ASTs that should place their return object inside an already-created memory location are given stack_degree = 1.
@@ -204,7 +204,7 @@ currently, the finish() macro takes in the array itself, not the pointer-to-arra
 Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, memory_location desired)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
-#define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, memory_location(), u::null, false); } while (0)
+#define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, memory_location(), u::null); } while (0)
 	//if (stack_degree == 2) stack_degree = 0; //we're trying to diagnose the memory problems with label. this does nothing.
 
 	if (VERBOSE_DEBUG)
@@ -340,15 +340,15 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 			if (stack_degree >= 1)
 			{
 				object_stack.push({target, true});
-				auto insert_result = objects.insert({target, Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type, true)});
+				auto insert_result = objects.insert({target, Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type)});
 				if (!insert_result.second) //collision: AST is already there
 					return_code(active_object_duplication, 10);
-				return Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type, true);
+				return Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type);
 			}
 			else //stack_degree == 0
 			{
 				object_stack.push({target, false});
-				return Return_Info(IRgen_status::no_error, return_value, memory_location(), type, false);
+				return Return_Info(IRgen_status::no_error, return_value, memory_location(), type);
 			}
 		}
 		else return Return_Info();
@@ -406,6 +406,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 	case ASTn("add"): finish(builder->CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
 	case ASTn("subtract"): finish(builder->CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
 	case ASTn("multiply"): finish(builder->CreateMul(field_results[0].IR, field_results[1].IR, s("multiply")));
+	case ASTn("random"): finish(builder->CreateCall(llvm_function(generate_random, llvm_i64()), {}, s("random")));
 	case ASTn("udiv"):
 		{
 			l::Value* comparison = builder->CreateICmpNE(field_results[1].IR, llvm_integer(0), s("division by zero check"));
@@ -466,7 +467,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 			l::Value* comparison = builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("if() condition"));
 			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
 
-			// Create blocks for the then and else cases.  Insert the blocks at the end of the function; this is ok because the builder position is the thing that affects instruction insertion. it's necessary to insert them into the function so that we can avoid memleak on errors
+			// Create blocks for the then and else cases. Insert the blocks at the end of the function; this is ok because the builder position is the thing that affects instruction insertion. it's necessary to insert them into the function so that we can avoid memleak on errors
 			l::BasicBlock *ThenBB = l::BasicBlock::Create(*context, s("then"), TheFunction);
 			l::BasicBlock *ElseBB = l::BasicBlock::Create(*context, s("else"), TheFunction);
 			l::BasicBlock *MergeBB = l::BasicBlock::Create(*context, s("merge"), TheFunction);
@@ -523,7 +524,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 		{
 			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
 
-			// Create blocks for the then and else cases.  Insert the block into the function, or else it'll leak when we return_code
+			// Create blocks for the then and else cases. Insert the block into the function, or else it'll leak when we return_code
 			l::BasicBlock *label = l::BasicBlock::Create(*context, "", TheFunction);
 			auto label_insertion = labels.insert(std::make_pair(target, label_info(label, final_stack_position, true)));
 			if (label_insertion.second == false) return_code(label_duplication, 0);
@@ -664,25 +665,80 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 	case ASTn("store"):
 		{
 			if (field_results[0].type == nullptr) return_code(type_mismatch, 0);
-			if (field_results[0].type->tag != Typen("pointer")) return_code(type_mismatch, 0);
+			if (field_results[0].type->ver() != Typen("pointer")) return_code(type_mismatch, 0);
 			if (type_check(RVO, field_results[1].type, field_results[0].type->fields[0].ptr) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
 			llvm::Value* memory_location = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 
 			write_into_place(value_collection(field_results[1].IR, get_size(field_results[1].type)), memory_location);
 			finish(0);
 		}
+	case ASTn("dyn_subobj"):
+		{
+			llvm::Value* overall_type = builder->CreateExtractValue(field_results[0].IR, {0}, s("type of dynamic"));
+			llvm::Value* pointer = builder->CreateExtractValue(field_results[0].IR, {1}, s("object of dynamic"));
+			llvm::Value* offset = field_results[1].IR;
+
+			l::Type* double_int = l::StructType::get(*context, {llvm_i64(), llvm_i64()});
+			auto dynamic_func = llvm_function(dynamic_subtype, double_int, llvm_i64(), llvm_i64());
+			auto offset_data = builder->CreateCall(dynamic_func, {overall_type, offset});
+
+			llvm::Value* single_type = builder->CreateExtractValue(offset_data, {0}, s("type of dynamic"));
+			llvm::Value* memory_offset = builder->CreateExtractValue(offset_data, {1}, s("object of dynamic"));
+			llvm::Value* correct_pointer = builder->CreateGEP(pointer, memory_offset);
+
+			uint64_t starting_stack_position = object_stack.size();
+			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
+			auto switch_on_type = builder->CreateSwitch(single_type, 0, Typen("does not return") - 1, 0); //dependency on type
+			l::BasicBlock *MergeBB = l::BasicBlock::Create(*context, s("merge"), TheFunction);
+
+			for (uint64_t x = 1; x < Typen("does not return"); ++x) //dependency on type
+			{
+
+				l::BasicBlock *caseBB = l::BasicBlock::Create(*context, "", TheFunction);
+				switch_on_type->addCase(llvm_integer(x), caseBB);
+				builder->SetInsertPoint(caseBB);
+				llvm::Value* loaded_object;
+				Type* loaded_object_type;
+				if (x == ASTn("pointer")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
+				{
+					loaded_object_type = u::dynamic_pointer;
+					l::Value* pointer_value = load_from_memory(correct_pointer, Type_descriptor[x].size);
+					l::Value* undef_value = l::UndefValue::get(llvm_array(2));
+					l::Value* first_value = builder->CreateInsertValue(undef_value, single_type, {0});
+					loaded_object = builder->CreateInsertValue(first_value, pointer_value, {1});
+				}
+				else //dependency on type. if we found a pointer, then grab a dynamic pointer instead.
+				{
+					loaded_object_type = (Type*)x;
+					loaded_object = load_from_memory(correct_pointer, Type_descriptor[x].size);
+				}
+				if (new_object(target, true, Return_Info(IRgen_status::no_error, loaded_object, {}, loaded_object_type)))
+					return_code(active_object_duplication, 10);
+
+
+				Return_Info case_IR = generate_IR(target->fields[x + 1].ptr, false);
+				if (case_IR.error_code) return case_IR;
+
+				clear_stack(starting_stack_position);
+				//we don't need to update the BB*, because we never use it again.
+				builder->CreateBr(MergeBB);
+			}
+
+			builder->SetInsertPoint(MergeBB);
+			finish(single_type);
+		}
 	case ASTn("dynamify"):
 		{
 			if (field_results[0].type == 0)
 				finish(l::ConstantArray::get(llvm_array(2), {llvm_integer(0), llvm_integer(0)}));
-			if (field_results[0].type->tag == Typen("pointer"))
+			if (field_results[0].type->ver() == Typen("pointer"))
 			{
 				l::Value* dynamic_object_address = field_results[0].IR;
 				l::Constant* integer_type_pointer = llvm_integer((uint64_t)field_results[0].type->fields[0].ptr);
 
 				l::Value* undef_value = l::UndefValue::get(llvm_array(2));
 				l::Value* first_value = builder->CreateInsertValue(undef_value, integer_type_pointer, { 0 });
-				l::Value* full_value = builder->CreateInsertValue(first_value, dynamic_object_address,  { 1 });
+				l::Value* full_value = builder->CreateInsertValue(first_value, dynamic_object_address, { 1 });
 				finish(full_value);
 			}
 			else return_code(type_mismatch, 0);
@@ -691,13 +747,12 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 		{
 			l::Value* type;
 			l::Value* pointer;
-				type = builder->CreateExtractValue(field_results[0].IR, {0}, s("type pointer of dynamic"));
-				pointer = builder->CreateExtractValue(field_results[0].IR, {1}, s("object pointer of dynamic"));
+			type = builder->CreateExtractValue(field_results[0].IR, {0}, s("type of dynamic"));
+			pointer = builder->CreateExtractValue(field_results[0].IR, {1}, s("object of dynamic"));
 
 			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
 			//if ever the optimization changes, we might be in trouble.
-			std::vector<l::Type*> return_types{llvm_i64(), llvm_i64()};
-			l::Type* return_type = l::StructType::get(*context, return_types);
+			l::Type* return_type = l::StructType::get(*context, {llvm_i64(), llvm_i64()});
 			l::Value* dynamic_conc_function = llvm_function(concatenate_dynamic, return_type, llvm_i64(), llvm_i64(), llvm_i64());
 
 			l::Value* static_type = llvm_integer((uint64_t)field_results[1].type);
@@ -743,9 +798,9 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 		}
 	case ASTn("run_function"):
 		{
-			llvm::Type* agg_type = llvm::StructType::get(*context,  {{llvm_i64(), llvm_i64()}});
+			llvm::Type* agg_type = llvm::StructType::get(*context, {{llvm_i64(), llvm_i64()}});
 			llvm::Value* runner = llvm_function(run_null_parameter_function, agg_type, llvm_i64());
-			l::Value* run_result = builder->CreateCall(runner,  {field_results[0].IR});
+			l::Value* run_result = builder->CreateCall(runner, {field_results[0].IR});
 
 			finish(run_result);
 		}
@@ -772,7 +827,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 		{
 			Type* type_of_pointer = field_results[0].type;
 			if (type_of_pointer == nullptr) return_code(type_mismatch, 0);
-			switch (type_of_pointer->tag)
+			switch (type_of_pointer->ver())
 			{
 			case Typen("pointer"):
 				{
@@ -808,7 +863,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 				{
 					llvm::Value* type_offset = llvm_function(type_subfield, llvm_i64(), llvm_i64(), llvm_i64());
 					llvm::Value* result_type = builder->CreateCall(type_offset, {field_results[0].IR, field_results[1].IR});
-					finish_special(result_type, u::type_pointer);
+					finish_special(result_type, u::type);
 				}
 			case Typen("function pointer"):
 				if (llvm::ConstantInt* k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
@@ -822,7 +877,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 					else if (offset == 1)
 					{
 						llvm::Value* result = builder->CreateCall(llvm_function(type_from_function, llvm_i64(), llvm_i64()), {field_results[0].IR});
-						finish_special(result, u::type_pointer);
+						finish_special(result, u::type);
 					}
 					else return_code(oversized_offset, 1);
 				}

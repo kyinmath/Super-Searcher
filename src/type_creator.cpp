@@ -36,7 +36,7 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 
 	//note: we can't find the index with pointer arithmetic and range-for, because range for makes a move copy of the element.
 	//this function finds unique versions of any pointer subfields.
-	uint64_t counter = model->tag == Typen("con_vec") ? 1 : 0; //this counter starting value is a bit fragile.
+	uint64_t counter = model->ver() == Typen("con_vec") ? 1 : 0; //this counter starting value is a bit fragile.
 	for (Type*& pointer : Type_pointer_range(model))
 	{
 		if (UNIQUE_VERBOSE_DEBUG)
@@ -77,7 +77,7 @@ Type* get_unique_type(Type* model, bool can_reuse_parameter)
 	if (model == nullptr) return nullptr;
 	else
 	{
-		check((model->tag != 0) || (model->fields[0].num != 0), "trying to make a funny concatenate");
+		check((model->ver() != 0) || (model->fields[0].num != 0), "trying to make a funny concatenate");
 		return get_unique_type_internal(model, can_reuse_parameter).first;
 	}
 }

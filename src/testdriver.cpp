@@ -393,8 +393,8 @@ int main(int argc, char* argv[])
 		}
 		else if (strcmp(argv[x], "oldoutput") == 0) OLD_AST_OUTPUT = true;
 		else if (strcmp(argv[x], "fuzznocompile") == 0) FUZZTESTER_NO_COMPILE = true;
-		else if (strcmp(argv[x], "noaddmodule") == 0)  DONT_ADD_MODULE_TO_ORC = true;
-		else if (strcmp(argv[x], "deletemodule") == 0)  DELETE_MODULE_IMMEDIATELY = true;
+		else if (strcmp(argv[x], "noaddmodule") == 0) DONT_ADD_MODULE_TO_ORC = true;
+		else if (strcmp(argv[x], "deletemodule") == 0) DELETE_MODULE_IMMEDIATELY = true;
 		else if (strcmp(argv[x], "truefuzz") == 0)
 		{
 			DEBUG_GC = true;
@@ -415,7 +415,7 @@ int main(int argc, char* argv[])
 			runs = 500;
 			allowed_tags.push_back(ASTn(argv[++x]));
 		}
-		else if (strcmp(argv[x], "gctight") == 0)  GC_TIGHT = true;
+		else if (strcmp(argv[x], "gctight") == 0) GC_TIGHT = true;
 		else if (strcmp(argv[x], "quiet") == 0)
 		{
 			console.setstate(std::ios_base::failbit);

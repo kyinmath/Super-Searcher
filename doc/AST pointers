@@ -128,3 +128,6 @@ maybe compile_AST always returns an AST pointer, but the AST pointer might be nu
 	here, we're exploiting the fact that it's semi-dynamic already
 
 since ASTs/types/functions/dynamics are pointers, we need a way to copy their targets. since we can't just load them.
+
+ASTs don't specify their return/parameter types, because then there's no way to manipulate them. you can't load them from dynamic pointers. it's impossible to get references to them.
+it's impossible to say, "I have an AST", because any time you want to change an object, you need to know its type.

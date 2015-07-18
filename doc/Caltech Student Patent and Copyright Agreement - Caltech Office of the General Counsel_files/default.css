@@ -1,0 +1,461 @@
+@import url('basics.css');
+/*  colors  */
+/* specialty colors not on master color pallet */
+/* colors for admin styles */
+/* colors for search.css */
+/* fonts */
+/* fix fat fonts in Chrome */
+html {
+  -webkit-font-smoothing: antialiased;
+}
+body {
+  background-position: top;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+  background-color: #222222;
+}
+div#skip {
+  height: 30px;
+  width: 100%;
+  background-color: #000000;
+}
+/* hide the link skip to main content stuff */
+#skip a,
+#skip a:hover,
+#skip a:visited {
+  position: absolute;
+  left: 0px;
+  top: -500px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+#skip a:active,
+#skip a:focus {
+  position: static;
+  width: auto;
+  height: auto;
+}
+#breadcrumbs {
+  width: 1000px;
+  margin: auto;
+  color: #aaa99f;
+  font-family: VaudMedium, sans-serif;
+  font-size: 12px;
+  margin-top: -25px;
+  padding-left: 45px;
+}
+#breadcrumbs a,
+#breadcrumbs a:visited {
+  color: #aaa99f;
+}
+#breadcrumbs > .active {
+  color: #ffffff;
+}
+#container {
+  width: 1000px;
+  margin: auto;
+}
+header {
+  height: 105px;
+  width: 100%;
+}
+#wordmark {
+  padding-top: 8px;
+}
+#title_section {
+  margin: 20px;
+  position: relative;
+}
+a#caltech_homepage:hover {
+  text-decoration: none;
+}
+#sitename {
+  position: absolute;
+  bottom: -5px;
+  width: 360px;
+  padding-left: 18px;
+}
+a#sitename_link {
+  font-family: LTCCaslonLong, serif;
+  font-size: 26px;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+}
+a#sitename_link:hover {
+  text-decoration: none;
+}
+#search {
+  float: right;
+  vertical-align: top;
+}
+form.search input[type=submit] {
+  background: url('/images/mte/search_button.png') no-repeat;
+  border: none;
+  width: 31px;
+  height: 30px;
+  float: right;
+  color: transparent;
+}
+form.search input[type=text] {
+  height: 24px;
+  width: 225px;
+}
+nav #primary {
+  font-family: KievitSlabMedium, Times, serif;
+  color: #c8c8c8;
+  font-size: 0;
+}
+nav #primary li.nav_1 {
+  display: inline-block;
+  line-height: 38px;
+  font-size: 20px;
+  background-image: url('/images/mte/menu-pointer-1px.png');
+  background-repeat: repeat-x;
+  background-position: bottom;
+  padding: 0 10px 9px 10px;
+}
+nav #primary li.nav_1.first {
+  padding: 0 0 9px 0;
+  width: 10px;
+}
+nav #primary li.nav_1 a,
+nav #primary li.nav_1 a:visited,
+nav #primary li.nav_1 a:hover {
+  color: #c8c8c8;
+  white-space: nowrap;
+}
+nav #primary li.nav_1.active {
+  color: #ffffff;
+  background-image: url('/images/mte/menu-pointer-tall.png');
+  background-repeat: no-repeat;
+}
+nav #secondary {
+  font-size: 1em;
+  padding-left: 20px;
+  background-color: #76777b;
+  color: #ffffff;
+}
+nav #secondary li.nav_2 {
+  display: inline-block;
+  white-space: nowrap;
+  line-height: 34px;
+  padding-right: 0.7em;
+  padding-left: 0.4em;
+  background: transparent url('/images/mte/submenu-spacer.png') no-repeat right center;
+}
+nav #secondary li.nav_2:last-child {
+  background: none;
+}
+nav #secondary li.nav_2 a,
+nav #secondary li.nav_2:visited {
+  color: #ffffff;
+}
+nav #secondary li.nav_2 span.active {
+  font-weight: bold;
+}
+nav #secondary li.nav_2 a:hover {
+  border-bottom: 10px #76777b solid;
+  border-radius: 3px;
+  text-decoration: none;
+}
+nav #tertiary {
+  font-size: 1em;
+  padding-left: 20px;
+  background-color: #c8c8c8;
+  color: #000000;
+}
+nav #tertiary li.nav_3 {
+  display: inline-block;
+  white-space: nowrap;
+  line-height: 34px;
+  padding-right: 0.7em;
+  padding-left: 0.4em;
+  background: transparent url('/images/mte/submenu-spacer-dark.png') no-repeat right center;
+}
+nav #tertiary li.nav_3:last-child {
+  background: none;
+}
+nav #tertiary li.nav_3 a,
+nav #tertiary li.nav_3 a:visited {
+  color: #000000;
+}
+nav #tertiary li.nav_3 span.active {
+  font-weight: bold;
+}
+nav #tertiary li.nav_3 a:hover {
+  border-bottom: 10px #c8c8c8 solid;
+  border-radius: 3px;
+  text-decoration: none;
+}
+#content {
+  background: #ffffff;
+  padding-bottom: 25px;
+  /* Try setting the font size on all of content 
+       to what we want for paragraphs, list items, etc.  */
+
+  font-size: 14px;
+}
+h1#pagehead,
+legend {
+  font-family: Vaud, sans-serif;
+  font-size: 20px;
+  margin-bottom: 15px;
+  color: #616265;
+  text-transform: uppercase;
+  margin-top: 0;
+}
+#main {
+  width: 598px;
+  margin-left: 45px;
+  padding-top: 22px;
+  /* spec calls for 40px - but from the top of the page title */
+
+  float: left;
+}
+#main.homepage {
+  width: 421px;
+}
+#sidebar {
+  /* border: 1px solid blue; */
+
+  width: 300px;
+  float: right;
+}
+#sidebar.homepage {
+  /* border: 1px solid blue;  */
+
+  width: 475px;
+  padding-top: 40px;
+}
+#sidebar.homepage img {
+  float: right;
+  margin-bottom: 20px;
+}
+#sidebar_caption {
+  margin-top: 15px;
+  width: 90%;
+  font-family: Vaud, sans-serif;
+  font-size: 12px;
+  line-height: 1.4em;
+}
+#sidebar_photo_credit {
+  margin-top: 5px;
+  width: 90%;
+  font-family: Vaud, sans-serif;
+  font-size: 11px;
+  font-style: italic;
+  color: #616265;
+}
+footer {
+  width: 100%;
+  margin-top: 10px;
+  font-size: 10px;
+  color: #ffffff;
+  text-transform: uppercase;
+  line-height: 1.4em;
+}
+#footer_cit {
+  letter-spacing: 2px;
+}
+footer a,
+footer a:visited {
+  color: #ffffff;
+  margin: 0 10px;
+  text-decoration: underline;
+}
+a.login_link {
+  float: right;
+}
+/*** clearfix ***/
+.clearfix:before,
+.clearfix:after {
+  content: "";
+  display: table;
+}
+.clearfix:after {
+  clear: both;
+}
+.clearfix {
+  zoom: 1;
+  /* for IE6&7 */
+
+}
+/*************** News, announcements and events ******************/
+article,
+.event {
+  padding: 20px 45px;
+}
+article.even,
+.event.even {
+  background: #f3f1f1;
+}
+article.odd,
+.event.odd {
+  background: #ffffff;
+}
+/*************** News and announcements ******************/
+.release_date {
+  font-family: KievitSlabMedium, Times, serif;
+  font-weight: bold;
+  font-size: 9px;
+  color: #616265;
+  margin-bottom: 2em;
+}
+article h3 {
+  font-family: KievitSlabMedium, Times, serif;
+  font-size: 18px;
+}
+#news_archive {
+  width: 100%;
+  padding: 25px 0;
+}
+/*************** Calendar Events ******************/
+.event_title {
+  font-family: KievitSlabMedium, Times, serif;
+  font-size: 18px;
+}
+.event_day {
+  font-size: 16px;
+  color: #000000;
+}
+.event_times {
+  font-weight: bold;
+  color: #616265;
+  letter-spacing: -0.075em;
+}
+.event_location {
+  font-size: 14px;
+}
+.event_body,
+.speaker {
+  margin-top: 1.5em;
+}
+/*************** News/Announcements/Events - on home page ******************/
+.news,
+.events {
+  padding-right: 25px;
+}
+.news h2.news_section_title a {
+  text-transform: uppercase;
+  font-family: VaudMedium, sans-serif;
+  font-size: 12px;
+}
+.news h2.quirky_facts_title {
+  text-transform: uppercase;
+  font-family: VaudMedium, sans-serif;
+  font-size: 12px;
+  color: #ff6e1e;
+  padding-top: 1.2em;
+}
+.news h3.release_title,
+.news h3.release_title a,
+.news h3.event_title,
+.news h3.event_title a {
+  font-family: Vaud, sans-serif;
+  font-size: 18px;
+  font-weight: normal;
+  color: #000000;
+  line-height: 1em;
+}
+.news h3.event_date,
+.news h3.event_date a {
+  font-family: Vaud, sans-serif;
+  font-size: 12px;
+  color: #616265;
+  line-height: 0.5em;
+}
+/*************  admin styles *****************/
+#cse {
+  min-height: 1000px;
+}
+#admin_main {
+  float: right;
+  width: 598px;
+  padding-right: 25px;
+  padding-top: 50px;
+}
+#admin_main td {
+  padding: 0.3em;
+}
+#admin_sidebar {
+  float: left;
+  width: 300px;
+}
+nav.admin {
+  padding-left: 75px;
+  padding-top: 60px;
+}
+nav.admin a {
+  color: #616265;
+  font-weight: normal;
+}
+/* active items are not links */
+nav.admin .nav_0,
+nav.admin .nav_1,
+nav.admin .nav_2,
+nav.admin .nav_3 {
+  padding-bottom: 0.5em;
+  color: #000000;
+}
+nav.admin .nav_2 {
+  padding-left: 1.5em;
+  white-space: normal;
+}
+nav.admin .nav_3 {
+  padding-left: 2.5em;
+  white-space: normal;
+}
+.bg-photo-choice {
+  margin: 20px 0 20px 0;
+}
+/********* for admin site map ************/
+#draggable_link_tree ul {
+  padding-top: 4px;
+  padding-bottom: 2px;
+  border: 1px solid #aaf;
+}
+#draggable_link_tree li {
+  border: 1px solid #e56620;
+}
+.login_only,
+.campus_only,
+.omitted {
+  font-size: .9em;
+  font-weight: bold;
+}
+.login_only {
+  color: #ff0000;
+}
+.campus_only {
+  color: #db5523;
+}
+.omitted {
+  color: #c8c8c8;
+}
+#pagehead input {
+  font-family: KievitSlabMedium, Times, serif;
+  font-size: 30px;
+}
+/*********** gray out unpublished announcements ***********/
+.draggable_details.unpublished,
+.draggable_details.unpublished a {
+  color: #76777b;
+}
+/*********** Bulk upload ***********/
+div#bulk_upload_container {
+  margin: 0px 10px;
+}
+div#bulk_upload_button {
+  background-color: #ffc88d;
+  border: solid 1px  #ff9a22;
+  display: inline;
+  padding: 2px;
+}
+div#divFileProgressContainer {
+  height: 75px;
+}
+/*********** Image Galleries  ***********/
+.thumbnail-gallery img {
+  margin: 5px 5px 5px 0;
+}

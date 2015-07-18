@@ -1,14 +1,13 @@
 1. dynamic_get_type(object)
-2. dynamic_assert(object, Type, number)
-3. dynamic_assert_pointer
-looking at types. we want to get the Nth type. when we get types past the end, we return null (as usual).
+remove special_fields from the AST_descriptor
 move the fuzzer into AST format
 	getting types of ASTs
 		which requires being able to look at types.
 	how to figure out the internals of dynamic objects? since we don't have function parameters, we'll need to use global pointers to pass data.
 4. convert dynamic pointer, to dynamic object containing a pointer. this is necessary for static objects.
 acquisition of Type and AST values
-overwriting ASTs
+overwriting ASTs?
+changing type pointers. we want to remove the extra indirection.
 change GC to handle offset pointers
 
 pointer offsets/type slicing

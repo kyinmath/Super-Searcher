@@ -41,6 +41,6 @@ extern bool OUTPUT_MODULE;
 
 //ok, so these two are special: they work like a stack. when you want to work with a context/builder, you push it here. and when you're done, you pop it from here.
 //otherwise, everything using them would have to carry around references to them. and then when you wanted to use llvm_array, you'd need to bind references to it.
-extern  llvm::LLVMContext* context;
-extern  llvm::IRBuilder<>* builder;
+extern llvm::LLVMContext* context;
+extern llvm::IRBuilder<>* builder;
 extern llvm::TargetMachine* TM; //can't be initialized statically

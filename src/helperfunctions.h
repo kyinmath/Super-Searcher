@@ -25,7 +25,7 @@ enum IRgen_status {
 inline llvm::IntegerType* llvm_i64() { return llvm::Type::getInt64Ty(*context); }
 inline llvm::Type* llvm_void() { return llvm::Type::getVoidTy(*context); }
 
-inline llvm::Constant* llvm_integer(uint64_t value)
+inline llvm::ConstantInt* llvm_integer(uint64_t value)
 {
 	return llvm::ConstantInt::get(llvm_i64(), value);
 }
@@ -36,7 +36,7 @@ inline llvm::ArrayType* llvm_array(uint64_t size)
 	return llvm::ArrayType::get(llvm_i64(), size);
 }
 
-inline llvm::Type*  llvm_type(uint64_t size)
+inline llvm::Type* llvm_type(uint64_t size)
 {
 	check(size != 0, "tried to get 0 size llvm type");
 	if (size > 1) return llvm_array(size);
@@ -75,7 +75,7 @@ inline llvm::Value* llvm_create_phi(llvm::ArrayRef<llvm::Value*> values, llvm::A
 	std::set<uint64_t> legitimate_values; //ones that aren't T::does_not_return
 	for (uint64_t idx = 0; idx < choices; ++idx)
 	{
-		if (types[idx]->tag != Typen("does not return"))
+		if (types[idx]->ver() != Typen("does not return"))
 		{
 			legitimate_values.insert(idx);
 			eventual_size = get_size(types[idx]);
@@ -221,7 +221,7 @@ struct Return_Info
 
 	//either IR or place is active, not both.
 	//if memory_location_active == false, then IR is active. otherwise, place is active.
-	//place is active when (stack_degree >= 1) <=> (memory_location_active = true).
+	//place is active when memory_location_active = true.
 	//either way, the internal type doesn't change.
 	llvm::Value* IR;
 	memory_location place;
@@ -229,8 +229,11 @@ struct Return_Info
 	Type* type;
 	bool memory_location_active;
 	//either b or m must be null. both of them can't be active at the same time.
-	Return_Info(IRgen_status err, llvm::Value* b, memory_location m, Type* t, bool o)
-		: error_code(err), IR(b), place(m), type(t), memory_location_active(o) {}
+	Return_Info(IRgen_status err, llvm::Value* b, memory_location m, Type* t)
+		: error_code(err), IR(b), place(m), type(t), memory_location_active((b == 0) ? true : false)
+	{
+		check((b == 0) != (m.base == 0), "exactly one must be 0");
+	}
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.

@@ -196,18 +196,13 @@ inline uint64_t AST_subfield(uAST* a, uint64_t offset)
 inline uint64_t type_subfield(Type* a, uint64_t offset)
 {
 	if (a == nullptr) return 0;
-	if (a->tag == Typen("con_vec"))
+	if (a->ver() == Typen("con_vec"))
 	{
 		uint64_t size = a->fields[0].num; //we're not using the total fields type, because if it's a imv, we don't grab it.
 		if (offset >= size) return 0;
 		else return a->fields[offset + 1].num;
 	}
-	else
-	{
-		if (offset == 0)
-			return (uint64_t)a;
-		else return 0;
-	}
+	else return (offset == 0) ? (uint64_t)a : 0;
 }
 
 
@@ -269,4 +264,26 @@ inline void agency2(uint64_t first, uint64_t par)
 	default:
 		return;
 	}
+}
+//return object is: type, then pointer offset. can be called "readnone" because the types are all immut
+//it's ok for now to return the type, because 0 = concatenate = ignorable, pointer = default case, everything else = no fields.
+inline std::array<uint64_t, 2> dynamic_subtype(Type* type, uint64_t offset)
+{
+	if (type == nullptr)
+		return {{0, 0}};
+	else if (type->ver() != Typen("con_vec"))
+	{
+		if (offset == 0)
+			return{{(uint64_t)type, 0}};
+		else return{{0, 0}};
+	}
+	else
+	{
+		if (offset >= type->fields[0].num)
+			return{{0, 0}};
+		uint64_t skip_this_many;
+		get_size_conc(type, offset, &skip_this_many);
+		return{{type->fields[offset + 1].num, skip_this_many}};
+	}
+
 }

@@ -71,17 +71,18 @@ constexpr uint64_t minus_one = ~0ull; //note that a -1 literal, without specifyi
 /* Guidelines for new Types:
 you must create an entry in type_check.
 marky_mark.
-dynamic offset AST.
+dynamic offset AST, as well as dynamic_subtype()
+change the T::Types! because the tag is actually meaningless much of the time.
 */
 constexpr Type_info Type_descriptor[] =
 {
-	{"con_vec", minus_one, minus_one}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types.
+	{"con_vec", minus_one, minus_one}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types. is 0, because this is a very special case, and we'll be comparing this against 0 all the time.
 	{"integer", 0, 1}, //64-bit integer
-	{"pointer", 1, 1}, //nullptr prohibited
 	{"dynamic pointer", 0, 2}, //dynamic pointer. first field is type, second field object. if either is null, both are null together. this order fixes the type position, because it must always be read first, even if we optimize the dynamic object to be an array occasionally, such as with ASTs
 	{"AST pointer", 0, 1}, //can be nullptr. the actual object has tag, then previous, then some fields.
 	{"type pointer", 0, 1}, //can be nullptr. actual object is tag + fields.
 	{"function pointer", 0, 1}, //can be nullptr. the purpose of not specifying the return/parameter type is given in "doc/AST pointers"
+	{"pointer", 1, 1}, //nullptr prohibited. comes last, because our dynamic offset AST is fragile and relies on it.
 	{"does not return", 0, 0}, //a special value
 	{"never reached", 0, 0},
 	//we want the parameter AST to be before everything that might use it, so having it as a first_pointer is not good, since the beginning of the function might change.
@@ -117,14 +118,22 @@ constexpr uint64_t Typen(const char name[]) { return get_enum_from_name<const Ty
 
 #define fields_in_Type 3u
 //this is for types which are known to be unique and well-behaved (no loops).
+//NOTE: if the only field is the type (such as with any tag that's not "pointer" or "concatenate", then the tag is stored in the pointer field instead.
 //WARNING: don't use the ctor or copy ctor for creating user objects! use the copy_type() and new_type() functions instead, which handle sizes correctly.
 //the Type does not properly represent its true size.
 //todo: add const to all of these things. and to AST tag as well.
-struct Type;
+class Type;
 inline uint64_t total_valid_fields(const Type* t);
-struct Type
+class Type
 {
 	uint64_t tag;
+public:
+	uint64_t ver() const
+	{
+		uint64_t pointer = (uint64_t)this;
+		if (pointer == 0 || pointer == Typen("pointer")) return this->tag;
+		else return pointer;
+	}
 	using iop = int_or_ptr<Type>;
 	std::array<iop, fields_in_Type> fields;
 
@@ -135,13 +144,14 @@ private:
 };
 #define max_fields_in_AST 40u
 //should accomodate the largest possible AST. necessary for AST_descriptor[]
+
 struct Type_pointer_range
 {
 	Type* t;
 	Type_pointer_range(Type* t_) : t(t_) {}
-	Type** begin() { return (t->tag == Typen("con_vec")) ? &(t->fields[1].ptr) : &(t->fields[0].ptr); }
-	Type** end() { return (t->tag == Typen("con_vec")) ? &(t->fields[1].ptr) + (uint64_t)t->fields[0].num :
-		&(t->fields[0].ptr) + Type_descriptor[t->tag].pointer_fields;
+	Type** begin() { return (t->ver() == Typen("con_vec")) ? &(t->fields[1].ptr) : &(t->fields[0].ptr); }
+	Type** end() { return (t->ver() == Typen("con_vec")) ? &(t->fields[1].ptr) + (uint64_t)t->fields[0].num :
+		&(t->fields[0].ptr) + Type_descriptor[t->ver()].pointer_fields;
 	}
 };
 
@@ -159,7 +169,7 @@ struct Type_everything_range
 
 inline uint64_t total_valid_fields(const Type* t)
 {
-	return (t->tag == Typen("con_vec")) ? t->fields[0].num + 1 : Type_descriptor[t->tag].pointer_fields;
+	return (t->ver() == Typen("con_vec")) ? t->fields[0].num + 1 : Type_descriptor[t->ver()].pointer_fields;
 }
 
 #include "memory.h"
@@ -167,6 +177,7 @@ inline uint64_t total_valid_fields(const Type* t)
 inline Type* new_type(uint64_t tag, llvm::ArrayRef<Type*> fields)
 {
 	uint64_t total_field_size = (tag == Typen("con_vec")) ? (uint64_t)fields[0] + 1 : Type_descriptor[tag].pointer_fields;
+	if (total_field_size == 0) return (Type*)tag;
 	uint64_t* new_home = allocate(total_field_size + 1);
 	new_home[0] = tag;
 	for (uint64_t x = 0; x < total_field_size; ++x)
@@ -177,6 +188,7 @@ inline Type* new_type(uint64_t tag, llvm::ArrayRef<Type*> fields)
 inline Type* copy_type(const Type* t)
 {
 	uint64_t fields = total_valid_fields(t);
+	if (fields == 0) return (Type*)t;
 	uint64_t* new_type = allocate(fields + 1);
 	uint64_t* old_type = (uint64_t*)t;
 	for (uint64_t idx = 0; idx < fields + 1; ++idx)
@@ -204,19 +216,17 @@ namespace T
 		static constexpr Type type{"type pointer"};
 		static constexpr Type AST_pointer{"AST pointer"};
 		static constexpr Type function_pointer{"function pointer"};
-		static constexpr Type type_pointer{"type pointer"};
 		//static constexpr Type error_object{concatenate_types(std::vector<Type*>{const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer), const_cast<Type* const>(&int_)})};
 		//error_object is int, pointer to AST, int. it's what is returned when compilation fails: the error code, then the AST, then the field.
 	};
 	typedef internal i;
-	constexpr Type* does_not_return = const_cast<Type* const>(&i::does_not_return);  //the field can't return. used for goto. effectively makes type checking always pass.
-	constexpr Type* integer = const_cast<Type* const>(&i::int_); //describes an integer type
-	constexpr Type* dynamic_pointer = const_cast<Type* const>(&i::dynamic_pointer);
-	constexpr Type* type = const_cast<Type* const>(&i::type);
-	constexpr Type* AST_pointer = const_cast<Type* const>(&i::AST_pointer);
-	constexpr Type* function_pointer = const_cast<Type* const>(&i::function_pointer);
-	constexpr Type* type_pointer = const_cast<Type* const>(&i::type_pointer);
-	constexpr Type* null = nullptr;
+	constexpr int_or_ptr<Type> does_not_return = Typen("does not return"); //the field can't return. used for goto. effectively makes type checking always pass.
+	constexpr int_or_ptr<Type> integer = Typen("integer"); //describes an integer type
+	constexpr int_or_ptr<Type> dynamic_pointer = Typen("dynamic pointer");
+	constexpr int_or_ptr<Type> type = Typen("type pointer");
+	constexpr int_or_ptr<Type> AST_pointer = Typen("AST pointer");
+	constexpr int_or_ptr<Type> function_pointer = Typen("function pointer");
+	constexpr int_or_ptr<Type> null = nullptr;
 };
 
 //the actual objects are placed in type_creator.cpp, to avoid static initialization fiasco
@@ -228,7 +238,6 @@ namespace u
 	extern Type* type;
 	extern Type* AST_pointer;
 	extern Type* function_pointer;
-	extern Type* type_pointer;
 	constexpr Type* null = nullptr;
 };
 Type* concatenate_types(llvm::ArrayRef<Type*> components);
@@ -244,8 +253,8 @@ constexpr uint64_t get_size(Type* target) __attribute__((pure));
 constexpr uint64_t get_size(Type* target)
 {
 	if (target == nullptr) return 0;
-	else if (Type_descriptor[target->tag].size != minus_one) return Type_descriptor[target->tag].size;
-	else if (target->tag == Typen("con_vec"))
+	else if (Type_descriptor[target->ver()].size != minus_one) return Type_descriptor[target->ver()].size;
+	else if (target->ver() == Typen("con_vec"))
 	{
 		check(target->fields[0].num > 1, "concatenation with insufficient types"); //this is a meaningful check because pointer to nowhere gives tag = 0 (concat), fields = 0.
 		uint64_t total_size = 0;
@@ -256,11 +265,10 @@ constexpr uint64_t get_size(Type* target)
 }
 
 //finds one element in a concatenate. the size offset is returns in return_offset. the size of the object is returned normally.
-inline uint64_t get_size_conc(Type* target, uint64_t offset, uint64_t* return_offset) __attribute__((pure));
 inline uint64_t get_size_conc(Type* target, uint64_t offset, uint64_t* return_offset)
 {
 	check(target != nullptr, "conc");
-	check(target->tag == Typen("con_vec"), "need conc");
+	check(target->ver() == Typen("con_vec"), "need conc");
 	check(target->fields[0].num > offset, "error: you must check that there are enough types in the conc to handle the offset beforehand");
 	uint64_t initial_offset = 0;
 	for (uint64_t idx = 0; idx < offset; ++idx)
@@ -287,9 +295,9 @@ enum class type_check_result
 inline Type* get_Type_full_type(Type* t)
 {
 	std::vector<Type*> fields{u::integer}; //the tag
-	if (t->tag != Typen("con_vec"))
+	if (t->ver() != Typen("con_vec"))
 	{
-		uint64_t number_of_pointers = Type_descriptor[t->tag].pointer_fields;
+		uint64_t number_of_pointers = Type_descriptor[t->ver()].pointer_fields;
 		for (uint64_t x = 0; x < number_of_pointers; ++x) fields.push_back(u::type);
 		return concatenate_types(fields);
 	}

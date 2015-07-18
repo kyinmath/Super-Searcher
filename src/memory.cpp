@@ -40,6 +40,7 @@ void sweepy_sweep();
 
 uint64_t* allocate(uint64_t size)
 {
+	if (size == 0) return 0; //we place this here so that the type creation functions, create() and copy() don't need to worry. maybe later, we should change this.
 	uint64_t true_size = size;
 	auto k = free_memory.lower_bound(true_size);
 	if (k == free_memory.end())
@@ -215,7 +216,7 @@ void marky_mark(uint64_t* memory, Type* t)
 	check(memory != nullptr, "no null pointers in GC allowed");
 	if (living_objects.find(memory) != living_objects.end()) return; //it's already there. nothing needs to be done, if we assume that full pointers point to the entire object. todo.
 	living_objects.insert({memory, get_size(t)});
-	if (t->tag == Typen("con_vec"))
+	if (t->ver() == Typen("con_vec"))
 	{
 		//console << "marking convec\n";
 		for (auto& subt : Type_pointer_range(t))
@@ -234,7 +235,7 @@ void mark_single_element(uint64_t* memory, Type* t)
 	//console << "marking single " << memory << '\n';
 	check(memory != nullptr, "passed 0 memory pointer to mark_single");
 	check(t != nullptr, "passed 0 type pointer to mark_single");
-	switch (t->tag)
+	switch (t->ver())
 	{
 	case Typen("con_vec"):
 		error("no nested con_vecs allowed");
@@ -356,8 +357,7 @@ namespace u
 	Type* type = get_unique_type(T::type, false);
 	Type* AST_pointer = get_unique_type(T::AST_pointer, false);
 	Type* function_pointer = get_unique_type(T::function_pointer, false);
-	Type* type_pointer = get_unique_type(T::type_pointer, false);
 };
 
 //this comes below the types, to prevent static fiasco.
-std::vector< Type* > unique_type_roots{u::does_not_return, u::integer, u::dynamic_pointer, u::type, u::AST_pointer, u::function_pointer, u::type_pointer};
+std::vector< Type* > unique_type_roots{u::does_not_return, u::integer, u::dynamic_pointer, u::type, u::AST_pointer, u::function_pointer};

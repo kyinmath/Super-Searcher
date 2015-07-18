@@ -1,0 +1,89 @@
+/*
+ * Web Fonts from fontspring.com
+ *
+ * All OpenType features and all extended glyphs have been removed.
+ * Fully installable fonts can be purchased at http://www.fontspring.com
+ *
+ * The fonts included in this stylesheet are subject to the End User License you purchased
+ * from Fontspring. The fonts are protected under domestic and international trademark and 
+ * copyright law. You are prohibited from modifying, reverse engineering, duplicating, or
+ * distributing this font software.
+ *
+ * (c) 2010-2013 Fontspring
+ *
+ *
+ *
+ *
+ * The fonts included are copyrighted by the vendor listed below.
+ *
+ * Vendor:      Wordshape
+ * License URL: http://www.fontspring.com/fflicense/wordshape
+ *
+ *
+ */
+
+@font-face {
+  font-family: 'Vaud';
+  src: url('VaudBook-webfont.eot'); /* IE9 Compat Modes */
+  src: url('VaudBook-webfont.eot?#iefix') format('embedded-opentype'), /* IE6-IE8 */
+       url('VaudBook-webfont.woff') format('woff'), /* Modern Browsers */
+       url('VaudBook-webfont.ttf') format('truetype'), /* Safari, Android, iOS */
+       url('VaudBook-webfont.svg#vaudregular') format('svg'); /* Legacy iOS */
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Vaud';
+  src: url('VaudBookIt-webfont.eot'); /* IE9 Compat Modes */
+  src: url('VaudBookIt-webfont.eot?#iefix') format('embedded-opentype'), /* IE6-IE8 */
+       url('VaudBookIt-webfont.woff') format('woff'), /* Modern Browsers */
+       url('VaudBookIt-webfont.ttf') format('truetype'), /* Safari, Android, iOS */
+       url('VaudBookIt-webfont.svg#vauditalic') format('svg'); /* Legacy iOS */
+  font-weight: normal;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Vaud';
+  src: url('VaudUltra-webfont.eot'); /* IE9 Compat Modes */
+  src: url('VaudUltra-webfont.eot?#iefix') format('embedded-opentype'), /* IE6-IE8 */
+       url('VaudUltra-webfont.woff') format('woff'), /* Modern Browsers */
+       url('VaudUltra-webfont.ttf') format('truetype'), /* Safari, Android, iOS */
+       url('VaudUltra-webfont.svg#vaudregular') format('svg'); /* Legacy iOS */
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Vaud';
+  src: url('VaudUltraIt-webfont.eot'); /* IE9 Compat Modes */
+  src: url('VaudUltraIt-webfont.eot?#iefix') format('embedded-opentype'), /* IE6-IE8 */
+       url('VaudUltraIt-webfont.woff') format('woff'), /* Modern Browsers */
+       url('VaudUltraIt-webfont.ttf') format('truetype'), /* Safari, Android, iOS */
+       url('VaudUltraIt-webfont.svg#vauditalic') format('svg'); /* Legacy iOS */
+  font-weight: bold;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'VaudMedium';
+  src: url('VaudExtraBold-webfont.eot'); /* IE9 Compat Modes */
+  src: url('VaudExtraBold-webfont.eot?#iefix') format('embedded-opentype'), /* IE6-IE8 */
+       url('VaudExtraBold-webfont.woff') format('woff'), /* Modern Browsers */
+       url('VaudExtraBold-webfont.ttf') format('truetype'), /* Safari, Android, iOS */
+       url('VaudExtraBold-webfont.svg#vaudregular') format('svg'); /* Legacy iOS */
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'VaudMedium';
+  src: url('VaudExtraBoldIt-webfont.eot'); /* IE9 Compat Modes */
+  src: url('VaudExtraBoldIt-webfont.eot?#iefix') format('embedded-opentype'), /* IE6-IE8 */
+       url('VaudExtraBoldIt-webfont.woff') format('woff'), /* Modern Browsers */
+       url('VaudExtraBoldIt-webfont.ttf') format('truetype'), /* Safari, Android, iOS */
+       url('VaudExtraBoldIt-webfont.svg#vaudregular') format('svg'); /* Legacy iOS */
+  font-weight: normal;
+  font-style: italic;
+}

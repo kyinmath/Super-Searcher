@@ -1,0 +1,8 @@
+@font-face {
+  font-family: 'LTCCaslonLong';
+  src: url('LTCCaslonLongWeb.eot'); /* IE9 Compat Modes */
+  src: url('LTCCaslonLongWeb.eot?#iefix') format('embedded-opentype'), /* IE6-IE8 */
+       url('LTCCaslonLongWeb.woff') format('woff'); /* Modern Browsers */
+  font-weight: normal;
+  font-style: normal;
+}

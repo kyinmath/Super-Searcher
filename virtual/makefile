@@ -20,6 +20,16 @@ fast: ../src/*
 	clang++ -g -Wall -fno-rtti -fno-exceptions build/unity.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O3
 	rm -If core
 
+#absolutely no debug symbols or anything like that allowed.
+secure: ../src/*
+	rm -rf build
+	mkdir build
+	cp ../src/* build
+	awk 'FNR==1{print ""}1' ../src/*.cpp > build/unity.cpp
+	clang++ -g -Wall -fno-rtti -fno-exceptions build/unity.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O3
+	strip -R .comment -R .note toy
+	rm -If core
+
 check: ../src/*
 	clang++ -g -Wall -fsanitize=address -fsanitize=integer -fsanitize=undefined -fsanitize=dataflow -fsanitize=safe-stack -fno-rtti -fno-exceptions $(LLVM_CONFIG_CXX_SUBSTITUTE) $(CPP_FILES) `llvm-config  --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
 	rm -If core
