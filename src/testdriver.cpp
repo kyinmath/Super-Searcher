@@ -52,7 +52,7 @@ void fuzztester(uint64_t iterations)
 			fields.push_back(fuzztester_roots.at(mersenne() % fuzztester_roots.size())); //get pointers to previous ASTs
 		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
 		{
-			if (AST_descriptor[tag].parameter_types[incrementor].type == T::dynamic_pointer)
+			if (AST_descriptor[tag].parameter_types[incrementor].type.ptr == T::dynamic_pointer.ptr)
 			{
 				fields.push_back((uAST*)(u::integer)); //make a random integer
 				fields.push_back((uAST*)new_object(generate_exponential_dist()));
@@ -354,7 +354,7 @@ void test_suite()
 	}
 
 	test_unique_types();
-	debugtypecheck(T::does_not_return);
+	//debugtypecheck(T::does_not_return);
 
 }
 

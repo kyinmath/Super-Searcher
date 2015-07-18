@@ -131,7 +131,8 @@ public:
 	uint64_t ver() const
 	{
 		uint64_t pointer = (uint64_t)this;
-		if (pointer == 0 || pointer == Typen("pointer")) return this->tag;
+
+		if (pointer >= Typen("never reached")) return this->tag; //we're making a huge ABI assumption here, that pointers can't go near 0.
 		else return pointer;
 	}
 	using iop = int_or_ptr<Type>;
@@ -142,6 +143,22 @@ public:
 private:
 	Type(const Type& other) = delete;
 };
+//I don't want to use a special Tptr. because then I'll have to constantly say whether I want a number or pointer? well no, not if I bake the union in. maybe later.
+/*
+
+class Tptr
+{
+
+int_or_ptr<Type> tag; //can either be a pointer, or the tag if it's small enough.
+uint64_t ver() const
+{
+check(tag.num != 0, "null type, can't get tag");
+if (tag == 0 || pointer == Typen("pointer")) return this->tag;
+else return pointer;
+}
+}
+*/
+
 #define max_fields_in_AST 40u
 //should accomodate the largest possible AST. necessary for AST_descriptor[]
 
@@ -226,7 +243,7 @@ namespace T
 	constexpr int_or_ptr<Type> type = Typen("type pointer");
 	constexpr int_or_ptr<Type> AST_pointer = Typen("AST pointer");
 	constexpr int_or_ptr<Type> function_pointer = Typen("function pointer");
-	constexpr int_or_ptr<Type> null = nullptr;
+	constexpr Type* null = nullptr;
 };
 
 //the actual objects are placed in type_creator.cpp, to avoid static initialization fiasco

@@ -26,8 +26,9 @@ struct AST_info
 		const int_or_ptr<Type> type;
 		constexpr compile_time_typeinfo(Type* t) : state(normal), type(t) {}
 		constexpr compile_time_typeinfo(uint64_t t) : state(normal), type(t) {}
-		constexpr compile_time_typeinfo(special_type s) : state(s), type(0Ui64) {}
-		constexpr compile_time_typeinfo() : state(missing_field), type(0Ui64) {}
+		constexpr compile_time_typeinfo(int_or_ptr<Type> t) : state(normal), type(t) {}
+		constexpr compile_time_typeinfo(special_type s) : state(s), type(nullptr) {}
+		constexpr compile_time_typeinfo() : state(missing_field), type(nullptr) {}
 	};
 	typedef compile_time_typeinfo ctt;
 	ctt return_object; //if this type is null, do not check it using the generic method - check it specially.
@@ -173,7 +174,7 @@ inline Type* get_AST_fields_type(uint64_t tag)
 	for (uint64_t x = 0; x < number_of_AST_pointers; ++x)
 		fields.push_back(u::AST_pointer);
 	for (uint64_t x = 0; x < AST_descriptor[tag].additional_special_fields; ++x)
-		fields.push_back(get_unique_type(AST_descriptor[tag].parameter_types[number_of_AST_pointers + x].type, false));
+		fields.push_back(get_unique_type(AST_descriptor[tag].parameter_types[number_of_AST_pointers + x].type.ptr, false));
 	return concatenate_types(fields);
 }
 

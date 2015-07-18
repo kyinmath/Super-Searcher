@@ -36,6 +36,8 @@ with RVO, first must be smaller than fields[0]. with reference, it's the opposit
 
 //this ensures that the static variable address is the same across translation units.
 //call it with T::does_not_return from a different translation unit, not u::does_not_return
+//this is obsolete now that they're fixed integers, instead of pointers.
+/*
 void debugtypecheck(Type* test)
 {
 	if (test != T::does_not_return)
@@ -45,7 +47,7 @@ void debugtypecheck(Type* test)
 		output_type(test);
 		abort();
 	}
-}
+}*/
 
 type_check_result type_check_once(type_status version, Type* existing_reference, Type* new_reference);
 type_check_result type_check(type_status version, Type* existing_reference, Type* new_reference)

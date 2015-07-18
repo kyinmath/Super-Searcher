@@ -232,7 +232,7 @@ struct Return_Info
 	Return_Info(IRgen_status err, llvm::Value* b, memory_location m, Type* t)
 		: error_code(err), IR(b), place(m), type(t), memory_location_active((b == 0) ? true : false)
 	{
-		check((b == 0) != (m.base == 0), "exactly one must be 0");
+		check((b == 0) || (m.base == 0), "at least one must be 0"); //both can be 0, if it's an error code.
 	}
 
 	//default constructor for a null object

@@ -364,7 +364,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 #define finish_special(X, type) do {return finish_internal(X, type); } while (0)
 
 	//make sure not to duplicate X in the expression.
-#define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, get_unique_type(AST_descriptor[target->tag].return_object.type, false)); } while (0)
+#define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, get_unique_type(AST_descriptor[target->tag].return_object.type.ptr, false)); } while (0)
 
 
 	for (uint64_t x = 0; x < AST_descriptor[target->tag].fields_to_compile; ++x)
@@ -381,17 +381,17 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 			console << "type checking. result type is \n";
 			output_type_and_previous(result.type);
 			console << "desired type is \n";
-			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x].type);
+			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x].type.ptr);
 		}
 
 		//check that the type matches.
 		if (AST_descriptor[target->tag].parameter_types[x].state != parameter_no_type_check) //for fields that are compiled but not type checked
 		{
-			if (get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false) == u::does_not_return)
+			if (get_unique_type(AST_descriptor[target->tag].parameter_types[x].type.ptr, false) == u::does_not_return)
 				finish_special(nullptr, u::does_not_return); //just get out of here, since we're never going to run the current command anyway.
 			//this is fine with labels even though labels require emission whether reached or not, because labels don't compile using the default mechanism
 			//even if there are labels skipped over by this escape, nobody can see them because of our try-catch goto scheme.
-			if (type_check(RVO, result.type, get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false)) != type_check_result::perfect_fit) return_code(type_mismatch, x);
+			if (type_check(RVO, result.type, get_unique_type(AST_descriptor[target->tag].parameter_types[x].type.ptr, false)) != type_check_result::perfect_fit) return_code(type_mismatch, x);
 		}
 
 		field_results.push_back(result);
