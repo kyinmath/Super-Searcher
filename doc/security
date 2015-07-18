@@ -8,10 +8,16 @@ So... TL;DR: More cores, more cache, different nitty-gritty features, more RAM c
 on Amazon:
 use O3 to obfuscate.
 preferably, obfuscate using something else as well.
+	upx is not an obfuscator. it just compresses. it'll unpack everything into memory anyway; that's useless
 never upload source code.
-objdump --full-contents --section=.comment myprog 
-	then strip it!
+objdump --full-contents --section=.comment toy
+readelf -s toy
+	strip -R .comment -R .note -R .note.ABI-tag toy
+	strip -s toy
+	http://www.thegeekstuff.com/2012/09/strip-command-examples/
 	https://reverseengineering.stackexchange.com/questions/47/can-i-create-an-object-file-using-gcc-that-cannot-be-reverse-engineered
+note that Ctrl+F through the executable finds a lot of text. try searching for "MCContext"
+	especially, search for things like "dyn_subobj"
 
 
 
@@ -25,3 +31,9 @@ but linux is vulnerable too. and clang, and any of the services used. intel prob
 problem: if the user doesn't have admin, someone from outside can come in and compromise things. then it's root vs non root.
 
 warning: virtual machines may prevent AES-NI from working. thus giving non-constant time AES, which can be broken in 80 rounds.
+
+idea: fuzzing to obfuscate. suppose I only want my code to run on a specific, valid input.
+	then I can fuzz stupid calls until one of them gives me the behavior I want, like xoring system information with some arbitrary huge bits.
+	the other calls should all give sort-of viable information.
+	the goal is to mask the initial input - you're feeding it into something that returns basically garbage. but in that sense, it's like a hash function...
+		better if you can access random memory this way. so you could potentially call any function. but then the adversary can trace the execution of your function.

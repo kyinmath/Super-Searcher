@@ -452,11 +452,6 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 			builder->SetInsertPoint(MergeBB);
 			finish(llvm_create_phi({division, default_val}, {u::integer, u::integer}, {SuccessBB, ZeroBB}));
 		}
-	case ASTn("print_int"):
-		{
-			l::Value* printer = llvm_function(print_uint64_t, llvm_void(), llvm_i64());
-			finish(builder->CreateCall(printer, {field_results[0].IR})); //, s("print"). can't give name to void-return functions
-		}
 	case ASTn("if"): //it's vitally important that this can check pointers, so that we can tell if they're nullptr.
 		{
 			//since the fields are conditionally executed, the temporaries generated in each branch are not necessarily referenceable.

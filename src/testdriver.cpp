@@ -111,9 +111,15 @@ void fuzztester(uint64_t iterations)
 
 bool READER_VERBOSE_DEBUG = false;
 
+/*
+this will never, ever do anything useful. NDEBUG is manipulated like a bitch, I can't even set it by passing in -DNDEBUG to the compiler. don't bother using NDEBUG or assert() for anything.
 #ifdef NDEBUG
-panic time!
+panic time! refuse to compile.
+except, I don't know why this won't ever trigger
 #endif
+*/
+
+#ifndef NO_CONSOLE
 #include <iostream>
 #include <sstream>
 #include <istream>
@@ -297,6 +303,13 @@ std::array<uint64_t, 2> compile_string(std::string input_string)
 	return run_null_parameter_function(compile_result[0]); //even if it's 0, it's fine.
 }
 
+void compile_verify_string(std::string input_string, Type* type, uint64_t value)
+{
+	auto k = compile_string(input_string);
+	check((Type*)k[0] == type, "test failed type");
+	check(*(uint64_t*)k[1] == value, "test failed value");
+}
+
 //functions passed into here are required to fail compilation.
 void cannot_compile_string(std::string input_string)
 {
@@ -313,50 +326,32 @@ void cannot_compile_string(std::string input_string)
 
 void test_suite()
 {
-	{
-		//random value. then check that (x / k) * k + x % k == x
-		auto run_result = compile_string("[system1 [imv 2]]a [subtract [add [multiply [udiv [copy a] [imv 4]] [imv 4]] [urem [copy a] [imv 4]]] [copy a]]");
-		check((Type*)run_result[0] == u::integer, "div test failed type");
-		check(*(uint64_t*)run_result[1] == 0, "div test failed value");
-	}
-	{
-		//looping until finiteness ends, increasing a value. tests storing values
-		auto run_result = compile_string("[imv 0]b [label]a [print_int [copy b]] [store [pointer b] [increment [copy b]]] [goto a] [copy b]");
-		check((Type*)run_result[0] == u::integer, "failed type");
-		check(*(uint64_t*)run_result[1] == FINITENESS_LIMIT, "failed value");
-	}
+	//random value. then check that (x / k) * k + x % k == x
+	compile_verify_string("[system1 [imv 2]]a [subtract [add [multiply [udiv [copy a] [imv 4]] [imv 4]] [urem [copy a] [imv 4]]] [copy a]]", u::integer, 0);
+	//looping until finiteness ends, increasing a value. tests storing values
+	compile_verify_string("[imv 0]b [label]a [store [pointer b] [increment [copy b]]] [goto a] [copy b]", u::integer, FINITENESS_LIMIT);
 
-	{
-		//loading a subobject from a concatenation, as well as copys in concatenation
-		auto run_result = compile_string("[concatenate [imv 20]a [increment [copy a]]]co [load_subobj [pointer co] [imv 1]]");
-		check((Type*)run_result[0] == u::integer, "failed type");
-		check(*(uint64_t*)run_result[1] == 20 + 1, "failed value");
-	}
+	//loading a subobject from a concatenation, as well as copys in concatenation
+	compile_verify_string("[concatenate [imv 20]a [increment [copy a]]]co [load_subobj [pointer co] [imv 1]]", u::integer, 20 + 1);
 
-	{
-		//goto forward. should skip the second store, and produce 20.
-		auto run_result = compile_string("[imv 0]b [label {[store [pointer b] [imv 20]] [goto a] [store [pointer b] [imv 40]]}]a [copy b]");
-		check((Type*)run_result[0] == u::integer, "failed type");
-		check(*(uint64_t*)run_result[1] == 20, "failed value");
-	}
+	//goto forward. should skip the second store, and produce 20.
+	compile_verify_string("[imv 0]b [label {[store [pointer b] [imv 20]] [goto a] [store [pointer b] [imv 40]]}]a [copy b]", u::integer, 20);
 
-	{
-		//clear old unused stack allocas
-		compile_string("[label {[imv 40]a [label]}] [label {a [label]}]");
-		//[imv 40]a is preserved across both fields of the concatenate
-		cannot_compile_string("[concatenate {[imv 40]a [label]} {a [label]}]");
-		cannot_compile_string("[concatenate {[imv 40]a [pointer a]b} b]");
-		cannot_compile_string("[add {[imv 50] [system1 [imv 2]]a} a]");
+	//clear old unused stack allocas
+	compile_string("[label {[imv 40]a [label]}] [label {a [label]}]");
+	//[imv 40]a is preserved across both fields of the concatenate
+	cannot_compile_string("[concatenate {[imv 40]a [label]} {a [label]}]");
+	cannot_compile_string("[concatenate {[imv 40]a [pointer a]b} b]");
+	cannot_compile_string("[add {[imv 50] [system1 [imv 2]]a} a]");
 
 
-		compile_string("[run_function [compile [convert_to_AST [system1 [imv 2]] [label] {[imv 0]v [dynamify [pointer v]]}]]]");
-		compile_string("[run_function [compile [convert_to_AST [imv 1] [label] [dynamify]]]]"); //produces 1, which should be 0.
-	}
+	compile_string("[run_function [compile [convert_to_AST [system1 [imv 2]] [label] {[imv 0]v [dynamify [pointer v]]}]]]");
+	compile_string("[run_function [compile [convert_to_AST [imv 1] [label] [dynamify]]]]"); //produces 1, which should be 0.
 
 	test_unique_types();
-	//debugtypecheck(T::does_not_return);
-
+	//debugtypecheck(T::does_not_return); stopped working after type changes to bake in tags into the pointer. this is useless anyway, in a unity build.
 }
+#endif
 
 int main(int argc, char* argv[])
 {
@@ -425,10 +420,12 @@ int main(int argc, char* argv[])
 		else error(string("unrecognized flag ") + argv[x]);
 	}
 
+#ifndef NO_CONSOLE
 	if (!BENCHMARK)
 	{
 		test_suite();
 	}
+#endif
 
 	struct cleanup_at_end
 	{
@@ -445,6 +442,7 @@ int main(int argc, char* argv[])
 		}
 	} a;
 
+#ifndef NO_CONSOLE
 	if (CONSOLE)
 	{
 		while (1)
@@ -470,6 +468,7 @@ int main(int argc, char* argv[])
 				output_array((uint64_t*)run_result[1], get_size((Type*)run_result[0]));
 		}
 	}
+#endif
 
 	std::clock_t start = std::clock();
 	fuzztester(runs);

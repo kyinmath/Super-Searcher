@@ -95,7 +95,6 @@ constexpr AST_info AST_descriptor[] =
 	{"decrement", T::integer, T::integer}, //Peano axioms increment operation.
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
 	{"random", T::integer},
-	{"print_int", T::null, T::integer},
 	a("if", special_return, T::integer).add_pointer_fields(2), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
 	{"subtract", T::integer, T::integer, T::integer},

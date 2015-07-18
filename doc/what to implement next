@@ -1,3 +1,5 @@
+test dyn_subobj
+test that removing the fuzzer actually deletes the symbols we want to delete
 1. dynamic_get_type(object)
 remove special_fields from the AST_descriptor
 move the fuzzer into AST format

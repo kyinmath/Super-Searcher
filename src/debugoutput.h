@@ -38,6 +38,7 @@ private:
 //for debug purposes, we don't want to limit it to the number of pointer fields.
 inline void output_type(const Type* target)
 {
+#ifndef NO_CONSOLE
 	if (target == nullptr)
 	{
 		console << "null type\n";
@@ -48,6 +49,7 @@ inline void output_type(const Type* target)
 	for (auto& x : Type_everything_range(target))
 		console << ' ' << x;
 	console << '\n';
+#endif
 }
 
 //for debugging. outputs a Type and everything it points to, recursively.
@@ -67,6 +69,7 @@ inline void output_type_and_previous(Type* target)
 //only call on a non-nullptr target. outputs a single AST.
 inline void output_AST(uAST* target)
 {
+#ifndef NO_CONSOLE
 	if (target == nullptr)
 	{
 		console << "null AST\n";
@@ -75,12 +78,14 @@ inline void output_AST(uAST* target)
 	console << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), addr " << target <<
 		", prev " << target->preceding_BB_element << ", ";
 	console << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
+#endif
 }
 
 #include <set>
 //for debugging. outputs an AST and everything it can see, recursively.
 inline void output_AST_and_previous(uAST* target)
 {
+#ifndef NO_CONSOLE
 	if (target == nullptr)
 	{
 		console << "null AST\n";
@@ -103,6 +108,7 @@ inline void output_AST_and_previous(uAST* target)
 	for (uint64_t x = 0; x < number_of_further_ASTs; ++x)
 		if (target->fields[x].ptr != nullptr)
 			output_AST_and_previous(target->fields[x].ptr);
+#endif
 }
 
 //outputs the AST in a form that can be input into the console
@@ -139,6 +145,7 @@ struct output_AST_struct
 	//the purpose of "might be end in BB" is to decide whether to output {} or not.
 	void output_output(uAST* target, bool might_be_end_in_BB)
 	{
+#ifndef NO_CONSOLE
 		if (AST_list.find(target) != AST_list.end())
 		{
 			output << target;
@@ -177,6 +184,7 @@ struct output_AST_struct
 
 		if (output_braces)
 			output << "}";
+#endif
 	}
 };
 
