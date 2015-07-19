@@ -4,7 +4,6 @@
 #include <llvm/Support/raw_ostream.h> 
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/IRBuilder.h>
-#define RELEASE 0
 
 extern std::ostream& console;
 extern llvm::raw_ostream* llvm_console;
@@ -14,20 +13,15 @@ extern bool VERBOSE_DEBUG;
 [[noreturn]] inline constexpr void error(const string& Str) { std::cout << "Error: " << Str << '\n'; abort(); } //std::cout, because we want error messages even when default console output is turned off. which sets failbit on cerr.
 
 
-//s("test") returns "test" if debug_names is true, and an empty string if debug_names is false.
-#define debug_names
-#ifdef debug_names
-inline std::string s(std::string k) { return k; }
-#else
-inline std::string s(std::string k) { return ""; }
-#endif
-
+//s("test") returns "test" if enabled, and nothing otherwise
 //the condition is true when the program behaves normally.
-//#if RELEASE
-//inline void check(bool condition, const string& Str) {}
-//#else
+#ifdef NOCHECK
+#define check(x, y)
+inline std::string s(std::string k) { return ""; }
+#else
+inline std::string s(std::string k) { return k; }
 inline constexpr void check(bool condition, const string& Str = "") { if (!condition) error(Str); }
-//#endif
+#endif
 
 extern bool OPTIMIZE;
 extern bool INTERACTIVE;

@@ -16,3 +16,24 @@
 	usually ought to fail. random > highest possible tag
 [convert_to_AST [integer 7] [scope] [dynamic]]
 	should produce a [random] AST
+
+
+
+
+
+
+[dynamify]dyn [dyn_subobj dyn [imv 2]]
+[dynamify]dyn [dyn_subobj dyn [imv 0]]
+//for single size object. 0 and above
+[imv 0]ret [imv 40]a [dynamify [pointer a]]dyn [dyn_subobj dyn [imv 0] [store [pointer ret] [copy subobj]] [[store [pointer ret] [copy subobj]]]]subobj
+[imv 0]ret [imv 40]a [dynamify [pointer a]]dyn [dyn_subobj dyn [imv 0] [load_object
+//for concatenate object. 0 and above.
+[concatenate [imv 40]in [pointer in]]a [dynamify [pointer a]]dyn [dyn_subobj dyn [imv 0] 
+[concatenate [imv 40]in [pointer in]]a [dynamify [pointer a]]dyn [dyn_subobj dyn [imv 1] 
+
+//tests moving objects to higher lifetimes. a pointer to in gets stored to p, so the concatenation better stay alive.
+[imv 30]dummy [pointer dummy]p [concatenate [imv 40]in [store [pointer p] [pointer in]]]a [increment [copy p]]
+	error? too many fields?
+
+
+[imv 30]dummy [pointer dummy]p [concatenate [imv 40]in [store [pointer p] [pointer in]]]

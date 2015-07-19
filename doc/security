@@ -16,9 +16,8 @@ readelf -s toy
 	strip -s toy
 	http://www.thegeekstuff.com/2012/09/strip-command-examples/
 	https://reverseengineering.stackexchange.com/questions/47/can-i-create-an-object-file-using-gcc-that-cannot-be-reverse-engineered
-note that Ctrl+F through the executable finds a lot of text. try searching for "MCContext"
-	especially, search for things like "dyn_subobj"
-
+note that Ctrl+F through the executable finds a lot of text. try searching for "MCContext". there's zero way to avoid being seen as llvm JIT.
+	especially, search for things like "dyn_subobj", "con_vec"
 
 
 remember, Intel has a VNC server. since everything is already there, it would be trivial for them to backdoor their CPUs?

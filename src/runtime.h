@@ -115,7 +115,9 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 		builder->CreateRet(dynamic_object_address);
 		///FINISH DYNAMIC
 
+#ifndef NO_CONSOLE
 		check(!llvm::verifyFunction(*trampoline, &llvm::outs()), "verification failed");
+#endif
 
 		auto H = c->addModule(std::move(M));
 

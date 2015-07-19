@@ -72,7 +72,7 @@ constexpr uint64_t minus_one = ~0ull; //note that a -1 literal, without specifyi
 you must create an entry in type_check.
 marky_mark.
 dynamic offset AST, as well as dynamic_subtype()
-change the T::Types! because the tag is actually meaningless much of the time.
+change the T::Types, if you create a Type that takes more subfields, because the tag is actually meaningless much of the time.
 */
 constexpr Type_info Type_descriptor[] =
 {

@@ -106,9 +106,11 @@ uint64_t compiler_object::compile_AST(uAST* target)
 		}
 	}
 	else builder->CreateRetVoid();
+#ifndef NO_CONSOLE
 	if (OUTPUT_MODULE)
 		M->print(*llvm_console, nullptr);
 	check(!l::verifyFunction(*F, &llvm::outs()), "verification failed");
+#endif
 	if (OPTIMIZE)
 	{
 		console << "optimized code: \n";
@@ -670,7 +672,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 	case ASTn("dyn_subobj"):
 		{
 			llvm::Value* overall_type = builder->CreateExtractValue(field_results[0].IR, {0}, s("type of dynamic"));
-			llvm::Value* pointer = builder->CreateExtractValue(field_results[0].IR, {1}, s("object of dynamic"));
+			llvm::Value* int_pointer = builder->CreateExtractValue(field_results[0].IR, {1}, s("object of dynamic"));
+			llvm::Value* pointer = builder->CreateIntToPtr(int_pointer, llvm_i64()->getPointerTo());
 			llvm::Value* offset = field_results[1].IR;
 
 			l::Type* double_int = l::StructType::get(*context, {llvm_i64(), llvm_i64()});
@@ -679,43 +682,50 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 
 			llvm::Value* single_type = builder->CreateExtractValue(offset_data, {0}, s("type of dynamic"));
 			llvm::Value* memory_offset = builder->CreateExtractValue(offset_data, {1}, s("object of dynamic"));
-			llvm::Value* correct_pointer = builder->CreateGEP(pointer, memory_offset);
+			llvm::Value* correct_pointer = builder->CreateInBoundsGEP(pointer, memory_offset);
 
 			uint64_t starting_stack_position = object_stack.size();
 			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
 			auto switch_on_type = builder->CreateSwitch(single_type, 0, Typen("does not return") - 1, 0); //dependency on type
 			l::BasicBlock *MergeBB = l::BasicBlock::Create(*context, s("merge"), TheFunction);
-
-			for (uint64_t x = 1; x < Typen("does not return"); ++x) //dependency on type
+			//problem: pointer should be the default
+			for (uint64_t x = 0; x < Typen("does not return"); ++x) //dependency on type
 			{
-
 				l::BasicBlock *caseBB = l::BasicBlock::Create(*context, "", TheFunction);
-				switch_on_type->addCase(llvm_integer(x), caseBB);
 				builder->SetInsertPoint(caseBB);
-				llvm::Value* loaded_object;
-				Type* loaded_object_type;
-				if (x == ASTn("pointer")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
+
+				//the pointer BB is the default.
+				if (x != Typen("pointer"))
+					switch_on_type->addCase(llvm_integer(x), caseBB);
+				else switch_on_type->setDefaultDest(caseBB);
+
+				if (x != 0) //if it's 0, don't bother doing any of this stuff, because the type is empty.
 				{
-					loaded_object_type = u::dynamic_pointer;
-					l::Value* pointer_value = load_from_memory(correct_pointer, Type_descriptor[x].size);
-					l::Value* undef_value = l::UndefValue::get(llvm_array(2));
-					l::Value* first_value = builder->CreateInsertValue(undef_value, single_type, {0});
-					loaded_object = builder->CreateInsertValue(first_value, pointer_value, {1});
+					llvm::Value* loaded_object;
+					Type* loaded_object_type;
+					if (x == ASTn("pointer")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
+					{
+						loaded_object_type = u::dynamic_pointer;
+						l::Value* pointer_value = load_from_memory(correct_pointer, Type_descriptor[x].size);
+						l::Value* undef_value = l::UndefValue::get(llvm_array(2));
+						l::Value* first_value = builder->CreateInsertValue(undef_value, single_type, {0});
+						loaded_object = builder->CreateInsertValue(first_value, pointer_value, {1});
+					}
+					else //dependency on type. if we found a pointer, then grab a dynamic pointer instead.
+					{
+						loaded_object_type = (Type*)x;
+						loaded_object = load_from_memory(correct_pointer, Type_descriptor[x].size);
+					}
+					if (new_object(target, true, Return_Info(IRgen_status::no_error, loaded_object, {}, loaded_object_type)))
+						return_code(active_object_duplication, 10);
+
+
+					Return_Info case_IR = generate_IR(target->fields[x + 1].ptr, false);
+					if (case_IR.error_code) return case_IR;
+
+					clear_stack(starting_stack_position);
+					//we don't need to update the BB*, because we never use it again.
 				}
-				else //dependency on type. if we found a pointer, then grab a dynamic pointer instead.
-				{
-					loaded_object_type = (Type*)x;
-					loaded_object = load_from_memory(correct_pointer, Type_descriptor[x].size);
-				}
-				if (new_object(target, true, Return_Info(IRgen_status::no_error, loaded_object, {}, loaded_object_type)))
-					return_code(active_object_duplication, 10);
-
-
-				Return_Info case_IR = generate_IR(target->fields[x + 1].ptr, false);
-				if (case_IR.error_code) return case_IR;
-
-				clear_stack(starting_stack_position);
-				//we don't need to update the BB*, because we never use it again.
 				builder->CreateBr(MergeBB);
 			}
 

@@ -113,7 +113,7 @@ constexpr AST_info AST_descriptor[] =
 	a("convert_to_AST", T::AST_pointer, T::integer, parameter_no_type_check, T::dynamic_pointer), //returns 0 if the AST failed. this is still a valid AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
 	{"store", T::null, parameter_no_type_check, parameter_no_type_check}, //pointer, then value.
 	{"load_subobj", special_return, parameter_no_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields.
-	a("dyn_subobj", T::type, T::dynamic_pointer, T::integer).add_pointer_fields(6), //if it's a pointer, we make a special dynamic pointer instead.
+	a("dyn_subobj", T::type, T::dynamic_pointer, T::integer).add_pointer_fields(6), //if it's a pointer, we make a special dynamic pointer instead. returns the type obtained.
 	{"system1", T::integer, T::integer}, //find a system value, using only one parameter. this is a read-only operation, with no effects.
 	{"system2", T::integer, T::integer, T::integer},
 	{"agency1", T::null, T::integer}, //this has side effects. it's split out because system reading is not dangerous, and this is. the user generally should worry about running this AST.
