@@ -321,7 +321,7 @@ void cannot_compile_string(std::string input_string)
 	finiteness = FINITENESS_LIMIT;
 	uint64_t compile_result[3];
 	compile_returning_legitimate_object(compile_result, (uint64_t)end);
-	check(compile_result[1] != 0, "compile success");
+	check(compile_result[1] != 0, "compile succeeded when it shouldn't have");
 }
 
 void test_suite()

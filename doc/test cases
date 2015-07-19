@@ -22,18 +22,19 @@
 
 
 
-[dynamify]dyn [dyn_subobj dyn [imv 2]]
-[dynamify]dyn [dyn_subobj dyn [imv 0]]
-//for single size object. 0 and above
-[imv 0]ret [imv 40]a [dynamify [pointer a]]dyn [dyn_subobj dyn [imv 0] [store [pointer ret] [copy subobj]] [[store [pointer ret] [copy subobj]]]]subobj
-[imv 0]ret [imv 40]a [dynamify [pointer a]]dyn [dyn_subobj dyn [imv 0] [load_object
-//for concatenate object. 0 and above.
-[concatenate [imv 40]in [pointer in]]a [dynamify [pointer a]]dyn [dyn_subobj dyn [imv 0] 
-[concatenate [imv 40]in [pointer in]]a [dynamify [pointer a]]dyn [dyn_subobj dyn [imv 1] 
+//for single size object. 0 and non-0 offset
+[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store [pointer ret] [copy subobj]] [store [pointer empty] [copy subobj]]]subobj [copy ret]
+	returns 40, as it should
+[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [pointer a]]dyn [imv 1] [store [pointer ret] [copy subobj]] [store [pointer empty] [copy subobj]]]subobj [copy empty]
+	empty = nothing, as it should. but maybe we should test the type instead of copying empty
+//for concatenate object. 0 and non-0 offset
+[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer in]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store [pointer ret] [copy subobj]] [label] [label] [label] [label] [store [pointer empty] [copy subobj]]]subobj [copy ret]
+[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer in]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 1] [store [pointer ret] [copy subobj]] [label] [label] [label] [label] [store [pointer empty] [copy subobj]]]subobj [copy empty]
+	this is returning empty, which is wrong.
+	why does %1 have size 4?
 
 //tests moving objects to higher lifetimes. a pointer to in gets stored to p, so the concatenation better stay alive.
 [imv 30]dummy [pointer dummy]p [concatenate [imv 40]in [store [pointer p] [pointer in]]]a [increment [copy p]]
-	error? too many fields?
 
 
-[imv 30]dummy [pointer dummy]p [concatenate [imv 40]in [store [pointer p] [pointer in]]]
+[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer in]]a [copy [load_subobj [pointer a] [imv 1]]]

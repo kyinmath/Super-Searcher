@@ -42,6 +42,7 @@ class compiler_object
 	//pair with clear_stack(). returns 1 on error
 	bool new_object(uAST* target, bool referenceable, Return_Info r)
 	{
+		check((uint64_t)r.type != 6, "what the fuck");
 		object_stack.push({target, referenceable});
 		if (referenceable)
 		{

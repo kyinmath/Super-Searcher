@@ -341,15 +341,13 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 			//console << "and my stack degree is " << stack_degree << '\n';
 			if (stack_degree >= 1)
 			{
-				object_stack.push({target, true});
-				auto insert_result = objects.insert({target, Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type)});
-				if (!insert_result.second) //collision: AST is already there
-					return_code(active_object_duplication, 10);
+				if (new_object(target, true, Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type)))
+					return_code(active_object_duplication, 10); //collision: AST is already there
 				return Return_Info(IRgen_status::no_error, nullptr, stack_return_location, type);
 			}
 			else //stack_degree == 0
 			{
-				object_stack.push({target, false});
+				new_object(target, false, {}); //can't return an error.
 				return Return_Info(IRgen_status::no_error, return_value, memory_location(), type);
 			}
 		}
@@ -671,44 +669,58 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 		}
 	case ASTn("dyn_subobj"):
 		{
-			llvm::Value* overall_type = builder->CreateExtractValue(field_results[0].IR, {0}, s("type of dynamic"));
-			llvm::Value* int_pointer = builder->CreateExtractValue(field_results[0].IR, {1}, s("object of dynamic"));
+			llvm::Value* overall_type = builder->CreateExtractValue(field_results[0].IR, {0}, s("type of overall dynamic"));
+			llvm::Value* int_pointer = builder->CreateExtractValue(field_results[0].IR, {1}, s("object of overall dynamic"));
 			llvm::Value* pointer = builder->CreateIntToPtr(int_pointer, llvm_i64()->getPointerTo());
 			llvm::Value* offset = field_results[1].IR;
 
 			l::Type* double_int = l::StructType::get(*context, {llvm_i64(), llvm_i64()});
 			auto dynamic_func = llvm_function(dynamic_subtype, double_int, llvm_i64(), llvm_i64());
-			auto offset_data = builder->CreateCall(dynamic_func, {overall_type, offset});
+			auto offset_data = builder->CreateCall(dynamic_func, {overall_type, offset}, s("dynamic sub"));
 
-			llvm::Value* single_type = builder->CreateExtractValue(offset_data, {0}, s("type of dynamic"));
-			llvm::Value* memory_offset = builder->CreateExtractValue(offset_data, {1}, s("object of dynamic"));
+			llvm::Value* single_type = builder->CreateExtractValue(offset_data, {0}, s("type of subdynamic"));
+			llvm::Value* memory_offset = builder->CreateExtractValue(offset_data, {1}, s("object of subdynamic"));
 			llvm::Value* correct_pointer = builder->CreateInBoundsGEP(pointer, memory_offset);
 
 			uint64_t starting_stack_position = object_stack.size();
 			l::Function *TheFunction = builder->GetInsertBlock()->getParent();
-			auto switch_on_type = builder->CreateSwitch(single_type, 0, Typen("does not return") - 1, 0); //dependency on type
+
+			//pointer is the default switch case. we can get away with this because it's the only non-concatenate type that has more than one field.
+			l::BasicBlock *pointerBB = l::BasicBlock::Create(*context, "", TheFunction);
+
+			auto switch_on_type = builder->CreateSwitch(single_type, pointerBB, Typen("does not return") - 1, 0); //dependency on type
 			l::BasicBlock *MergeBB = l::BasicBlock::Create(*context, s("merge"), TheFunction);
 			//problem: pointer should be the default
 			for (uint64_t x = 0; x < Typen("does not return"); ++x) //dependency on type
 			{
-				l::BasicBlock *caseBB = l::BasicBlock::Create(*context, "", TheFunction);
-				builder->SetInsertPoint(caseBB);
-
-				//the pointer BB is the default.
 				if (x != Typen("pointer"))
+				{
+					l::BasicBlock *caseBB = l::BasicBlock::Create(*context, "", TheFunction);
+					builder->SetInsertPoint(caseBB);
 					switch_on_type->addCase(llvm_integer(x), caseBB);
-				else switch_on_type->setDefaultDest(caseBB);
-
+				}
+				else builder->SetInsertPoint(pointerBB);
 				if (x != 0) //if it's 0, don't bother doing any of this stuff, because the type is empty.
 				{
 					llvm::Value* loaded_object;
 					Type* loaded_object_type;
-					if (x == ASTn("pointer")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
+					if (x == Typen("pointer")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
 					{
 						loaded_object_type = u::dynamic_pointer;
 						l::Value* pointer_value = load_from_memory(correct_pointer, Type_descriptor[x].size);
 						l::Value* undef_value = l::UndefValue::get(llvm_array(2));
-						l::Value* first_value = builder->CreateInsertValue(undef_value, single_type, {0});
+						auto pointer_to_type = builder->CreateIntToPtr(single_type, llvm_i64()->getPointerTo());
+						auto pointer_to_field = builder->CreateConstInBoundsGEP1_64(pointer_to_type, 1);
+						auto desired_type_to_store = builder->CreateLoad(pointer_to_field);
+
+						/*
+						//Note: this is a general purpose writer. it's good for things!
+						l::Value* printer = llvm_function(print_uint64_t, llvm_void(), llvm_i64());
+						builder->CreateCall(printer, {desired_type_to_store});
+						builder->CreateCall(printer, {pointer_value});
+						*/
+
+						l::Value* first_value = builder->CreateInsertValue(undef_value, desired_type_to_store, {0}); //this single type is wrong. we must change it to the load of n+1.
 						loaded_object = builder->CreateInsertValue(first_value, pointer_value, {1});
 					}
 					else //dependency on type. if we found a pointer, then grab a dynamic pointer instead.
@@ -724,7 +736,6 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 					if (case_IR.error_code) return case_IR;
 
 					clear_stack(starting_stack_position);
-					//we don't need to update the BB*, because we never use it again.
 				}
 				builder->CreateBr(MergeBB);
 			}
@@ -852,7 +863,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 							uint64_t skip_this_many;
 							uint64_t size_of_load = get_size_conc(type_of_object, offset, &skip_this_many);
 							llvm::Value* pointer_cast = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
-							llvm::Value* place = skip_this_many ? builder->CreateConstInBoundsGEP1_64(pointer_cast, skip_this_many, "offset") : pointer_cast;
+							llvm::Value* place = skip_this_many ? builder->CreateConstInBoundsGEP1_64(pointer_cast, skip_this_many, s("offset")) : pointer_cast;
 							finish_special(load_from_memory(place, size_of_load), type_of_object->fields[offset + 1].ptr);
 						}
 					}

@@ -185,7 +185,7 @@ inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t type, u
 	}
 }
 
-inline void print_uint64_t(uint64_t x) {console << x << '\n';}
+inline void print_uint64_t(uint64_t x) {console << "printing " << x << '\n';}
 
 inline uint64_t AST_subfield(uAST* a, uint64_t offset)
 {
@@ -285,6 +285,7 @@ inline std::array<uint64_t, 2> dynamic_subtype(Type* type, uint64_t offset)
 			return{{0, 0}};
 		uint64_t skip_this_many;
 		get_size_conc(type, offset, &skip_this_many);
+		console << "dynamic_subtype is returning " << type->fields[offset + 1].num << " and " << skip_this_many << '\n';
 		return{{type->fields[offset + 1].num, skip_this_many}};
 	}
 

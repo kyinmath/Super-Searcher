@@ -29,6 +29,7 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 		console << "type of original model ";
 		output_type(model);
 	}
+	check((model != 0) && ((uint64_t)model != Typen("pointer")), "our optimization is failing");
 
 	bool create_new_for_sure = false; //it's true if one of the subfields created a type instead of finding it.
 	//in that case, we don't have to check if this object is in the hash table. we know it is new.
