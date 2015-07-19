@@ -454,6 +454,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree, me
 		}
 	case ASTn("if"): //it's vitally important that this can check pointers, so that we can tell if they're nullptr.
 		{
+			//later, I think we should also push the condition object onto the stack. for example, this is useful with llvm's "dyn_cast".
 			//since the fields are conditionally executed, the temporaries generated in each branch are not necessarily referenceable.
 			//therefore, we must clear the stack between each branch.
 			uint64_t if_stack_position = object_stack.size();
