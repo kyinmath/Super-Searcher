@@ -299,7 +299,7 @@ std::array<uint64_t, 2> compile_string(std::string input_string)
 	finiteness = FINITENESS_LIMIT;
 	uint64_t compile_result[3];
 	compile_returning_legitimate_object(compile_result, (uint64_t)end);
-	check(compile_result[1] == 0, "failed to compile");
+	check(compile_result[1] == 0, string("failed to compile, error code ") + std::to_string(compile_result[1]));
 	return run_null_parameter_function(compile_result[0]); //even if it's 0, it's fine.
 }
 

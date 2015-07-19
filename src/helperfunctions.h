@@ -51,6 +51,32 @@ inline llvm::Type* llvm_type_including_void(uint64_t size)
 }
 
 
+/** mem-to-reg only works on entry block variables.
+thus, this function builds llvm::Allocas in the entry block. it should be preferred over trying to create allocas directly.
+maybe scalarrepl is more useful for us.
+clang likes to allocate everything in the beginning, so we follow their lead
+we call this "create_alloca" instead of "create_alloca_in_entry_block", because it's the general alloca mechanism. if we said, "in_entry_block", then the user would be confused as to when to use this. by not having that, it's clear that this should be the default.
+
+we create an alloca. it's a placeholder for dependencies, in case we need a place to store things.
+if we don't need it, we can use eraseFromParent()
+if we do need it, then we use ReplaceInstWithInst.
+
+we create a many-element allocation instead of an array allocation, because we need to use ReplaceInstWithInst, which must preserve type.
+otherwise, I see assert(): "replaceAllUses of value with new value of different type!"
+*/
+inline llvm::AllocaInst* create_empty_alloca() {
+	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
+	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
+	return TmpB.CreateAlloca(llvm_i64(), llvm_integer(0));
+}
+
+inline llvm::AllocaInst* create_actual_alloca(uint64_t size) {
+	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
+	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
+	return TmpB.CreateAlloca(llvm_i64(), llvm_integer(size));
+}
+
+
 
 //return type is not a llvm::Function*, because it's a pointer to a function.
 template<typename... should_be_type_ptr, typename fptr> inline llvm::Value* llvm_function(fptr* function, llvm::Type* return_type, should_be_type_ptr... argument_types)
@@ -97,9 +123,11 @@ struct value_collection
 	//however, each term inside must have size 1.
 	std::vector<std::pair<llvm::Value*, uint64_t>> objects; //value, then size.
 	value_collection(llvm::Value* integer, uint64_t size) : objects{std::make_pair(integer, size)} {}
+	value_collection(std::vector<std::pair<llvm::Value*, uint64_t>> a) : objects{a} {}
 };
 
-inline void write_into_place(value_collection data, llvm::Value* target)
+//the ssa bool is in case the target is an array/integer. in that case, "target" is overwritten.
+inline void write_into_place(value_collection data, llvm::Value*& target, bool ssa = false)
 {
 	uint64_t offset = 0;
 	for (auto& single_object : data.objects)
@@ -108,12 +136,24 @@ inline void write_into_place(value_collection data, llvm::Value* target)
 		{
 			check(single_object.second != 0, "tried to store 0 size object");
 
-			llvm::Value* integer_transfer;
-			if (single_object.second > 1)
-				integer_transfer = builder->CreateExtractValue(single_object.first, subplace);
-			else integer_transfer = single_object.first;
-			llvm::Value* location = offset ? builder->CreateConstInBoundsGEP1_64(target, offset, s("write")) : target;
-			builder->CreateStore(integer_transfer, location);
+			llvm::Value* integer_transfer = (single_object.second > 1) ? builder->CreateExtractValue(single_object.first, subplace) : single_object.first;
+
+			//transfer the values
+			if (ssa)
+			{
+				if (target->getType()->isIntegerTy())
+					target = integer_transfer;
+				else
+				{
+					check(offset < ~0u, "large types not allowed for CreateInsertValue");
+					target = builder->CreateInsertValue(target, integer_transfer, {(unsigned)offset});
+				}
+			}
+			else
+			{
+				llvm::Value* location = offset ? builder->CreateConstInBoundsGEP1_64(target, offset, s("write")) : target;
+				builder->CreateStore(integer_transfer, location);
+			}
 			++offset;
 		}
 	}
@@ -129,72 +169,32 @@ llvm::AllocaInst* create_empty_alloca();
 //use turn_full if we ever get a reference to it.
 struct memory_allocation
 {
-	llvm::Instruction* allocation = create_empty_alloca(); //AllocaInst* a = alloca i64, size, or an allocate() address
-	uint64_t size = 0;
+	llvm::Value* allocation; //AllocaInst* a = alloca i64, size, or an allocate() address
+	uint64_t size;
 
+	memory_allocation(uint64_t s) : allocation(create_actual_alloca(s)), size(s) {}
 private:
 	bool self_is_full = false; //use turn_full(). don't manipulate this directly.
 public:
-	uint64_t version = 1; //used to version the allocation. when the allocation changes, the cached offsets of memory_location need to change as well.
-
-	void cast_base() //if this should be a heap alloca, mark self_is_full before calling this.
-	{
-		llvm::Instruction* new_alloca;
-		if (!self_is_full)
-			new_alloca = new llvm::AllocaInst(llvm_i64(), llvm_integer(size));
-		else
-		{
-			llvm::Value* allocator = llvm_function(allocate, llvm_i64()->getPointerTo(), llvm_i64());
-			new_alloca = llvm::CallInst::Create(allocator, {llvm_integer(size)});
-		}
-
-		llvm::BasicBlock::iterator ii(allocation);
-		ReplaceInstWithInst(allocation->getParent()->getInstList(), ii, new_alloca);
-
-		++version;
-		allocation = new_alloca;
-	}
+	
 	void turn_full()
 	{
 		if (self_is_full == false)
 		{
 			self_is_full = true;
-			cast_base();
+
+			llvm::Instruction* new_alloca;
+			llvm::Value* allocator = llvm_function(allocate, llvm_i64()->getPointerTo(), llvm_i64());
+			new_alloca = llvm::CallInst::Create(allocator, {llvm_integer(size)});
+
+			if (auto allocainstruct = llvm::dyn_cast<llvm::Instruction>(allocation))
+			{
+				llvm::BasicBlock::iterator ii(allocainstruct);
+				ReplaceInstWithInst(allocainstruct->getParent()->getInstList(), ii, new_alloca);
+				allocation = new_alloca;
+			}
+			else error("allocation isn't an instruction");
 		}
-	}
-};
-
-
-//val = i64 if size = 1, val = [i64 x size] if size > 1.
-struct memory_location //used for GEP. good for delaying emission of instructions unless they're necessary.
-{
-	memory_allocation* base;
-	uint64_t offset;
-	llvm::Value* spot = nullptr;
-	uint64_t version = 0; //this version number starts below memory_allocation's version. whenever this version is less, spot must be re-calculated, because the cached instruction is invalidated. it's bad that we're re-emitting the GEP, but I don't know how to find the new version of the ReplaceInstwithInst'd GEPs.
-
-	memory_location(memory_allocation* f1, uint64_t o) : base(f1), offset(o) {}
-	memory_location() : base(nullptr), offset(0) {}
-
-
-	llvm::Value* get_location()
-	{
-		determine_spot();
-		return spot;
-	}
-	//assigns spot to be the correct pointer. i64*
-	void determine_spot()
-	{
-		if (version < base->version)
-		{
-			spot = base->allocation;
-			if (offset) spot = builder->CreateConstInBoundsGEP1_64(base->allocation, offset, s("spot"));
-		}
-	}
-	void store(value_collection val)
-	{
-		determine_spot();
-		write_into_place(val, get_location());
 	}
 };
 
@@ -224,15 +224,15 @@ struct Return_Info
 	//place is active when memory_location_active = true.
 	//either way, the internal type doesn't change.
 	llvm::Value* IR;
-	memory_location place;
+	memory_allocation* place;
 
 	Type* type;
 	bool memory_location_active;
 	//either b or m must be null. both of them can't be active at the same time.
-	Return_Info(IRgen_status err, llvm::Value* b, memory_location m, Type* t)
+	Return_Info(IRgen_status err, llvm::Value* b, memory_allocation* m, Type* t)
 		: error_code(err), IR(b), place(m), type(t), memory_location_active((b == 0) ? true : false)
 	{
-		check((b == 0) || (m.base == 0), "at least one must be 0"); //both can be 0, if it's an error code.
+		check((b == 0) || (m == 0), "at least one must be 0"); //both can be 0, if it's an error code.
 	}
 
 	//default constructor for a null object
@@ -240,32 +240,6 @@ struct Return_Info
 	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), memory_location_active(false) {}
 };
 
-
-
-/** mem-to-reg only works on entry block variables.
-thus, this function builds llvm::Allocas in the entry block. it should be preferred over trying to create allocas directly.
-maybe scalarrepl is more useful for us.
-clang likes to allocate everything in the beginning, so we follow their lead
-we call this "create_alloca" instead of "create_alloca_in_entry_block", because it's the general alloca mechanism. if we said, "in_entry_block", then the user would be confused as to when to use this. by not having that, it's clear that this should be the default.
-
-we create an alloca. it's a placeholder for dependencies, in case we need a place to store things.
-if we don't need it, we can use eraseFromParent()
-if we do need it, then we use ReplaceInstWithInst.
-
-we create a many-element allocation instead of an array allocation, because we need to use ReplaceInstWithInst, which must preserve type.
-	otherwise, I see assert(): "replaceAllUses of value with new value of different type!"
-*/
-inline llvm::AllocaInst* create_empty_alloca() {
-	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
-	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
-	return TmpB.CreateAlloca(llvm_i64(), llvm_integer(0));
-}
-
-inline llvm::AllocaInst* create_actual_alloca(uint64_t size) {
-	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
-	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
-	return TmpB.CreateAlloca(llvm_i64(), llvm_integer(size));
-}
 
 struct builder_context_stack
 {

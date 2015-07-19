@@ -34,22 +34,19 @@ class compiler_object
 
 	//a stack for bookkeeping lifetimes; keeps track of when objects are alive.
 	//bool is true if the object is a memory location that can have pointers to it, instead of a temporary.
-	std::stack<std::pair<uAST*, bool>> object_stack;
+	std::stack<uAST*> object_stack;
 
 	//maps ASTs to their generated IR and return type.
 	std::unordered_map<uAST*, Return_Info> objects;
 
 	//pair with clear_stack(). returns 1 on error
-	bool new_object(uAST* target, bool referenceable, Return_Info r)
+	bool new_object(uAST* target, Return_Info r)
 	{
 		check((uint64_t)r.type != 6, "what the fuck");
-		object_stack.push({target, referenceable});
-		if (referenceable)
-		{
-			auto insert_result = objects.insert({target, r});
-			if (!insert_result.second) //collision: AST is already there
-				return 1;
-		}
+		object_stack.push(target);
+		auto insert_result = objects.insert({target, r});
+		if (!insert_result.second) //collision: AST is already there
+			return 1;
 		return 0;
 	}
 
@@ -68,7 +65,7 @@ class compiler_object
 	//this runs the dtors. it's called by clear_stack, but also called by goto, which jumps stacks.
 	void emit_dtors(uint64_t desired_stack_size);
 
-	Return_Info generate_IR(uAST* user_target, uint64_t stack_degree, memory_location desired = memory_location());
+	Return_Info generate_IR(uAST* user_target, uint64_t stack_degree);
 	
 public:
 	compiler_object() : J(*c), error_location(nullptr), new_context(new llvm::LLVMContext()) {}
