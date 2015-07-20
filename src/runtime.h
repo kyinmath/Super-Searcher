@@ -285,8 +285,23 @@ inline std::array<uint64_t, 2> dynamic_subtype(Tptr type, uint64_t offset)
 			return{{0, 0}};
 		uint64_t skip_this_many;
 		get_size_conc(type, offset, &skip_this_many);
-		console << "dynamic_subtype is returning " << type.field(offset + 1) << " and " << skip_this_many << '\n';
+		//if (VERBOSE_DEBUG) console << "dynamic_subtype is returning " << type.field(offset + 1) << " and " << skip_this_many << '\n';
 		return{{type.field(offset + 1), skip_this_many}};
 	}
+}
 
+inline uint64_t* copy_object(Tptr type, uint64_t* pointer)
+{
+	uint64_t total_size = get_size(type);
+	uint64_t* new_memory = allocate(total_size);
+	for (uint64_t x = 0; x < total_size; ++x)
+		new_memory[x] = pointer[x];
+	return new_memory;
+}
+
+inline std::array < uint64_t, 2> load_imv_from_AST(uAST* p)
+{
+	if (p == 0) return{{0, 0}};
+	else if (p->tag != 0) return{{0, 0}};
+	else return{{p->fields[0].num, (uint64_t)copy_object(p->fields[0].num, (uint64_t*)p->fields[1].num)}};
 }

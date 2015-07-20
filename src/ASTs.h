@@ -119,7 +119,7 @@ constexpr AST_info AST_descriptor[] =
 	//{"write_n", T::null, parameter_no_type_check, T::integer, parameter_no_type_check}, //writes into pointers
 	//we need a specific "overwrite function" AST, that can't be the usual store. because it might fail, and so we must return an error code.
 	//a("load_tag", T::integer).make_pointer_fields(1),...should take either a type or an AST. it fits for both
-	//{"load_static_from_AST", T::dynamic_pointer, T::AST_pointer},
+	{"load_imv_from_AST", T::dynamic_pointer, T::AST_pointer}, //makes a copy of the imv as well, since it's const.
 	//{"write_into_AST", T::integer, T::integer, T::AST_pointer}, //writes a field. the integer comes first because it logically decides the field.
 	//{"type_of_function", T::type, T::function}, this is a function thing instead of an AST thing, because compilation verifies correctness, which is necessary for the return type to be meaningful.
 	//a("do_after", T::special_return, parameter_no_type_check).make_pointer_fields(2),

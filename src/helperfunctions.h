@@ -29,6 +29,7 @@ inline llvm::ConstantInt* llvm_integer(uint64_t value)
 {
 	return llvm::ConstantInt::get(llvm_i64(), value);
 }
+inline llvm::StructType* double_int() { return llvm::StructType::get(*context, {llvm_i64(), llvm_i64()}); }
 
 inline llvm::ArrayType* llvm_array(uint64_t size)
 {

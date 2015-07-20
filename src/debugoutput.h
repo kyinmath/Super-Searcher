@@ -175,9 +175,7 @@ struct output_AST_struct
 		//any additional fields that aren't pointers
 		//pulling in both get_size and get_AST_full_type might make this debug function vulnerable to errors, which can be bad.
 		for (; x < get_size(get_AST_fields_type(target->tag)); ++x)
-		{
 			output << ' ' << target->fields[x].num;
-		}
 		output << ']';
 
 		if (reference_necessary.find(target) != reference_necessary.end()) output << target;

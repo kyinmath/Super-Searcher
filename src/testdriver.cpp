@@ -310,6 +310,18 @@ void compile_verify_string(std::string input_string, Tptr type, uint64_t value)
 	check((Tptr)k[0] == type, "test failed type");
 	check(*(uint64_t*)k[1] == value, "test failed value, got " + std::to_string(*(uint64_t*)k[1]));
 }
+void compile_verify_string_nonzero_value(std::string input_string, Tptr type)
+{
+	auto k = compile_string(input_string);
+	check((Tptr)k[0] == type, "test failed type");
+	check(*(uint64_t*)k[1] != 0, "test failed value, got " + std::to_string(*(uint64_t*)k[1]));
+}
+
+void compile_verify_string(std::string input_string, Tptr type)
+{
+	auto k = compile_string(input_string);
+	check((Tptr)k[0] == type, "test failed type");
+}
 
 //functions passed into here are required to fail compilation.
 void cannot_compile_string(std::string input_string)
@@ -345,7 +357,20 @@ void test_suite()
 	//looping until finiteness ends, increasing a value. tests storing values
 	compile_verify_string("[imv 0]b [label]a [store [pointer b] [increment b]] [goto a] [concatenate b]", u::integer, FINITENESS_LIMIT);
 
-	//loading a subobject from a concatenation, as well as copys in concatenation
+
+	//loading from dynamic objects. a single-object dynamic pointer, pointing to an int.
+	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store [pointer ret] subobj] [store [pointer empty] subobj]]subobj [concatenate ret]", u::integer, 40);
+	//try to load the next object. it should return nothing.
+	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store [pointer ret] subobj] [store [pointer empty] subobj]]subobj [concatenate empty]", u::dynamic_pointer, 0);
+
+	//again, try to load from dynamic objects. this time, a concatenation of two objects. load the int from the concatenation, then write it.
+	compile_verify_string("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer ret]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store [pointer ret] subobj] [label] [label] [label] [label] [store [pointer empty] subobj]]subobj [concatenate ret]", u::integer, 40);
+	//load the pointer from the concatenation
+	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer ret]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 1] [store [pointer ret] subobj] [label] [label] [label] [label] [store [pointer empty] subobj]]subobj [concatenate empty]", u::dynamic_pointer);
+	//load the dynamic pointer from the concatenation
+	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [dynamify [pointer ret]]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 1] [store [pointer ret] subobj] [store [pointer empty] subobj]]subobj [concatenate empty]", u::dynamic_pointer);
+
+	//loading a subobject from a concatenation, as well as copying across fields of a concatenation
 	compile_verify_string("[concatenate [imv 20]a [increment a]]co [load_subobj [pointer co] [imv 1]]", u::integer, 20 + 1);
 
 	//goto forward. should skip the second store, and produce 20.
