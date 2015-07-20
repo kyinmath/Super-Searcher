@@ -24,7 +24,8 @@
 	= GC schedule
 
 ()get pointer to function for event driven framework. a specific function is run on an event. possible events:
-	user start
+	user start (modify directed judgment)
+	country start (modify the random judgment)
 	other user crash (maybe GC OOM, system OOM, or something)
 	generic running
 	message
@@ -69,6 +70,8 @@ How does the user communicate with me? This is also crucial. My computer must re
 Revolution: threshold, 1 to N-1, that when reached, kills the king. Should be invisible to the king.
 
 no scope(). because label allows the user to do goto to a lot of places.
+no need to load type from dynamic, because you can do nothing with types (except compare them, but you can still do nothing). the interesting AST is instead the dynamic_subobj, which already returns the type.
+	well, except that you can load the return type of a function. this is useful. so maybe loading types from dynamic is useful as well.
 
 machine input (mouse and keyboard) and output (screen)
 	size of each screen
