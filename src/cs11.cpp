@@ -240,7 +240,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	//if it's necessary to create and write to storage_location, we do so.
 	//if stack_degree >= 1, this will ignore return_value and use "memory_location desired" instead
 	//note the hidden default values that are captured; they're listed above in the ///default values section.
-	auto finish_internal = [&](l::Value* return_value, Type* type) -> Return_Info
+	auto finish_internal = [&](l::Value* return_value, Tptr type) -> Return_Info
 	{
 		check(type == get_unique_type(type, false), "returned non unique type in finish()");
 
@@ -295,7 +295,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	//maybe later, we'll separate everything out. so if you specify the type and the return isn't special_pointer, it'll error as well.
 #define finish_special(X, type) do {return finish_internal(X, type); } while (0)
 
-#define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, get_unique_type(AST_descriptor[target->tag].return_object.type.ptr, false)); } while (0)
+#define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, get_unique_type(AST_descriptor[target->tag].return_object.type, false)); } while (0)
 
 	//if this AST is already in the object list, return the previously-gotten value.
 	auto looking_for_reference = objects.find(target);
@@ -335,17 +335,17 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			console << "type checking. result type is \n";
 			output_type_and_previous(result.type);
 			console << "desired type is \n";
-			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x].type.ptr);
+			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x].type);
 		}
 
 		//check that the type matches.
 		if (AST_descriptor[target->tag].parameter_types[x].state != parameter_no_type_check) //for fields that are compiled but not type checked
 		{
-			if (get_unique_type(AST_descriptor[target->tag].parameter_types[x].type.ptr, false) == u::does_not_return)
+			if (get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false) == u::does_not_return)
 				finish_special(nullptr, u::does_not_return); //just get out of here, since we're never going to run the current command anyway.
 			//this is fine with labels even though labels require emission whether reached or not, because labels don't compile using the default mechanism
 			//even if there are labels skipped over by this escape, nobody can see them because of our try-catch goto scheme.
-			if (type_check(RVO, result.type, get_unique_type(AST_descriptor[target->tag].parameter_types[x].type.ptr, false)) != type_check_result::perfect_fit) return_code(type_mismatch, x);
+			if (type_check(RVO, result.type, get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false)) != type_check_result::perfect_fit) return_code(type_mismatch, x);
 		}
 
 		field_results.push_back(result);
@@ -439,7 +439,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			Return_Info else_IR = generate_IR(target->fields[2].ptr, 0);
 			if (else_IR.error_code) return else_IR;
 
-			Type* result_type = then_IR.type; //first, we assume then_IR is the main type.
+			Tptr result_type = then_IR.type; //first, we assume then_IR is the main type.
 			//RVO, because that's what defines the slot.
 			if (type_check(RVO, else_IR.type, then_IR.type) != type_check_result::perfect_fit)
 			{
@@ -535,7 +535,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			auto found_AST = objects.find(target->fields[0].ptr);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			if (found_AST->second.memory_location_active == false) return_code(pointer_to_temporary, 0);
-			Type* new_pointer_type = new_type(Typen("pointer"), found_AST->second.type);
+			Tptr new_pointer_type = new_type(Typen("pointer"), found_AST->second.type);
 
 			l::Value* final_result = builder->CreatePtrToInt(found_AST->second.place->allocation, llvm_i64(), s("flattening pointer"));
 			objects.find(target->fields[0].ptr)->second.place->turn_full();
@@ -559,15 +559,15 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			//we have to handle stupid things like i64 vs [4 x i64] and that nonsense. we can't just extract values easily.
 			l::Value* final_value = (total_size == 1) ? l::UndefValue::get(llvm_i64()) : l::UndefValue::get(llvm_array(total_size));
 			write_into_place({{{half[0].IR, half_size[0]}, {half[1].IR, half_size[1]}}}, final_value, true);
-			Type* final_type = concatenate_types({half[0].type, half[1].type});
+			Tptr final_type = concatenate_types({half[0].type, half[1].type});
 			finish_special(final_value, final_type);
 		}
 
 	case ASTn("store"):
 		{
-			if (field_results[0].type == nullptr) return_code(type_mismatch, 0);
-			if (field_results[0].type->ver() != Typen("pointer")) return_code(type_mismatch, 0);
-			if (type_check(RVO, field_results[1].type, field_results[0].type->fields[0].ptr) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
+			if (field_results[0].type == 0) return_code(type_mismatch, 0);
+			if (field_results[0].type.ver() != Typen("pointer")) return_code(type_mismatch, 0);
+			if (type_check(RVO, field_results[1].type, field_results[0].type.field(0)) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
 			llvm::Value* memory_location = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 
 			write_into_place(value_collection(field_results[1].IR, get_size(field_results[1].type)), memory_location);
@@ -609,7 +609,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				if (x != 0) //if it's 0, don't bother doing any of this stuff, because the type is empty.
 				{
 					llvm::Value* loaded_object;
-					Type* loaded_object_type;
+					Tptr loaded_object_type = 0;
 					if (x == Typen("pointer")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
 					{
 						loaded_object_type = u::dynamic_pointer;
@@ -631,7 +631,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					}
 					else
 					{
-						loaded_object_type = (Type*)x;
+						loaded_object_type = (Tptr)x;
 						loaded_object = load_from_memory(correct_pointer, Type_descriptor[x].size);
 					}
 					new_object(target, Return_Info(IRgen_status::no_error, loaded_object, nullptr, loaded_object_type));
@@ -652,10 +652,10 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		{
 			if (field_results[0].type == 0)
 				finish(l::ConstantArray::get(llvm_array(2), {llvm_integer(0), llvm_integer(0)}));
-			if (field_results[0].type->ver() == Typen("pointer"))
+			if (field_results[0].type.ver() == Typen("pointer"))
 			{
 				l::Value* dynamic_object_address = field_results[0].IR;
-				l::Constant* integer_type_pointer = llvm_integer((uint64_t)field_results[0].type->fields[0].ptr);
+				l::Constant* integer_type_pointer = llvm_integer((uint64_t)field_results[0].type.field(0));
 
 				l::Value* undef_value = l::UndefValue::get(llvm_array(2));
 				l::Value* first_value = builder->CreateInsertValue(undef_value, integer_type_pointer, { 0 });
@@ -701,7 +701,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	case ASTn("convert_to_AST"):
 		{
 			l::Value* previous_AST;
-			if (type_check(RVO, field_results[1].type, nullptr) == type_check_result::perfect_fit) //previous AST is nullptr.
+			if (type_check(RVO, field_results[1].type, 0) == type_check_result::perfect_fit) //previous AST is nullptr.
 				previous_AST = llvm_integer(0);
 			else if (type_check(RVO, field_results[1].type, u::AST_pointer) == type_check_result::perfect_fit) //previous AST actually exists
 				previous_AST = field_results[1].IR;
@@ -727,7 +727,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("imv"): //bakes in the value into the compiled function. changes by the function are temporary.
 		{
-			Type* type_of_object = (Type*)target->fields[0].ptr;
+			Tptr type_of_object = (uint64_t)target->fields[0].ptr;
 			uint64_t* array_of_integers = (uint64_t*)(target->fields[1].ptr);
 			uint64_t size_of_object = get_size(type_of_object);
 			if (size_of_object)
@@ -742,17 +742,17 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				else object = values[0];
 				finish_special(object, type_of_object);
 			}
-			else finish_special(nullptr, nullptr);
+			else finish_special(0, 0);
 		}
 	case ASTn("load_subobj"):
 		{
-			Type* type_of_pointer = field_results[0].type;
-			if (type_of_pointer == nullptr) return_code(type_mismatch, 0);
-			switch (type_of_pointer->ver())
+			Tptr type_of_pointer = field_results[0].type;
+			if (type_of_pointer == 0) return_code(type_mismatch, 0);
+			switch (type_of_pointer.ver())
 			{
 			case Typen("pointer"):
 				{
-					Type* type_of_object = type_of_pointer->fields[0].ptr;
+					Tptr type_of_object = type_of_pointer.field(0);
 					if (llvm::ConstantInt* k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
 					{
 						uint64_t offset = k->getZExtValue();
@@ -763,13 +763,13 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 						}
 						else //yes concatenation
 						{
-							if (offset >= type_of_object->fields[0].num)
+							if (offset >= type_of_object.field(0))
 								return_code(oversized_offset, 1);
 							uint64_t skip_this_many;
 							uint64_t size_of_load = get_size_conc(type_of_object, offset, &skip_this_many);
 							llvm::Value* pointer_cast = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 							llvm::Value* place = skip_this_many ? builder->CreateConstInBoundsGEP1_64(pointer_cast, skip_this_many, s("offset")) : pointer_cast;
-							finish_special(load_from_memory(place, size_of_load), type_of_object->fields[offset + 1].ptr);
+							finish_special(load_from_memory(place, size_of_load), type_of_object.field(offset + 1));
 						}
 					}
 					return_code(requires_constant, 1);

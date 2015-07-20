@@ -3,7 +3,7 @@ A "user" will be defined as a program that is interpreted by the CS11 backend. T
 Apart from minor types like pointers and integers, there are two heavy-duty types that a user can see - Types, and ASTs.
 
 A Type object consists of a tag and two fields, and describes another object. The two fields depend on the tag. For example, if the tag is "pointer", then the first field will be a pointer to the Type of the object that is being pointed to, and the second field is nullptr. If the tag is "integer", then both fields are nullptr. If the tag is "AST", then the first field will be a pointer to the Type of the return object, and the second field will be a pointer to the Type of the parameter object.
-For large structures, the "con_vec" Type is used. A structure consisting of three elements will be described by a "con_vec" Type, which has four fields: 3, Type*, Type*, Type*. The "3" says that there are 3 elements. The subfield of a con_vec type cannot be another con_vec.
+For large structures, the "con_vec" Type is used. A structure consisting of three elements will be described by a "con_vec" Type, which has four fields: 3, Tptr, Tptr, Tptr. The "3" says that there are 3 elements. The subfield of a con_vec type cannot be another con_vec.
 The subfield of a pointer cannot be nullptr.
 
 An AST object represents an expression, and consists of:
@@ -117,13 +117,16 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
 constexpr uint64_t Typen(const char name[]) { return get_enum_from_name<const Type_info, Type_descriptor>(name); }
 
 #define fields_in_Type 3u
+//type structure: if the type has no fields, the tag goes in the tptr val.
+//if the type does have fields, tptr's val is a pointer. it points to: tag, then fields, in that order.
+//if the tag is 0, then we enforce that it's a null type.
+//to do this, the 0 tag must always have fields. (it's concatenate for now)
+
 //this is for types which are known to be unique and well-behaved (no loops).
 //NOTE: if the only field is the type (such as with any tag that's not "pointer" or "concatenate", then the tag is stored in the pointer field instead.
 //WARNING: don't use the ctor or copy ctor for creating user objects! use the copy_type() and new_type() functions instead, which handle sizes correctly.
 //the Type does not properly represent its true size.
 //todo: add const to all of these things. and to AST tag as well.
-class Type;
-inline uint64_t total_valid_fields(const Type* t);
 class Type
 {
 	uint64_t tag;
@@ -139,85 +142,88 @@ public:
 	std::array<iop, fields_in_Type> fields;
 
 	//these ctors are necessary for the constexpr types.
-	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{{args...}} { if (tag == Typen("con_vec")) error("make it another way"); }
+	
 private:
+	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{{args...}} { if (tag == Typen("con_vec")) error("make it another way"); }
 	Type(const Type& other) = delete;
 };
-//I don't want to use a special Tptr. because then I'll have to constantly say whether I want a number or pointer? well no, not if I bake the union in. maybe later.
-/*
-
 class Tptr
 {
-
-int_or_ptr<Type> tag; //can either be a pointer, or the tag if it's small enough.
-uint64_t ver() const
-{
-check(tag.num != 0, "null type, can't get tag");
-if (tag == 0 || pointer == Typen("pointer")) return this->tag;
-else return pointer;
-}
-}
-*/
+public:
+	uint64_t val; //public only because copy_type() wants it
+	uint64_t ver() const
+	{
+		if (val > Typen("never reached")) return *(uint64_t*)val; //we're making a huge ABI assumption here, that pointers can't go near 0.
+		else return val;
+	}
+	Tptr& field(uint64_t offset) const {
+		//check(val > Typen("never reached"), "trying to get the field of a tptr with no fields");
+		return *(Tptr*)(val + sizeof(uint64_t) * (offset + 1));
+	}
+	constexpr operator uint64_t() const { return val; }
+	//operator void*() const { return (void*)val; } creates problems when Tptr can degenerate either into ptr or integer
+	constexpr Tptr(uint64_t t) : val(t) {}
+};
 
 #define max_fields_in_AST 40u
 //should accomodate the largest possible AST. necessary for AST_descriptor[]
 
+//only gets the pointers. misses the concatenate
 struct Type_pointer_range
 {
-	Type* t;
-	Type_pointer_range(Type* t_) : t(t_) {}
-	Type** begin() { return (t->ver() == Typen("con_vec")) ? &(t->fields[1].ptr) : &(t->fields[0].ptr); }
-	Type** end() { return (t->ver() == Typen("con_vec")) ? &(t->fields[1].ptr) + (uint64_t)t->fields[0].num :
-		&(t->fields[0].ptr) + Type_descriptor[t->ver()].pointer_fields;
+	Tptr t;
+	Type_pointer_range(Tptr t_) : t(t_) {}
+	Tptr* begin() {
+		if (Type_descriptor[t.ver()].pointer_fields == 0) return 0;
+		return (t.ver() == Typen("con_vec")) ? &(t.field(1)) : &(t.field(0));
+	}
+	Tptr* end() {
+		if (Type_descriptor[t.ver()].pointer_fields == 0) return 0;
+		return (t.ver() == Typen("con_vec")) ? &(t.field(1)) + (uint64_t)t.field(0) : &(t.field(0)) + Type_descriptor[t.ver()].pointer_fields;
 	}
 };
 
-//range operator. gets all the fields, but not the tag.
-struct Type_everything_range
+inline uint64_t total_valid_fields(const Tptr t)
 {
-	Type* t;
-	Type_everything_range(const Type* t_) : t((Type*)t_) {}
-	uint64_t tag;
-	Type* fields;
-	Type** begin() { return &(t->fields[0].ptr); }
-	Type** end() { return &(t->fields[0].ptr) + total_valid_fields(t);
-	}
-};
-
-inline uint64_t total_valid_fields(const Type* t)
-{
-	return (t->ver() == Typen("con_vec")) ? t->fields[0].num + 1 : Type_descriptor[t->ver()].pointer_fields;
+	return (t.ver() == Typen("con_vec")) ? t.field(0) + 1 : Type_descriptor[t.ver()].pointer_fields;
 }
 
 #include "memory.h"
 //warning: takes fields directly. so concatenate should worry.
-inline Type* new_nonunique_type(uint64_t tag, llvm::ArrayRef<Type*> fields)
+inline Tptr new_nonunique_type(uint64_t tag, llvm::ArrayRef<Tptr> fields)
 {
 	uint64_t total_field_size = (tag == Typen("con_vec")) ? (uint64_t)fields[0] + 1 : Type_descriptor[tag].pointer_fields;
-	if (total_field_size == 0) return (Type*)tag;
+	if (total_field_size == 0)
+	{
+		console << "quitting new nonunique type\n";
+		return (Tptr)tag;
+	}
 	uint64_t* new_home = allocate(total_field_size + 1);
 	new_home[0] = tag;
 	for (uint64_t x = 0; x < total_field_size; ++x)
 		new_home[x + 1] = (uint64_t)fields[x];
-	return (Type*)new_home;
+	if (new_home[1] == 1ull << 63) abort();
+	console << "new home 1 is " << (uint64_t*)new_home[1];
+	return (uint64_t)new_home;
 }
 
-Type* get_unique_type(int_or_ptr<Type> model, bool can_reuse_parameter);
-inline Type* new_type(uint64_t tag, llvm::ArrayRef<Type*> fields)
+Tptr get_unique_type(Tptr model, bool can_reuse_parameter);
+inline Tptr new_type(uint64_t tag, llvm::ArrayRef<Tptr> fields)
 {
-	return get_unique_type(new_nonunique_type(tag, fields), true);
+	Tptr new_tptr = new_nonunique_type(tag, fields);
+	return get_unique_type(new_tptr, true);
 }
 
 //doesn't return a unique version.
-inline Type* copy_type(const Type* t)
+inline Tptr copy_type(const Tptr t)
 {
 	uint64_t fields = total_valid_fields(t);
-	if (fields == 0) return (Type*)t;
+	if (fields == 0) return (Tptr)t;
 	uint64_t* new_type = allocate(fields + 1);
-	uint64_t* old_type = (uint64_t*)t;
+	uint64_t* old_type = (uint64_t*)t.val;
 	for (uint64_t idx = 0; idx < fields + 1; ++idx)
 		new_type[idx] = old_type[idx];
-	return (Type*)(new_type);
+	return (uint64_t)(new_type);
 }
 
 /*when creating a new element here:
@@ -238,21 +244,21 @@ namespace T
 	constexpr uint64_t type = Typen("type pointer");
 	constexpr uint64_t AST_pointer = Typen("AST pointer");
 	constexpr uint64_t function_pointer = Typen("function pointer");
-	constexpr Type* null = nullptr;
+	constexpr Tptr null = 0;
 };
 
 //the actual objects are placed in type_creator.cpp, to avoid static initialization fiasco
 namespace u
 {
-	extern Type* does_not_return;
-	extern Type* integer;
-	extern Type* dynamic_pointer;
-	extern Type* type;
-	extern Type* AST_pointer;
-	extern Type* function_pointer;
-	constexpr Type* null = nullptr;
+	extern Tptr does_not_return;
+	extern Tptr integer;
+	extern Tptr dynamic_pointer;
+	extern Tptr type;
+	extern Tptr AST_pointer;
+	extern Tptr function_pointer;
+	constexpr Tptr null = 0;
 };
-Type* concatenate_types(llvm::ArrayRef<Type*> components);
+Tptr concatenate_types(llvm::ArrayRef<Tptr> components);
 
 /*
 all object sizes are integer multiples of 64 bits.
@@ -261,14 +267,14 @@ thus, a uint64 has size "1". a struct of two uint64s has size "2". etc.
 there can't be loops because Types are immut. the user doesn't have access to Type creation functions.
 	we'll mark this as the "good" function. it takes in Types that are known to be unique.
 */
-constexpr uint64_t get_size(Type* target) __attribute__((pure));
-constexpr uint64_t get_size(Type* target)
+constexpr uint64_t get_size(Tptr target) __attribute__((pure));
+constexpr uint64_t get_size(Tptr target)
 {
-	if (target == nullptr) return 0;
-	else if (Type_descriptor[target->ver()].size != minus_one) return Type_descriptor[target->ver()].size;
-	else if (target->ver() == Typen("con_vec"))
+	if (target == 0) return 0;
+	else if (Type_descriptor[target.ver()].size != minus_one) return Type_descriptor[target.ver()].size;
+	else if (target.ver() == Typen("con_vec"))
 	{
-		check(target->fields[0].num > 1, "concatenation with insufficient types"); //this is a meaningful check because pointer to nowhere gives tag = 0 (concat), fields = 0.
+		check(target.field(0) > 1, "concatenation with insufficient types"); //this is a meaningful check because pointer to nowhere gives tag = 0 (concat), fields = 0.
 		uint64_t total_size = 0;
 		for (auto& x : Type_pointer_range(target)) total_size += get_size(x);
 		return total_size;
@@ -277,16 +283,16 @@ constexpr uint64_t get_size(Type* target)
 }
 
 //finds one element in a concatenate. the size offset is returns in return_offset. the size of the object is returned normally.
-inline uint64_t get_size_conc(Type* target, uint64_t offset, uint64_t* return_offset)
+inline uint64_t get_size_conc(Tptr target, uint64_t offset, uint64_t* return_offset)
 {
-	check(target != nullptr, "conc");
-	check(target->ver() == Typen("con_vec"), "need conc");
-	check(target->fields[0].num > offset, "error: you must check that there are enough types in the conc to handle the offset beforehand");
+	check(target != 0, "conc");
+	check(target.ver() == Typen("con_vec"), "need conc");
+	check(target.field(0) > offset, "error: you must check that there are enough types in the conc to handle the offset beforehand");
 	uint64_t initial_offset = 0;
 	for (uint64_t idx = 0; idx < offset; ++idx)
-		initial_offset += get_size(target->fields[idx + 1].ptr);
+		initial_offset += get_size(target.field(idx + 1));
 	*return_offset = initial_offset;
-	return get_size(target->fields[offset + 1].ptr);
+	return get_size(target.field(offset + 1));
 }
 
 
@@ -304,25 +310,25 @@ enum class type_check_result
 };
 
 //includes the tag in the result type.
-inline Type* get_Type_full_type(Type* t)
+inline Tptr get_Type_full_type(Tptr t)
 {
-	std::vector<Type*> fields{u::integer}; //the tag
-	if (t->ver() != Typen("con_vec"))
+	std::vector<Tptr> fields{u::integer}; //the tag
+	if (t.ver() != Typen("con_vec"))
 	{
-		uint64_t number_of_pointers = Type_descriptor[t->ver()].pointer_fields;
+		uint64_t number_of_pointers = Type_descriptor[t.ver()].pointer_fields;
 		for (uint64_t x = 0; x < number_of_pointers; ++x) fields.push_back(u::type);
 		return concatenate_types(fields);
 	}
 	else
 	{
 		fields.push_back(u::integer);
-		uint64_t number_of_pointers = t->fields[0].num;
+		uint64_t number_of_pointers = t.field(0);
 		for (uint64_t x = 0; x < number_of_pointers; ++x) fields.push_back(u::type);
 		return concatenate_types(fields);
 	}
 }
 
 
-void debugtypecheck(Type* test);
-type_check_result type_check(type_status version, Type* existing_reference, Type* new_reference);
-extern Type* concatenate_types(llvm::ArrayRef<Type*> components);
+void debugtypecheck(Tptr test);
+type_check_result type_check(type_status version, Tptr existing_reference, Tptr new_reference);
+extern Tptr concatenate_types(llvm::ArrayRef<Tptr> components);

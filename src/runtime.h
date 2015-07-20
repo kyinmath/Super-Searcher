@@ -70,7 +70,7 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 	else --finiteness;
 	auto func = (function*)func_int;
 	void* fptr = func->fptr;
-	Type* return_type = func->return_type;
+	Tptr return_type = func->return_type;
 	uint64_t size_of_return = get_size(return_type);
 	console << "return type of run function is: "; output_type(return_type); console << '\n';
 	if (size_of_return == 1)
@@ -134,12 +134,12 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_type, uint64_t old_pointer, uint64_t second_type)
 {
 	uint64_t* pointer = (uint64_t*)old_pointer;
-	Type* type[2] = {(Type*)first_type, (Type*)second_type};
+	Tptr type[2] = {(Tptr)first_type, (Tptr)second_type};
 
 	uint64_t size[2];
 	for (int x : { 0, 1 })
 	{
-		size[x] = get_size((Type*)type[x]);
+		size[x] = get_size((Tptr)type[x]);
 	}
 	if (size[0] + size[1] == 0) return {{0, 0}};
 	uint64_t* new_dynamic = allocate(size[0] + size[1]);
@@ -148,7 +148,7 @@ inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_type, uint64_t
 }
 
 
-inline uint64_t* copy_dynamic(Type* type, uint64_t* object)
+inline uint64_t* copy_dynamic(Tptr type, uint64_t* object)
 {
 	uint64_t size = get_size(type);
 	if (size == 0) return 0;
@@ -171,14 +171,14 @@ inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t type, u
 	else if (tag != ASTn("imv"))
 	{
 		uAST* dyn_object = (uAST*)object;
-		Type* dyn_type = (Type*)type;
+		Tptr dyn_type = (Tptr)type;
 		if (type_check(RVO, dyn_type, get_AST_fields_type(tag)) != type_check_result::perfect_fit) //this is RVO because we're copying the dynamic object over.
 			return 0;
 		return (uint64_t)new_AST(tag, (uAST*)previous, dyn_object);
 	}
 	else
 	{
-		uint64_t* copied_mem = copy_dynamic((Type*)type, (uint64_t*)object);
+		uint64_t* copied_mem = copy_dynamic((Tptr)type, (uint64_t*)object);
 		if (copied_mem == 0) return 0;
 		std::vector<uAST*> AST_members{(uAST*)type, (uAST*)copied_mem};
 		return (uint64_t)new_AST(tag, (uAST*)previous, AST_members);
@@ -195,14 +195,14 @@ inline uint64_t AST_subfield(uAST* a, uint64_t offset)
 	else return a->fields[offset].num;
 }
 
-inline uint64_t type_subfield(Type* a, uint64_t offset)
+inline uint64_t type_subfield(Tptr a, uint64_t offset)
 {
-	if (a == nullptr) return 0;
-	if (a->ver() == Typen("con_vec"))
+	if (a == 0) return 0;
+	if (a.ver() == Typen("con_vec"))
 	{
-		uint64_t size = a->fields[0].num; //we're not using the total fields type, because if it's a imv, we don't grab it.
+		uint64_t size = a.field(0); //we're not using the total fields type, because if it's a imv, we don't grab it.
 		if (offset >= size) return 0;
-		else return a->fields[offset + 1].num;
+		else return a.field(offset + 1);
 	}
 	else return (offset == 0) ? (uint64_t)a : 0;
 }
@@ -214,9 +214,9 @@ inline uAST* AST_from_function(function* a)
 	return deep_AST_copier(a->the_AST).result;
 }
 
-inline Type* type_from_function(function* a)
+inline Tptr type_from_function(function* a)
 {
-	if (a == nullptr) return nullptr;
+	if (a == nullptr) return 0;
 	return a->return_type;
 }
 
@@ -269,11 +269,11 @@ inline void agency2(uint64_t first, uint64_t par)
 }
 //return object is: type, then pointer offset. can be called "readnone" because the types are all immut
 //it's ok for now to return the type, because 0 = concatenate = ignorable, pointer = default case, everything else = no fields.
-inline std::array<uint64_t, 2> dynamic_subtype(Type* type, uint64_t offset)
+inline std::array<uint64_t, 2> dynamic_subtype(Tptr type, uint64_t offset)
 {
-	if (type == nullptr)
+	if (type == 0)
 		return {{0, 0}};
-	else if (type->ver() != Typen("con_vec"))
+	else if (type.ver() != Typen("con_vec"))
 	{
 		if (offset == 0)
 			return{{(uint64_t)type, 0}};
@@ -281,12 +281,12 @@ inline std::array<uint64_t, 2> dynamic_subtype(Type* type, uint64_t offset)
 	}
 	else
 	{
-		if (offset >= type->fields[0].num)
+		if (offset >= type.field(0))
 			return{{0, 0}};
 		uint64_t skip_this_many;
 		get_size_conc(type, offset, &skip_this_many);
-		console << "dynamic_subtype is returning " << type->fields[offset + 1].num << " and " << skip_this_many << '\n';
-		return{{type->fields[offset + 1].num, skip_this_many}};
+		console << "dynamic_subtype is returning " << type.field(offset + 1) << " and " << skip_this_many << '\n';
+		return{{type.field(offset + 1), skip_this_many}};
 	}
 
 }

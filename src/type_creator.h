@@ -2,20 +2,20 @@
 #include <unordered_set>
 #include "types.h"
 
-void output_type(const Type* target);
+void output_type(const Tptr target);
 extern bool UNIQUE_VERBOSE_DEBUG;
 
 /* "Aside: if your hash function cannot throw then it's quite important to give it a noexcept exception-specification, otherwise the hash table needs to store every element's hash code alongside the element itself (which increases memory usage and affects performance) so that container operations that must not throw do not have to recalculate the hash code."
 */
 
 namespace std {
-	template <> struct hash < Type* >
+	template <> struct hash < Tptr >
 	{
-		size_t operator () (const Type* f) const noexcept
+		size_t operator () (const Tptr f) const noexcept
 		{
-			uint64_t hash = f->ver();
+			uint64_t hash = f.ver();
 			for (uint64_t x = 0; x < total_valid_fields(f); ++x)
-				hash ^= f->fields[x].num;
+				hash ^= f.field(x);
 			//we're ignoring con_vec, but that's probably ok
 
 			if (UNIQUE_VERBOSE_DEBUG) console << "hash is" << hash << '\n';
@@ -24,9 +24,9 @@ namespace std {
 	};
 
 	//does a bit comparison
-	template <> struct equal_to < Type* >
+	template <> struct equal_to < Tptr >
 	{
-		size_t operator () (const Type* l, const Type* r) const noexcept
+		size_t operator () (const Tptr l, const Tptr r) const noexcept
 		{
 			if (UNIQUE_VERBOSE_DEBUG)
 			{
@@ -34,15 +34,15 @@ namespace std {
 				output_type(l);
 				output_type(r);
 			}
-			if ((l == nullptr) != (r == nullptr)) return false;
-			if ((l == nullptr) && (r == nullptr)) return true;
+			if ((l == 0) != (r == 0)) return false;
+			if ((l == 0) && (r == 0)) return true;
 
-			if (l->ver() != r->ver())
+			if (l.ver() != r.ver())
 				return false;
 
 			uint64_t no_of_fields = total_valid_fields(l);
 			for (uint64_t x = 0; x < no_of_fields; ++x)
-				if (l->fields[x].num != r->fields[x].num)
+				if (l.field(x) != r.field(x))
 					return false;
 
 			if (UNIQUE_VERBOSE_DEBUG) console << "equal to returned true\n";
@@ -51,8 +51,8 @@ namespace std {
 	};
 }
 
-typedef std::unordered_set<Type*> type_htable_t;
+typedef std::unordered_set<Tptr> type_htable_t;
 
 //if the model is in the heap, can_reuse_parameter = true.
 //otherwise, if it has limited lifetime (for example, it's on the stack), can_reuse_parameter = false, because we need to create a new model in the heap before making it unique
-Type* get_unique_type(int_or_ptr<Type> model, bool can_reuse_parameter);
+Tptr get_unique_type(Tptr model, bool can_reuse_parameter);

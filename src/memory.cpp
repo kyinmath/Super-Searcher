@@ -32,9 +32,9 @@ uint64_t* sweep_function_pool_flags; //we need this to be able to run finalizers
 std::multimap<uint64_t, uint64_t*> free_memory = {{pool_size, big_memory_pool}}; //first value = size of slot. second value = address
 std::map<uint64_t*, uint64_t> living_objects; //first value = address of user-seen memory. second slot = size of user-seen memory. ignores headers.
 uint64_t first_possible_empty_function_block; //where to start looking for an empty function block.
-std::stack < std::pair<uint64_t*, Type*>> to_be_marked; //stack of things to be marked.
+std::stack < std::pair<uint64_t*, Tptr>> to_be_marked; //stack of things to be marked.
 
-void marky_mark(uint64_t* memory, Type* t);
+void marky_mark(uint64_t* memory, Tptr t);
 void initialize_roots();
 void sweepy_sweep();
 
@@ -118,11 +118,11 @@ function* allocate_function()
 std::deque< uAST*> fuzztester_roots;
 type_htable_t type_hash_table; //a hash table of all the unique types. don't touch this unless you're the memory allocation
 //this is extern, because of static initialization fiasco. but we still want to use it at the end of GC, so it should be global. thus, the actual objects are at the bottom of the file.
-extern std::vector< Type* > unique_type_roots;
+extern std::vector< Tptr > unique_type_roots;
 void initialize_roots()
 {
 	for (auto& root_type : unique_type_roots)
-		to_be_marked.push(std::make_pair((uint64_t*)root_type, get_Type_full_type(root_type)));
+		to_be_marked.push(std::make_pair((uint64_t*)root_type.val, get_Type_full_type(root_type)));
 	//console << "outputting all types in hash table\n";
 	//for (auto& type : type_hash_table)
 	//	output_type(type);
@@ -171,12 +171,12 @@ void start_GC()
 			console << "living object " << x.first << " size " << x.second << '\n';
 	}
 	//console << "outputting unique types\n";
-	//for (Type* const & unique_type : type_hash_table) //clear the hash table of excess elements
+	//for (Tptr const & unique_type : type_hash_table) //clear the hash table of excess elements
 	//	output_type(unique_type);
 	//console << "done outputting unique types\n";
 	/*
 	//this doesn't work, since the erasure invalidates the iterator completely.
-	for (Type* const & unique_type : type_hash_table) //clear the hash table of excess elements
+	for (Tptr const & unique_type : type_hash_table) //clear the hash table of excess elements
 	{
 		console << "checking unique type " << unique_type << '\n';
 		if (living_objects.find((uint64_t*)unique_type) == living_objects.end())
@@ -189,7 +189,7 @@ void start_GC()
 	}*/
 	for (auto it = type_hash_table.begin(); it != type_hash_table.end();)
 	{
-		if (living_objects.find((uint64_t*)*it) == living_objects.end())
+		if (living_objects.find((uint64_t*)it->val) == living_objects.end())
 			it = type_hash_table.erase(it);
 		else ++it;
 	}
@@ -209,14 +209,14 @@ void start_GC()
 	}
 
 }
-void mark_single_element(uint64_t* memory, Type* t);
-void marky_mark(uint64_t* memory, Type* t)
+void mark_single_element(uint64_t* memory, Tptr t);
+void marky_mark(uint64_t* memory, Tptr t)
 {
-	check(t != nullptr, "no null types in GC allowed");
-	check(memory != nullptr, "no null pointers in GC allowed");
+	check(t != 0, "no null types in GC allowed");
+	check(memory != 0, "no null pointers in GC allowed");
 	if (living_objects.find(memory) != living_objects.end()) return; //it's already there. nothing needs to be done, if we assume that full pointers point to the entire object. todo.
 	living_objects.insert({memory, get_size(t)});
-	if (t->ver() == Typen("con_vec"))
+	if (t.ver() == Typen("con_vec"))
 	{
 		//console << "marking convec\n";
 		for (auto& subt : Type_pointer_range(t))
@@ -230,42 +230,42 @@ void marky_mark(uint64_t* memory, Type* t)
 	else mark_single_element(memory, t);
 }
 
-void mark_single_element(uint64_t* memory, Type* t)
+void mark_single_element(uint64_t* memory, Tptr t)
 {
 	//console << "marking single " << memory << '\n';
 	check(memory != nullptr, "passed 0 memory pointer to mark_single");
-	check(t != nullptr, "passed 0 type pointer to mark_single");
-	switch (t->ver())
+	check(t != 0, "passed 0 type pointer to mark_single");
+	switch (t.ver())
 	{
 	case Typen("con_vec"):
 		error("no nested con_vecs allowed");
 	case Typen("integer"):
 		break;
 	case Typen("pointer"):
-		to_be_marked.push({*(uint64_t**)memory, t->fields[0].ptr});
+		to_be_marked.push({*(uint64_t**)memory, t.field(0)});
 		break;
 	case Typen("dynamic pointer"):
 		if (*memory != 0)
 		{
 			if (living_objects.find(*(uint64_t**)memory) != living_objects.end()) break;
-			to_be_marked.push({*(uint64_t**)memory, get_Type_full_type(*(Type**)memory)}); //pushing the type
-			to_be_marked.push({*(uint64_t**)(memory + 1), *(Type**)memory}); //pushing the object
+			to_be_marked.push({*(uint64_t**)memory, get_Type_full_type(*(Tptr*)memory)}); //pushing the type
+			to_be_marked.push({*(uint64_t**)(memory + 1), *(Tptr*)memory}); //pushing the object
 		}
 		break;
 	case Typen("AST pointer"):
 		if (*memory != 0)
 		{
 			uAST* the_AST = *(uAST**)memory;
-			Type* type_of_AST = get_AST_full_type(the_AST->tag);
+			Tptr type_of_AST = get_AST_full_type(the_AST->tag);
 			to_be_marked.push({*(uint64_t**)memory, type_of_AST});
 		}
 		break;
 	case Typen("type pointer"):
 		if (*memory != 0)
 		{
-			Type* the_type = *(Type**)memory;
+			Tptr the_type = *(Tptr*)memory;
 			get_unique_type(the_type, true); //put it in the type hash table.
-			Type* type_of_type = get_Type_full_type(the_type);
+			Tptr type_of_type = get_Type_full_type(the_type);
 			to_be_marked.push({*(uint64_t**)memory, type_of_type});
 		}
 		break;
@@ -351,13 +351,13 @@ void sweepy_sweep()
 //this is here to prevent static fiasco. must be below all the constants for the memory allocator. and must be below the hash table.
 namespace u
 {
-	Type* does_not_return = get_unique_type(T::does_not_return, false); //it's false, because the constexpr types are not in the memory pool
-	Type* integer = get_unique_type(T::integer, false);
-	Type* dynamic_pointer = get_unique_type(T::dynamic_pointer, false);
-	Type* type = get_unique_type(T::type, false);
-	Type* AST_pointer = get_unique_type(T::AST_pointer, false);
-	Type* function_pointer = get_unique_type(T::function_pointer, false);
+	Tptr does_not_return = get_unique_type(T::does_not_return, false); //it's false, because the constexpr types are not in the memory pool
+	Tptr integer = get_unique_type(T::integer, false);
+	Tptr dynamic_pointer = get_unique_type(T::dynamic_pointer, false);
+	Tptr type = get_unique_type(T::type, false);
+	Tptr AST_pointer = get_unique_type(T::AST_pointer, false);
+	Tptr function_pointer = get_unique_type(T::function_pointer, false);
 };
 
 //this comes below the types, to prevent static fiasco.
-std::vector< Type* > unique_type_roots{u::does_not_return, u::integer, u::dynamic_pointer, u::type, u::AST_pointer, u::function_pointer};
+std::vector< Tptr > unique_type_roots{u::does_not_return, u::integer, u::dynamic_pointer, u::type, u::AST_pointer, u::function_pointer};

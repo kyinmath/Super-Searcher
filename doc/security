@@ -20,7 +20,7 @@ note that Ctrl+F through the executable finds a lot of text. try searching for "
 	especially, search for things like "dyn_subobj", "con_vec"
 	but security won't be too awesome. let's look at it from an attacker's viewpoint:
 1. you find the compilation function
-2. you feed in random tags and see what works
+2. you feed in random ASTs and see what works
 3. you build a full description of the language. generate_IR() is nicely formatted so it's even a cheat sheet.
 
 

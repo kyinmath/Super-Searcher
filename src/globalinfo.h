@@ -10,6 +10,7 @@ extern llvm::raw_ostream* llvm_console;
 using std::string;
 
 extern bool VERBOSE_DEBUG;
+//llvm::StringRef disallowed because cout can't take it
 [[noreturn]] inline constexpr void error(const string& Str) { std::cout << "Error: " << Str << '\n'; abort(); } //std::cout, because we want error messages even when default console output is turned off. which sets failbit on cerr.
 
 

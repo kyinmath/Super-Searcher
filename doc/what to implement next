@@ -44,24 +44,3 @@ this system means we can't delete elements from the end of a vector...except we 
 
 we must always consider bootstrap issues. for example, how to make a function that returns compiled functions with fixed type?
 	if there's no guaranteed mechanism, then such a function would need a static object to substitute. and it's unlikely the judgment function is able to construct these dynamic objects on the fly.
-
-Idea: maybe getting references is automatic, if you reference a previous name.
-	like llvm? only not really.
-	because for stack_degree == 0 objects, llvm returns a copy.
-		so if anything, it would be copy that is automatic.
-	benefit: no more active object duplication. more functions are valid.
-		infinite loops as well, through fields? maybe. but for previous_BB_element, it's not true.
-idea: maybe you do get pointers. however, pointers automatically degenerate downward, automatically loading their target to fit the return type?
-	that is, if the pointer itself doesn't fit, it will try loading over and over until it does fit.
-	but that's impossible. pointers RVO into integer slots.
-	but we could do it like C++ references. whenever they're requested, you can load. however, C++ references have funny rules: *(pointer) = value. our * does a load.
-	so...it is reasonable to get a pointer to a half-constructed object. however, it makes no sense to let that pointer live for longer than the immediate lifetime of the half-contructed object. but if we get a pointer, it can be stored in some other, longer-lasting pointer.
-
-Idea: we can do it like in C++. you can get a pointer to the object as it's half constructed. however, it won't be a pointer to your final object.
-	at each step, the entire object is copied over to its new location.
-	this also makes sense with our full-object-only pointers. no way to get a non-full-object pointer.
-	that means: stack degree can either be 0 or 2. but 1 is meaningless.
-	copying is good, because usually you want the value itself, not a pointer to the value.
-
-when we're copying, we can't add the new item to the new_objects list.
-	is that perfectly ok?

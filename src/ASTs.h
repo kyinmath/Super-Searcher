@@ -23,12 +23,11 @@ struct AST_info
 	struct compile_time_typeinfo
 	{
 		special_type state;
-		const int_or_ptr<Type> type;
-		constexpr compile_time_typeinfo(Type* t) : state(normal), type(t) {}
+		const Tptr type;
+		constexpr compile_time_typeinfo(Tptr t) : state(normal), type(t) {}
 		constexpr compile_time_typeinfo(uint64_t t) : state(normal), type(t) {}
-		constexpr compile_time_typeinfo(int_or_ptr<Type> t) : state(normal), type(t) {}
-		constexpr compile_time_typeinfo(special_type s) : state(s), type(nullptr) {}
-		constexpr compile_time_typeinfo() : state(missing_field), type(nullptr) {}
+		constexpr compile_time_typeinfo(special_type s) : state(s), type(0) {}
+		constexpr compile_time_typeinfo() : state(missing_field), type(0) {}
 	};
 	typedef compile_time_typeinfo ctt;
 	ctt return_object; //if this type is null, do not check it using the generic method - check it specially.
@@ -49,8 +48,8 @@ struct AST_info
 	uint64_t fields_to_compile; //we may not always compile all pointers, such as with "copy".
 
 	uint64_t additional_special_fields = 0; //these fields come after the pointer fields. they are REAL types, not AST return types.
-	//for example, if you have a Type* in the second field and a normal AST* in the first field, then this would be 1.
-	//then, in the argument list, you'd put a Type* in the second parameter slot.
+	//for example, if you have a Tptr in the second field and a normal AST* in the first field, then this would be 1.
+	//then, in the argument list, you'd put a Tptr in the second parameter slot.
 
 	//this reduces the number of pointer fields, because those are special fields instead.
 	constexpr AST_info make_special_fields(int x)
@@ -163,21 +162,21 @@ private:
 
 #include "type_creator.h"
 //pass in a valid AST tag, 0 <= x < "never reached"
-inline Type* get_AST_fields_type(uint64_t tag)
+inline Tptr get_AST_fields_type(uint64_t tag)
 {
-	std::vector<Type*> fields;
+	std::vector<Tptr> fields;
 	//check(tag != 0, "this is so that some functions like marky_mark() don't need special cases for null objects"); //this isn't necessary anymore, because no more null ASTs
 	check(tag < ASTn("never reached"), "get_AST_type is a sandboxed function, use the user facing version instead");
 	uint64_t number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
 	for (uint64_t x = 0; x < number_of_AST_pointers; ++x)
 		fields.push_back(u::AST_pointer);
 	for (uint64_t x = 0; x < AST_descriptor[tag].additional_special_fields; ++x)
-		fields.push_back(get_unique_type(AST_descriptor[tag].parameter_types[number_of_AST_pointers + x].type.ptr, false));
+		fields.push_back(get_unique_type(AST_descriptor[tag].parameter_types[number_of_AST_pointers + x].type, false));
 	return concatenate_types(fields);
 }
 
 
-inline Type* get_AST_full_type(uint64_t tag)
+inline Tptr get_AST_full_type(uint64_t tag)
 {
 	return concatenate_types({u::integer, u::AST_pointer, get_AST_fields_type(tag)});
 }

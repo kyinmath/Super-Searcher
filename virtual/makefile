@@ -5,7 +5,7 @@ LLVM_CONFIG_CXX_SUBSTITUTE := -I/usr/include  -fPIC -fvisibility-inlines-hidden 
 #Unity build far faster than normal build (11s vs 23s)
 
 all: ../src/*
-	clang++ -g -Wall -fno-rtti -fno-exceptions $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
+	clang++ -g -Wall -fno-rtti -fno-exceptions -fsanitize=undefined $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
 	rm -If core
 
 unity: ../src/*
@@ -13,7 +13,7 @@ unity: ../src/*
 	mkdir build
 	cp ../src/* build
 	awk 'FNR==1{print ""}1' ../src/*.cpp > build/unity.cpp
-	clang++ -g -Wall -fno-rtti -fno-exceptions build/unity.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
+	clang++ -g -Wall -fno-rtti -fno-exceptions build/unity.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -O0
 	rm -If core
 
 fast: ../src/*

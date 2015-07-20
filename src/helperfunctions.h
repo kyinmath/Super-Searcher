@@ -90,18 +90,18 @@ template<typename... should_be_type_ptr, typename fptr> inline llvm::Value* llvm
 
 //we already typechecked and received 3. then, they're the same size, unless one of them is T::does_not_return
 //thus, we check for T::nonexistent
-inline llvm::Value* llvm_create_phi(llvm::ArrayRef<llvm::Value*> values, llvm::ArrayRef<Type*> types, llvm::ArrayRef<llvm::BasicBlock*> basic_blocks)
+inline llvm::Value* llvm_create_phi(llvm::ArrayRef<llvm::Value*> values, llvm::ArrayRef<Tptr> types, llvm::ArrayRef<llvm::BasicBlock*> basic_blocks)
 {
 	check(values.size() == types.size(), "wrong number of arguments");
 	check(values.size() == basic_blocks.size(), "wrong number of arguments");
 	check(values.size() >= 2, "why even bother making a phi");
 	uint64_t choices = values.size();
-	if (types[0] == nullptr) return nullptr;
+	if (types[0] == 0) return nullptr;
 	uint64_t eventual_size;
 	std::set<uint64_t> legitimate_values; //ones that aren't T::does_not_return
 	for (uint64_t idx = 0; idx < choices; ++idx)
 	{
-		if (types[idx]->ver() != Typen("does not return"))
+		if (types[idx].ver() != Typen("does not return"))
 		{
 			legitimate_values.insert(idx);
 			eventual_size = get_size(types[idx]);
@@ -226,10 +226,10 @@ struct Return_Info
 	llvm::Value* IR;
 	memory_allocation* place;
 
-	Type* type;
+	Tptr type;
 	bool memory_location_active;
 	//either b or m must be null. both of them can't be active at the same time.
-	Return_Info(IRgen_status err, llvm::Value* b, memory_allocation* m, Type* t)
+	Return_Info(IRgen_status err, llvm::Value* b, memory_allocation* m, Tptr t)
 		: error_code(err), IR(b), place(m), type(t), memory_location_active((b == 0) ? true : false)
 	{
 		check((b == 0) || (m == 0), "at least one must be 0"); //both can be 0, if it's an error code.

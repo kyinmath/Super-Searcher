@@ -12,7 +12,7 @@ Then, it checks type_hash_table if there is already a unique type that is the sa
 
 bool UNIQUE_VERBOSE_DEBUG = false;
 
-//this wrapper type is used for the hash table. we want equality and hashing to occur on a Type, not a Type*, since hashing on pointers is dumb. but we want the hash table to store pointers to types, so that references to them stay valid forever.
+//this wrapper type is used for the hash table. we want equality and hashing to occur on a Type, not a Tptr, since hashing on pointers is dumb. but we want the hash table to store pointers to types, so that references to them stay valid forever.
 
 extern type_htable_t type_hash_table; //a hash table of all the unique types.
 
@@ -21,7 +21,7 @@ extern type_htable_t type_hash_table; //a hash table of all the unique types.
 //the bool is true if you created a type instead of finding a type.
 //this means that any types pointing to this type must necessarily not already exist in the type hash table.
 //rule: for now, the user is prohibited from seeing any non-unique types. that means we can mess with the original model however we like.
-std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_parameter)
+std::pair<Tptr, bool> get_unique_type_internal(Tptr model, bool can_reuse_parameter)
 {
 
 	if (UNIQUE_VERBOSE_DEBUG)
@@ -37,8 +37,8 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 
 	//note: we can't find the index with pointer arithmetic and range-for, because range for makes a move copy of the element.
 	//this function finds unique versions of any pointer subfields.
-	uint64_t counter = model->ver() == Typen("con_vec") ? 1 : 0; //this counter starting value is a bit fragile.
-	for (Type*& pointer : Type_pointer_range(model))
+	uint64_t counter = model.ver() == Typen("con_vec") ? 1 : 0; //this counter starting value is a bit fragile.
+	for (Tptr& pointer : Type_pointer_range(model))
 	{
 		if (UNIQUE_VERBOSE_DEBUG)
 		{
@@ -46,7 +46,7 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 		}
 		auto result = get_unique_type_internal(pointer, can_reuse_parameter);
 		create_new_for_sure |= result.second;
-		model->fields[counter] = result.first;
+		model.field(counter) = result.first;
 		++counter;
 	}
 	if (UNIQUE_VERBOSE_DEBUG)
@@ -57,7 +57,7 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 
 	if (create_new_for_sure)
 	{
-		Type* handle = copy_type(model);
+		Tptr handle = copy_type(model);
 		type_hash_table.insert(handle);
 		return std::make_pair(handle, true);
 	}
@@ -73,13 +73,12 @@ std::pair<Type*, bool> get_unique_type_internal(Type* model, bool can_reuse_para
 
 }
 
-Type* get_unique_type(int_or_ptr<Type> omodel, bool can_reuse_parameter)
+Tptr get_unique_type(Tptr model, bool can_reuse_parameter)
 {
-	Type* model = omodel.ptr;
-	if (model == nullptr) return nullptr;
+	if (model == 0) return 0;
 	else
 	{
-		check((model->ver() != 0) || (model->fields[0].num != 0), "trying to make a funny concatenate");
+		check((model.ver() != 0) || (model.field(0) > 1), "trying to make a funny concatenate");
 		return get_unique_type_internal(model, can_reuse_parameter).first;
 	}
 }

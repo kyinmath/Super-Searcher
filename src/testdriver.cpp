@@ -52,9 +52,9 @@ void fuzztester(uint64_t iterations)
 			fields.push_back(fuzztester_roots.at(mersenne() % fuzztester_roots.size())); //get pointers to previous ASTs
 		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
 		{
-			if (AST_descriptor[tag].parameter_types[incrementor].type.num == T::dynamic_pointer)
+			if (AST_descriptor[tag].parameter_types[incrementor].type == T::dynamic_pointer)
 			{
-				fields.push_back((uAST*)(u::integer)); //make a random integer
+				fields.push_back((uAST*)(u::integer.ver())); //make a random integer
 				fields.push_back((uAST*)new_object(generate_exponential_dist()));
 			}
 			else error("fuzztester doesn't know how to make this special type, so I'm going to panic");
@@ -80,7 +80,7 @@ void fuzztester(uint64_t iterations)
 					continue;
 
 				std::array<uint64_t, 2> dynamic_result = run_null_parameter_function(result[0]);
-				uint64_t size_of_return = get_size((Type*)dynamic_result[0]);
+				uint64_t size_of_return = get_size((Tptr)dynamic_result[0]);
 				output_array((uint64_t*)dynamic_result[1], size_of_return);
 				//theoretically, this action is disallowed. these ASTs are pointing to already-immuted ASTs, which can't happen. however, it's safe as long as we isolate these ASTs from the user
 				++hitcount[tag];
@@ -304,10 +304,10 @@ std::array<uint64_t, 2> compile_string(std::string input_string)
 	return run_null_parameter_function(compile_result[0]); //even if it's 0, it's fine.
 }
 
-void compile_verify_string(std::string input_string, Type* type, uint64_t value)
+void compile_verify_string(std::string input_string, Tptr type, uint64_t value)
 {
 	auto k = compile_string(input_string);
-	check((Type*)k[0] == type, "test failed type");
+	check((Tptr)k[0] == type, "test failed type");
 	check(*(uint64_t*)k[1] == value, "test failed value, got " + std::to_string(*(uint64_t*)k[1]));
 }
 
@@ -329,12 +329,12 @@ void cannot_compile_string(std::string input_string)
 void test_suite()
 {
 	//try moving the type check to the back as well.
-	Type* unique_zero = new_type(Typen("integer"), {});
+	Tptr unique_zero = new_type(Typen("integer"), {});
 	check(unique_zero == new_type(Typen("integer"), {}), "duplicated type doesn't even unique");
-	Type* pointer_zero = new_type(Typen("pointer"), unique_zero);
+	Tptr pointer_zero = new_type(Typen("pointer"), unique_zero);
 	check(pointer_zero == new_type(Typen("pointer"), unique_zero), "pointers don't unique");
 	check(pointer_zero != unique_zero, "pointers uniqueing to integers");
-	Type* unique_pointer_dynamic = new_type(Typen("dynamic pointer"), {});
+	Tptr unique_pointer_dynamic = new_type(Typen("dynamic pointer"), {});
 	check(pointer_zero != unique_pointer_dynamic, "different pointers unique");
 
 	check(u::integer == get_unique_type(u::integer, false), "u::types aren't unique");
@@ -478,7 +478,7 @@ int main(int argc, char* argv[])
 			if (compile_result[1] != 0)
 				std::cout << "wrong! error code " << compile_result[1] << "\n";
 			else
-				output_array((uint64_t*)run_result[1], get_size((Type*)run_result[0]));
+				output_array((uint64_t*)run_result[1], get_size((Tptr)run_result[0]));
 		}
 	}
 #endif

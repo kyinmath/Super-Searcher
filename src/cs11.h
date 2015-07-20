@@ -42,7 +42,7 @@ class compiler_object
 	//pair with clear_stack().
 	void new_object(uAST* target, Return_Info r)
 	{
-		check((uint64_t)r.type != 6, "what the fuck");
+		check((uint64_t)r.type != ASTn("pointer"), "what the fuck");
 		auto insert_result = objects.insert({target, r});
 		if (!insert_result.second) //collision: AST is already there
 			return;
@@ -68,7 +68,7 @@ class compiler_object
 	Return_Info generate_IR(uAST* user_target, uint64_t stack_degree);
 	
 public:
-	compiler_object() : J(*c), error_location(nullptr), new_context(new llvm::LLVMContext()) {}
+	compiler_object() : J(*c), error_location(nullptr), return_type(0), new_context(new llvm::LLVMContext()) {}
 	uint64_t compile_AST(uAST* target); //we can't combine this with the ctor, because it needs to return an int
 
 	void* fptr; //the end fptr.
@@ -79,8 +79,8 @@ public:
 
 	//these exist on successful compilation. guaranteed to be uniqued and in the heap.
 	//currently, parameters are not implemented
-	Type* return_type;
-	Type* parameter_type = nullptr;
+	Tptr return_type;
+	Tptr parameter_type = 0;
 	KaleidoscopeJIT::ModuleHandleT result_module;
 
 	std::unique_ptr<llvm::LLVMContext> new_context;

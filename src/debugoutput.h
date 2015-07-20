@@ -36,26 +36,26 @@ private:
 
 //only call on a non-nullptr target. outputs a single Type. doesn't have the right number of fields, but that's probably ok.
 //for debug purposes, we don't want to limit it to the number of pointer fields.
-inline void output_type(const Type* target)
+inline void output_type(const Tptr target)
 {
 #ifndef NO_CONSOLE
-	if (target == nullptr)
+	if (target == 0)
 	{
 		console << "null type\n";
 		return;
 	}
-	console << "type " << Type_descriptor[target->ver()].name << "(" << target->ver() << "), addr " << target << ", ";
+	console << "type " << Type_descriptor[target.ver()].name << "(" << target.ver() << "), addr " << target << ", ";
 	console << "fields";
-	for (auto& x : Type_everything_range(target))
+	for (auto& x : Type_pointer_range(target))
 		console << ' ' << x;
 	console << '\n';
 #endif
 }
 
 //for debugging. outputs a Type and everything it points to, recursively.
-inline void output_type_and_previous(Type* target)
+inline void output_type_and_previous(Tptr target)
 {
-	if (target == nullptr)
+	if (target == 0)
 	{
 		console << "type is null\n";
 		return;

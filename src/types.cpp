@@ -28,7 +28,7 @@ with RVO, first must be smaller than fields[0]. with reference, it's the opposit
 //call it with T::does_not_return from a different translation unit, not u::does_not_return
 //this is obsolete now that they're fixed integers, instead of pointers.
 /*
-void debugtypecheck(Type* test)
+void debugtypecheck(Tptr test)
 {
 	if (test != T::does_not_return)
 	{
@@ -39,58 +39,56 @@ void debugtypecheck(Type* test)
 	}
 }*/
 
-type_check_result type_check_once(type_status version, Type* existing_reference, Type* new_reference);
-type_check_result type_check(type_status version, Type* existing_reference, Type* new_reference)
+type_check_result type_check_once(type_status version, Tptr existing_reference, Tptr new_reference);
+type_check_result type_check(type_status version, Tptr existing_reference, Tptr new_reference)
 {
-	std::array<Type*, 2> iter{{existing_reference, new_reference}};
+	std::array<Tptr, 2> iter{{existing_reference, new_reference}};
 	if (VERBOSE_DEBUG)
 	{
 		console << "type_checking these types: ";
 		output_type(existing_reference);
 		output_type(new_reference);
 	}
-	if (iter[0] == nullptr || iter[1] == nullptr) //at least one is nullptr
+	if (iter[0] == 0 || iter[1] == 0) //at least one is nullptr
 	{
-		if (iter[0] == nullptr && iter[1] == nullptr)
+		if (iter[0] == 0 && iter[1] == 0)
 			return type_check_result::perfect_fit; //success!
-		else if (iter[1] == nullptr)
+		else if (iter[1] == 0)
 			return type_check_result::existing_reference_too_large;
 		else return type_check_result::new_reference_too_large;
 	}
 	if (iter[0] == iter[1]) return type_check_result::perfect_fit; //easy way out, if lucky. we can't do this later, because our stack might have extra things to look at.
 	if (existing_reference == u::does_not_return) return type_check_result::perfect_fit; //nonexistent means that the code path is never seen.
-	if (existing_reference->ver() != Typen("con_vec")) //not a concatenation
+	if (existing_reference.ver() != Typen("con_vec")) //not a concatenation
 	{
-		if (new_reference->ver() != Typen("con_vec"))
+		if (new_reference.ver() != Typen("con_vec"))
 			return type_check_once(version, existing_reference, new_reference);
 		else return type_check_result::different;
 	}
-	else if (new_reference->ver() != Typen("con_vec")) //then the other one better be a concatenation too
+	else if (new_reference.ver() != Typen("con_vec")) //then the other one better be a concatenation too
 		return type_check_result::different;
 	else
 	{
 		uint64_t number_of_fields;
 		type_check_result best_case_scenario;
-		if (existing_reference->fields[0].num > new_reference->fields[0].num)
+		if (existing_reference.field(0) > new_reference.field(0))
 		{
 			best_case_scenario = type_check_result::existing_reference_too_large;
-			number_of_fields = new_reference->fields[0].num;
+			number_of_fields = new_reference.field(0);
 		}
-		else if (existing_reference->fields[0].num < new_reference->fields[0].num)
+		else if (existing_reference.field(0) < new_reference.field(0))
 		{
 			best_case_scenario = type_check_result::new_reference_too_large;
-			number_of_fields = existing_reference->fields[0].num;
+			number_of_fields = existing_reference.field(0);
 		}
 		else
 		{
 			best_case_scenario = type_check_result::perfect_fit;
-			number_of_fields = existing_reference->fields[0].num;
+			number_of_fields = existing_reference.field(0);
 		}
-		for (uint64_t x = 2; x < number_of_fields + 2; ++x)
+		for (uint64_t x = 1; x < number_of_fields + 1; ++x)
 		{
-			uint64_t* e = (uint64_t*)existing_reference;
-			uint64_t* n = (uint64_t*)new_reference;
-			if (type_check_once(version, (Type*)e[x], (Type*)n[x]) != type_check_result::perfect_fit)
+			if (type_check_once(version, existing_reference.field(x), new_reference.field(x)) != type_check_result::perfect_fit)
 				return type_check_result::different;
 		}
 		return best_case_scenario;
@@ -98,9 +96,9 @@ type_check_result type_check(type_status version, Type* existing_reference, Type
 }
 
 //can't take a concatenation type.
-type_check_result type_check_once(type_status version, Type* existing_reference, Type* new_reference)
+type_check_result type_check_once(type_status version, Tptr existing_reference, Tptr new_reference)
 {
-	std::array<Type*, 2> iter{{existing_reference, new_reference}};
+	std::array<Tptr, 2> iter{{existing_reference, new_reference}};
 	//u::does_not_return is a special value. we can't be handling it here.
 	check(iter[0] != u::does_not_return, "can't handle nonexistent types in type_check_once()");
 	check(iter[1] != u::does_not_return, "can't handle nonexistent types in type_check_once()");
@@ -112,18 +110,18 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 	*/
 	if (version == RVO)
 	{
-		switch (iter[1]->ver())
+		switch (iter[1].ver())
 		{
 		case Typen("pointer"):
-			if (iter[0]->ver() == iter[1]->ver())
+			if (iter[0].ver() == iter[1].ver())
 			{
-				auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
+				auto result = type_check(reference, iter[0].field(0), iter[1].field(0));
 				if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
 					return type_check_result::perfect_fit;
 			}
 			else return type_check_result::different;
 		case Typen("integer"):
-			if (iter[0]->ver() == iter[1]->ver() || iter[0]->ver() == Typen("pointer") || iter[0]->ver() == Typen("type pointer") || iter[0]->ver() == Typen("function pointer") || iter[0]->ver() == Typen("AST pointer"))
+			if (iter[0].ver() == iter[1].ver() || iter[0].ver() == Typen("pointer") || iter[0].ver() == Typen("type pointer") || iter[0].ver() == Typen("function pointer") || iter[0].ver() == Typen("AST pointer"))
 				return type_check_result::perfect_fit;
 			//maybe we should also allow two uints in a row to take a dynamic pointer?
 			//we'd have to think about that. the current system allows for large types in the new reference to accept pieces, but I don't know if that's the best.
@@ -133,11 +131,11 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 		case Typen("AST pointer"):
 		case Typen("function pointer"):
 		case Typen("type pointer"):
-			if (iter[0]->ver() == iter[1]->ver())
+			if (iter[0].ver() == iter[1].ver())
 				return type_check_result::perfect_fit;
 			return type_check_result::different;
 		default:
-			error("default switch in fully immut/RVO branch " + std::string(Type_descriptor[iter[1]->ver()].name));
+			error("default switch in fully immut/RVO branch " + std::string(Type_descriptor[iter[1].ver()].name));
 		}
 	}
 
@@ -149,13 +147,13 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 		//for pointers, we cannot pass in fully_immut. because the old reference must be valid too, and we can't point to anything more general than the old reference.
 
 		//first type field must be the same
-		if (iter[1]->ver() != iter[0]->ver()) return type_check_result::different;
+		if (iter[1].ver() != iter[0].ver()) return type_check_result::different;
 
-		switch (iter[1]->ver())
+		switch (iter[1].ver())
 		{
 		case Typen("pointer"):
 			{
-				auto result = type_check(reference, iter[0]->fields[0].ptr, iter[1]->fields[0].ptr);
+				auto result = type_check(reference, iter[0].field(0), iter[1].field(0));
 				if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
 					return type_check_result::perfect_fit;
 				return type_check_result::different;
@@ -177,31 +175,28 @@ type_check_result type_check_once(type_status version, Type* existing_reference,
 
 //this takes a vector of types, and then puts them in concatenation. to do this, it first expands out the types into their components, then shoves them back together
 //automatically uses get_unique_type()
-Type* concatenate_types(llvm::ArrayRef<Type*> components)
+Tptr concatenate_types(llvm::ArrayRef<Tptr> components)
 {
-	std::vector<Type*> true_components{0}; //every Type here is a single element, not a concatenation. except: the very first element of the vector is the total number of components.
+	std::vector<Tptr> true_components{0}; //every Type here is a single element, not a concatenation. except: the very first element of the vector is the total number of components.
 
 	for (auto& x : components)
 	{
-		if (x == nullptr) continue;
-		if (x->ver() == Typen("con_vec"))
+		if (x == 0) continue;
+		if (x.ver() == Typen("con_vec"))
 		{
-			uint64_t last_offset_field = x->fields[0].num + 2;
-			for (uint64_t k = 2; k < last_offset_field; ++k)
-			{
-				Type** conc_type = (Type**)x;
-				true_components.push_back(conc_type[k]);
-			}
+			uint64_t last_offset_field = x.field(0) + 1;
+			for (uint64_t k = 1; k < last_offset_field; ++k)
+				true_components.push_back(x.field(k));
 		}
 		else true_components.push_back(x);
 	}
-	true_components[0] = (Type*)(true_components.size() - 1); //get the number of fields in the eventual type
+	true_components[0] = (Tptr)(true_components.size() - 1); //get the number of fields in the eventual type
 	
 	//console << "size of true components is " << true_components.size();
 	//output_type(components[0]);
 	//output_type(true_components[1]);
 
-	if (true_components.size() == 1) return nullptr; //only thing in the vector is the size
+	if (true_components.size() == 1) return 0; //only thing in the vector is the size
 	if (true_components.size() == 2) return true_components[1]; //one element in the vector.
 	else return new_type(Typen("con_vec"), true_components);
 }

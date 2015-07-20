@@ -9,15 +9,15 @@ extern bool VERBOSE_GC;
 struct function
 {
 	uAST* the_AST; //note that our mark algorithm relies on the exact integer offset of this object being 0
-	Type* return_type; //mark algorithm relies on this exact offset as well.
-	Type* parameter_type = 0; //if nonzero, change the mark algorithm
+	Tptr return_type; //mark algorithm relies on this exact offset as well.
+	Tptr parameter_type = 0; //if nonzero, change the mark algorithm
 	void* fptr; //the function pointer
 	KaleidoscopeJIT* thread_jit;
 	KaleidoscopeJIT::ModuleHandleT result_module;
 	std::unique_ptr<llvm::LLVMContext> context;
 	//todo: finiteness
-	//function() { the_AST = (uAST*)(this - 1); return_type = (Type*)(this + 1); } //initializing the doubly-linked list.
-	function(uAST* a, Type* r, Type* p, void* f, KaleidoscopeJIT* j, KaleidoscopeJIT::ModuleHandleT m, std::unique_ptr<llvm::LLVMContext> c)
+	//function() { the_AST = (uAST*)(this - 1); return_type = (Tptr)(this + 1); } //initializing the doubly-linked list.
+	function(uAST* a,Tptr r,Tptr p, void* f, KaleidoscopeJIT* j, KaleidoscopeJIT::ModuleHandleT m, std::unique_ptr<llvm::LLVMContext> c)
 		: the_AST(a), return_type(r), parameter_type(p), fptr(f), thread_jit(j), result_module(m), context(std::move(c)) {}
 	~function()
 	{
