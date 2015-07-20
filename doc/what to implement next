@@ -44,3 +44,7 @@ this system means we can't delete elements from the end of a vector...except we 
 
 we must always consider bootstrap issues. for example, how to make a function that returns compiled functions with fixed type?
 	if there's no guaranteed mechanism, then such a function would need a static object to substitute. and it's unlikely the judgment function is able to construct these dynamic objects on the fly.
+
+unlike loading from a dynamic object, writing doesn't necessarily have to succeed.
+
+how do we ever get a regular pointer from a dynamic pointer?

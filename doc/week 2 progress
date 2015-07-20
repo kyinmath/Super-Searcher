@@ -1,4 +1,0 @@
-Added AST-aware fuzzer to generate random ASTs automatically.
-Implemented stack architecture.
-Fixed segfaults.
-Implemented random number generator.

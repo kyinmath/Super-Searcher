@@ -116,37 +116,15 @@ template<class X, X vector_name[]> constexpr uint64_t get_enum_from_name(const c
 #endif
 constexpr uint64_t Typen(const char name[]) { return get_enum_from_name<const Type_info, Type_descriptor>(name); }
 
-#define fields_in_Type 3u
-//type structure: if the type has no fields, the tag goes in the tptr val.
-//if the type does have fields, tptr's val is a pointer. it points to: tag, then fields, in that order.
-//if the tag is 0, then we enforce that it's a null type.
-//to do this, the 0 tag must always have fields. (it's concatenate for now)
+/*
+type structure: if the type has no fields, the tag goes in the tptr val.
+if the type does have fields, tptr's val is a pointer. it points to: {i64 tag, i64[x] fields}
+if the tag is 0, then we enforce that it's a null type.
+to do this, the 0 tag must always have fields. (it's concatenate for now)
+concatenation: it's like a dynarray. first field is the size of the array, and the remaining fields are the types of the components.
 
-//this is for types which are known to be unique and well-behaved (no loops).
-//NOTE: if the only field is the type (such as with any tag that's not "pointer" or "concatenate", then the tag is stored in the pointer field instead.
-//WARNING: don't use the ctor or copy ctor for creating user objects! use the copy_type() and new_type() functions instead, which handle sizes correctly.
-//the Type does not properly represent its true size.
-//todo: add const to all of these things. and to AST tag as well.
-class Type
-{
-	uint64_t tag;
-public:
-	uint64_t ver() const
-	{
-		uint64_t pointer = (uint64_t)this;
-
-		if (pointer >= Typen("never reached")) return this->tag; //we're making a huge ABI assumption here, that pointers can't go near 0.
-		else return pointer;
-	}
-	using iop = int_or_ptr<Type>;
-	std::array<iop, fields_in_Type> fields;
-
-	//these ctors are necessary for the constexpr types.
-	
-private:
-	template<typename... Args> constexpr Type(const char name[], Args... args) : tag(Typen(name)), fields{{args...}} { if (tag == Typen("con_vec")) error("make it another way"); }
-	Type(const Type& other) = delete;
-};
+use the copy_type() and new_type() functions instead, which handle sizes correctly.
+*/
 class Tptr
 {
 public:
@@ -193,17 +171,11 @@ inline uint64_t total_valid_fields(const Tptr t)
 inline Tptr new_nonunique_type(uint64_t tag, llvm::ArrayRef<Tptr> fields)
 {
 	uint64_t total_field_size = (tag == Typen("con_vec")) ? (uint64_t)fields[0] + 1 : Type_descriptor[tag].pointer_fields;
-	if (total_field_size == 0)
-	{
-		console << "quitting new nonunique type\n";
-		return (Tptr)tag;
-	}
+	if (total_field_size == 0) return (Tptr)tag;
 	uint64_t* new_home = allocate(total_field_size + 1);
 	new_home[0] = tag;
 	for (uint64_t x = 0; x < total_field_size; ++x)
 		new_home[x + 1] = (uint64_t)fields[x];
-	if (new_home[1] == 1ull << 63) abort();
-	console << "new home 1 is " << (uint64_t*)new_home[1];
 	return (uint64_t)new_home;
 }
 

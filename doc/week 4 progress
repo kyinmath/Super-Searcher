@@ -1,7 +1,0 @@
-Overhauled the constexpr enum to support rare modifiers, so types.h is cleaner. The enums represent more info and don't duplicate information.
-Compile system automatically checks the type information, so there's less code needed for individual cases, and less potential for careless bugs.
-	Fixed a lot of bugs caused by my automatic type checking. ¯\_(ツ)_/¯
-
-Implemented console input. Run "./toy console", then write the code when prompted. Example: [integer 5]int_load [if [integer 1] [copy int_load] [integer 6]]
-
-Each [] represents an AST. The structure is [tag field1 field2 field3 field4]name. So the first AST loads the number 5, with the variable name "int_load". The second AST is an if statement whose condition value is 1, so it evaluates to true and runs the "copy int_load" function. Then, the result of this copy is returned.

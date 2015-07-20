@@ -24,20 +24,6 @@ example: an immut TU of pointer, 0, that's been fixed to a pointer, can be conve
 with RVO, first must be smaller than fields[0]. with reference, it's the opposite.
 */
 
-//this ensures that the static variable address is the same across translation units.
-//call it with T::does_not_return from a different translation unit, not u::does_not_return
-//this is obsolete now that they're fixed integers, instead of pointers.
-/*
-void debugtypecheck(Tptr test)
-{
-	if (test != T::does_not_return)
-	{
-		console << "constexpr address error.\n";
-		output_type(T::does_not_return);
-		output_type(test);
-		abort();
-	}
-}*/
 
 type_check_result type_check_once(type_status version, Tptr existing_reference, Tptr new_reference);
 type_check_result type_check(type_status version, Tptr existing_reference, Tptr new_reference)
