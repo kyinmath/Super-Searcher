@@ -102,7 +102,6 @@ constexpr AST_info AST_descriptor[] =
 	{"udiv", T::integer, T::integer, T::integer},
 	{"urem", T::integer, T::integer, T::integer},
 	a("pointer", special_return).add_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
-	a("copy", special_return).add_pointer_fields(1), //creates a temporary copy of an element. takes one field, but does NOT compile it. but...maybe this should take a pointer instead...and then, how will we copy things?
 	a("concatenate", special_return).add_pointer_fields(2), //squashes two objects together to make a big object
 	{"dynamify", T::dynamic_pointer, parameter_no_type_check}, //turns a regular pointer into a dynamic pointer. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
 	a("compile", T::function_pointer, T::AST_pointer), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.

@@ -191,7 +191,7 @@ inline uint64_t total_valid_fields(const Type* t)
 
 #include "memory.h"
 //warning: takes fields directly. so concatenate should worry.
-inline Type* new_type(uint64_t tag, llvm::ArrayRef<Type*> fields)
+inline Type* new_nonunique_type(uint64_t tag, llvm::ArrayRef<Type*> fields)
 {
 	uint64_t total_field_size = (tag == Typen("con_vec")) ? (uint64_t)fields[0] + 1 : Type_descriptor[tag].pointer_fields;
 	if (total_field_size == 0) return (Type*)tag;
@@ -202,6 +202,13 @@ inline Type* new_type(uint64_t tag, llvm::ArrayRef<Type*> fields)
 	return (Type*)new_home;
 }
 
+Type* get_unique_type(int_or_ptr<Type> model, bool can_reuse_parameter);
+inline Type* new_type(uint64_t tag, llvm::ArrayRef<Type*> fields)
+{
+	return get_unique_type(new_nonunique_type(tag, fields), true);
+}
+
+//doesn't return a unique version.
 inline Type* copy_type(const Type* t)
 {
 	uint64_t fields = total_valid_fields(t);
@@ -225,24 +232,12 @@ T::type are all internal types to fill out the constexpr vector. don't let the u
 */
 namespace T
 {
-	struct internal
-	{
-		static constexpr Type int_{"integer"};
-		static constexpr Type does_not_return{"does not return"};
-		static constexpr Type dynamic_pointer{"dynamic pointer"};
-		static constexpr Type type{"type pointer"};
-		static constexpr Type AST_pointer{"AST pointer"};
-		static constexpr Type function_pointer{"function pointer"};
-		//static constexpr Type error_object{concatenate_types(std::vector<Type*>{const_cast<Type* const>(&int_), const_cast<Type* const>(&AST_pointer), const_cast<Type* const>(&int_)})};
-		//error_object is int, pointer to AST, int. it's what is returned when compilation fails: the error code, then the AST, then the field.
-	};
-	typedef internal i;
-	constexpr int_or_ptr<Type> does_not_return = Typen("does not return"); //the field can't return. used for goto. effectively makes type checking always pass.
-	constexpr int_or_ptr<Type> integer = Typen("integer"); //describes an integer type
-	constexpr int_or_ptr<Type> dynamic_pointer = Typen("dynamic pointer");
-	constexpr int_or_ptr<Type> type = Typen("type pointer");
-	constexpr int_or_ptr<Type> AST_pointer = Typen("AST pointer");
-	constexpr int_or_ptr<Type> function_pointer = Typen("function pointer");
+	constexpr uint64_t does_not_return = Typen("does not return"); //the field can't return. used for goto. effectively makes type checking always pass.
+	constexpr uint64_t integer = Typen("integer"); //describes an integer type
+	constexpr uint64_t dynamic_pointer = Typen("dynamic pointer");
+	constexpr uint64_t type = Typen("type pointer");
+	constexpr uint64_t AST_pointer = Typen("AST pointer");
+	constexpr uint64_t function_pointer = Typen("function pointer");
 	constexpr Type* null = nullptr;
 };
 

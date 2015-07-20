@@ -52,7 +52,7 @@ void fuzztester(uint64_t iterations)
 			fields.push_back(fuzztester_roots.at(mersenne() % fuzztester_roots.size())); //get pointers to previous ASTs
 		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
 		{
-			if (AST_descriptor[tag].parameter_types[incrementor].type.ptr == T::dynamic_pointer.ptr)
+			if (AST_descriptor[tag].parameter_types[incrementor].type.num == T::dynamic_pointer)
 			{
 				fields.push_back((uAST*)(u::integer)); //make a random integer
 				fields.push_back((uAST*)new_object(generate_exponential_dist()));
@@ -293,6 +293,7 @@ std::array<uint64_t, 2> compile_string(std::string input_string)
 {
 	std::stringstream div_test_stream;
 	div_test_stream << input_string << '\n';
+	if (VERBOSE_DEBUG) console << input_string << '\n';
 	source_reader k(div_test_stream, '\n');
 	uAST* end = k.read();
 	check(end != nullptr, "failed to make AST");
@@ -307,7 +308,7 @@ void compile_verify_string(std::string input_string, Type* type, uint64_t value)
 {
 	auto k = compile_string(input_string);
 	check((Type*)k[0] == type, "test failed type");
-	check(*(uint64_t*)k[1] == value, "test failed value");
+	check(*(uint64_t*)k[1] == value, "test failed value, got " + std::to_string(*(uint64_t*)k[1]));
 }
 
 //functions passed into here are required to fail compilation.
@@ -315,6 +316,7 @@ void cannot_compile_string(std::string input_string)
 {
 	std::stringstream div_test_stream;
 	div_test_stream << input_string << '\n';
+	if (VERBOSE_DEBUG) console << input_string << '\n';
 	source_reader k(div_test_stream, '\n');
 	uAST* end = k.read();
 	check(end != nullptr, "failed to make AST");
@@ -326,29 +328,40 @@ void cannot_compile_string(std::string input_string)
 
 void test_suite()
 {
+	//try moving the type check to the back as well.
+	Type* unique_zero = new_type(Typen("integer"), {});
+	check(unique_zero == new_type(Typen("integer"), {}), "duplicated type doesn't even unique");
+	Type* pointer_zero = new_type(Typen("pointer"), unique_zero);
+	check(pointer_zero == new_type(Typen("pointer"), unique_zero), "pointers don't unique");
+	check(pointer_zero != unique_zero, "pointers uniqueing to integers");
+	Type* unique_pointer_dynamic = new_type(Typen("dynamic pointer"), {});
+	check(pointer_zero != unique_pointer_dynamic, "different pointers unique");
+
+	check(u::integer == get_unique_type(u::integer, false), "u::types aren't unique");
+	check(u::integer == get_unique_type(T::integer, false), "u::types don't come from T::types");
+
 	//random value. then check that (x / k) * k + x % k == x
-	compile_verify_string("[system1 [imv 2]]a [subtract [add [multiply [udiv [copy a] [imv 4]] [imv 4]] [urem [copy a] [imv 4]]] [copy a]]", u::integer, 0);
+	compile_verify_string("[system1 [imv 2]]a [subtract [add [multiply [udiv a [imv 4]] [imv 4]] [urem a [imv 4]]] a]", u::integer, 0);
 	//looping until finiteness ends, increasing a value. tests storing values
-	compile_verify_string("[imv 0]b [label]a [store [pointer b] [increment [copy b]]] [goto a] [copy b]", u::integer, FINITENESS_LIMIT);
+	compile_verify_string("[imv 0]b [label]a [store [pointer b] [increment b]] [goto a] [concatenate b]", u::integer, FINITENESS_LIMIT);
 
 	//loading a subobject from a concatenation, as well as copys in concatenation
-	compile_verify_string("[concatenate [imv 20]a [increment [copy a]]]co [load_subobj [pointer co] [imv 1]]", u::integer, 20 + 1);
+	compile_verify_string("[concatenate [imv 20]a [increment a]]co [load_subobj [pointer co] [imv 1]]", u::integer, 20 + 1);
 
 	//goto forward. should skip the second store, and produce 20.
-	compile_verify_string("[imv 0]b [label {[store [pointer b] [imv 20]] [goto a] [store [pointer b] [imv 40]]}]a [copy b]", u::integer, 20);
+	compile_verify_string("[imv 0]b [label {[store [pointer b] [imv 20]] [goto a] [store [pointer b] [imv 40]]}]a [concatenate b]", u::integer, 20);
 
 	//clear old unused stack allocas
 	compile_string("[label {[imv 40]a [label]}] [label {a [label]}]");
-	//[imv 40]a is preserved across both fields of the concatenate
-	cannot_compile_string("[concatenate {[imv 40]a [label]} {a [label]}]");
-	cannot_compile_string("[concatenate {[imv 40]a [pointer a]b} b]");
-	cannot_compile_string("[add {[imv 50] [system1 [imv 2]]a} a]");
+	//[imv 40]a is preserved across both fields of the concatenate, but it is copied
+	compile_string("[concatenate {[imv 40]a [label]} {a [label]}]");
+	//can't get a pointer to ant, which has stack_degree == 2
+	cannot_compile_string("[concatenate [imv 40]ant [pointer ant]]");
 
 
 	compile_string("[run_function [compile [convert_to_AST [system1 [imv 2]] [label] {[imv 0]v [dynamify [pointer v]]}]]]");
-	compile_string("[run_function [compile [convert_to_AST [imv 1] [label] [dynamify]]]]"); //produces 1, which should be 0.
+	compile_string("[run_function [compile [convert_to_AST [imv 1] [label] [dynamify]]]]"); //produces 0 inside the dynamic pointer, using the zero AST.
 
-	test_unique_types();
 	//debugtypecheck(T::does_not_return); stopped working after type changes to bake in tags into the pointer. this is useless anyway, in a unity build.
 }
 #endif

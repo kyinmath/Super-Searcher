@@ -83,32 +83,3 @@ Type* get_unique_type(int_or_ptr<Type> omodel, bool can_reuse_parameter)
 		return get_unique_type_internal(model, can_reuse_parameter).first;
 	}
 }
-
-
-void test_unique_types()
-{
-	Type zero("integer");
-	Type zero_two("integer");
-	Type dynamic("dynamic pointer");
-
-	Type* unique_zero = get_unique_type(&zero, false);
-	Type* second_zero = get_unique_type(&zero, false);
-	check(unique_zero == second_zero, "duplicated type doesn't even unique");
-
-	Type pointer_zero("pointer", &zero);
-	Type pointer_zero_second("pointer", &zero_two);
-	Type* unique_pointer_zero = get_unique_type(&pointer_zero, false);
-	Type* unique_pointer_zero_second = get_unique_type(&pointer_zero_second, false);
-	check(unique_pointer_zero == unique_pointer_zero_second, "pointers don't unique");
-	check(unique_pointer_zero != unique_zero, "pointers uniqeuing to integers");
-
-	
-	Type* unique_pointer_dynamic = get_non_convec_unique_type(Typen("pointer"), &dynamic);
-	check(unique_pointer_zero != unique_pointer_dynamic, "different pointers unique");
-
-	check(u::integer == get_unique_type(u::integer, false), "u::types aren't unique");
-	check(u::integer == get_unique_type(T::integer, false), "u::types don't come from T::types");
-
-	//Type* unique_full_dynamic = get_non_convec_unique_type(Type("pointer", &dynamic, 1));
-	//check(unique_pointer_dynamic != unique_full_dynamic, "dynamic fullness not considered");
-}

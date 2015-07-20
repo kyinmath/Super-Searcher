@@ -33,21 +33,21 @@ class compiler_object
 	std::unordered_set<uAST*> loop_catcher;
 
 	//a stack for bookkeeping lifetimes; keeps track of when objects are alive.
-	//bool is true if the object is a memory location that can have pointers to it, instead of a temporary.
+	//we insert a stack element here whenever we succeed at adding an AST to <>objects.
 	std::stack<uAST*> object_stack;
 
 	//maps ASTs to their generated IR and return type.
 	std::unordered_map<uAST*, Return_Info> objects;
 
-	//pair with clear_stack(). returns 1 on error
-	bool new_object(uAST* target, Return_Info r)
+	//pair with clear_stack().
+	void new_object(uAST* target, Return_Info r)
 	{
 		check((uint64_t)r.type != 6, "what the fuck");
-		object_stack.push(target);
 		auto insert_result = objects.insert({target, r});
 		if (!insert_result.second) //collision: AST is already there
-			return 1;
-		return 0;
+			return;
+		object_stack.push(target);
+		return;
 	}
 
 	struct label_info

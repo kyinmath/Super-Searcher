@@ -163,7 +163,7 @@ void compiler_object::emit_dtors(uint64_t desired_stack_size)
 
 void compiler_object::clear_stack(uint64_t desired_stack_size)
 {
-	while (object_stack.size() != desired_stack_size)
+	while (object_stack.size() > desired_stack_size) //>, because desired_stack_size might be ~0ull
 	{
 		auto to_be_removed = object_stack.top();
 		object_stack.pop();
@@ -217,14 +217,10 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	check(stack_degree != 1, "no more stack degree 1");
 
 	//generate_IR is allowed to take nullptr. otherwise, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
-	//check(target != nullptr, "generate_IR should never receive a nullptr target");
 	if (target == nullptr) return Return_Info();
 
 	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
-	if (loop_catcher.find(target) != loop_catcher.end()) return_code(infinite_loop, 10); //for now, 10 is a special value, and means not any of the fields
-	loop_catcher.insert(target); //we've seen this AST now.
-
-
+	if (loop_catcher.insert(target).second == false) return_code(infinite_loop, 10); //for now, 10 is a special value, and means not any of the fields
 	//after we're done with this AST, we remove it from loop_catcher.
 	struct loop_catcher_destructor_cleanup
 	{
@@ -234,23 +230,10 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		~loop_catcher_destructor_cleanup() { object->loop_catcher.erase(targ); }
 	} temp_object(this, target);
 
-	//compile the previous elements in the basic block.
-	if (target->preceding_BB_element)
-	{
-		auto previous_elements = generate_IR(target->preceding_BB_element, 2);
-		if (previous_elements.error_code) return previous_elements;
-	}
-
-
-	//after compiling the previous elements in the basic block, we find the lifetime of this element
-	//this actually starts at 2, but that's fine.
-	uint64_t final_stack_position = object_stack.size();
-
-	///end default values
+	uint64_t final_stack_position = ~0ull;
 
 	//generated IR of the fields of the AST
 	std::vector<Return_Info> field_results; //we don't actually need the return code, but we leave it anyway.
-
 
 	//internal: do not call this directly. use the finish macro instead
 	//clears dead objects off the stack, and makes your result visible to other ASTs
@@ -289,9 +272,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			memory_allocation* base = &allocations.back();
 			write_into_place(value_collection(return_value, size_of_return), base->allocation);
 
-			if (new_object(target, Return_Info(IRgen_status::no_error, nullptr, base, type)))
-				return_code(active_object_duplication, 10); //collision: AST is already there
-
+			new_object(target, Return_Info(IRgen_status::no_error, nullptr, base, type));
 			return Return_Info(IRgen_status::no_error, nullptr, base, type);
 		}
 		//we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for justification.
@@ -299,8 +280,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		{
 			check(stack_degree == 0, "stack degree 1 not allowed");
 
-			if (new_object(target, Return_Info(IRgen_status::no_error, return_value, nullptr, type)))
-				return_code(active_object_duplication, 10); //collision: AST is already there
+			new_object(target, Return_Info(IRgen_status::no_error, return_value, nullptr, type));
 			return Return_Info(IRgen_status::no_error, return_value, nullptr, type);
 		}
 		else return Return_Info();
@@ -311,13 +291,35 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	//for example, concatenate() and if() use previously constructed return objects, and simply pass them through.
 	//remember: pass the value itself if stack_degree == 0, and pass a pointer to the value if stack_degree == 1 or 2.
 
-	//these are for when we need to specify the return type.
+	//these are for when we need to specify the return type. make sure not to duplicate X in the expression.
 	//maybe later, we'll separate everything out. so if you specify the type and the return isn't special_pointer, it'll error as well.
 #define finish_special(X, type) do {return finish_internal(X, type); } while (0)
 
-	//make sure not to duplicate X in the expression.
 #define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, get_unique_type(AST_descriptor[target->tag].return_object.type.ptr, false)); } while (0)
 
+	//if this AST is already in the object list, return the previously-gotten value.
+	auto looking_for_reference = objects.find(target);
+	if (looking_for_reference != objects.end())
+	{
+		if (VERBOSE_DEBUG) console << "I'm copying\n";
+		//if memory_location_active is false, we should copy instead of loading.
+		Return_Info AST_to_load = looking_for_reference->second;
+		if (AST_to_load.memory_location_active == false) finish_special(AST_to_load.IR, AST_to_load.type);
+		else finish_special(load_from_memory(AST_to_load.place->allocation, get_size(AST_to_load.type)), AST_to_load.type);
+	}
+
+
+	//compile the previous elements in the basic block.
+	if (target->preceding_BB_element)
+	{
+		if (VERBOSE_DEBUG) console << "I'm previousing\n";
+		auto previous_elements = generate_IR(target->preceding_BB_element, 2);
+		if (previous_elements.error_code) return previous_elements;
+	}
+
+	//after compiling the previous elements in the basic block, we find the lifetime of this element
+	//this actually starts at 2, but that's fine.
+	final_stack_position = object_stack.size();
 
 	for (uint64_t x = 0; x < AST_descriptor[target->tag].fields_to_compile; ++x)
 	{
@@ -533,21 +535,11 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			auto found_AST = objects.find(target->fields[0].ptr);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			if (found_AST->second.memory_location_active == false) return_code(pointer_to_temporary, 0);
-			Type* new_pointer_type = get_non_convec_unique_type(Typen("pointer"), found_AST->second.type);
+			Type* new_pointer_type = new_type(Typen("pointer"), found_AST->second.type);
 
 			l::Value* final_result = builder->CreatePtrToInt(found_AST->second.place->allocation, llvm_i64(), s("flattening pointer"));
 			objects.find(target->fields[0].ptr)->second.place->turn_full();
 			finish_special(final_result, new_pointer_type);
-		}
-	case ASTn("copy"):
-		{
-			auto found_AST = objects.find(target->fields[0].ptr);
-			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
-			//if memory_location_active is false, we should copy instead of loading.
-			Return_Info AST_to_load = found_AST->second;
-			if (AST_to_load.memory_location_active == false)
-				finish_special(AST_to_load.IR, AST_to_load.type);
-			else finish_special(load_from_memory(AST_to_load.place->allocation, get_size(AST_to_load.type)), AST_to_load.type);
 		}
 	case ASTn("concatenate"):
 		{
@@ -565,7 +557,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (total_size == 0) finish_special(nullptr, u::null);
 
 			//we have to handle stupid things like i64 vs [4 x i64] and that nonsense. we can't just extract values easily.
-			l::Value* final_value = l::UndefValue::get(llvm_array(total_size));
+			l::Value* final_value = (total_size == 1) ? l::UndefValue::get(llvm_i64()) : l::UndefValue::get(llvm_array(total_size));
 			write_into_place({{{half[0].IR, half_size[0]}, {half[1].IR, half_size[1]}}}, final_value, true);
 			Type* final_type = concatenate_types({half[0].type, half[1].type});
 			finish_special(final_value, final_type);
@@ -642,8 +634,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 						loaded_object_type = (Type*)x;
 						loaded_object = load_from_memory(correct_pointer, Type_descriptor[x].size);
 					}
-					if (new_object(target, Return_Info(IRgen_status::no_error, loaded_object, nullptr, loaded_object_type)))
-						return_code(active_object_duplication, 10);
+					new_object(target, Return_Info(IRgen_status::no_error, loaded_object, nullptr, loaded_object_type));
 
 
 					Return_Info case_IR = generate_IR(target->fields[x + 1].ptr, false);

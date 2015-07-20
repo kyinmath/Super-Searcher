@@ -62,3 +62,6 @@ Idea: we can do it like in C++. you can get a pointer to the object as it's half
 	this also makes sense with our full-object-only pointers. no way to get a non-full-object pointer.
 	that means: stack degree can either be 0 or 2. but 1 is meaningless.
 	copying is good, because usually you want the value itself, not a pointer to the value.
+
+when we're copying, we can't add the new item to the new_objects list.
+	is that perfectly ok?

@@ -2,16 +2,6 @@
 #include "types.h"
 #include "debugoutput.h"
 
-namespace T
-{
-	constexpr Type internal::int_;
-	constexpr Type internal::does_not_return;
-	constexpr Type internal::dynamic_pointer;
-	constexpr Type internal::type;
-	constexpr Type internal::AST_pointer;
-	constexpr Type internal::function_pointer;
-};
-
 /* this checks if a new reference can be bound to an old reference.
 
 
@@ -213,5 +203,5 @@ Type* concatenate_types(llvm::ArrayRef<Type*> components)
 
 	if (true_components.size() == 1) return nullptr; //only thing in the vector is the size
 	if (true_components.size() == 2) return true_components[1]; //one element in the vector.
-	else return get_unique_type(new_type(Typen("con_vec"), true_components), true);
+	else return new_type(Typen("con_vec"), true_components);
 }
