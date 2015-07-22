@@ -123,9 +123,9 @@ struct value_collection
 {
 	//each llvm::Value* must be either an aggregate {i64, i64}, or an array [4 x i64]. but either is fine, because extractvalue works on both.
 	//however, each term inside must have size 1.
-	std::vector<std::pair<llvm::Value*, uint64_t>> objects; //value, then size.
-	value_collection(llvm::Value* integer, uint64_t size) : objects{std::make_pair(integer, size)} {}
-	value_collection(std::vector<std::pair<llvm::Value*, uint64_t>> a) : objects{a} {}
+	std::vector<llvm::Value*> objects; //value, then size.
+	value_collection(llvm::Value* integer) : objects{integer} {}
+	value_collection(std::vector<llvm::Value*> a) : objects{a} {}
 };
 
 //the ssa bool is in case the target is an array/integer. in that case, "target" is overwritten.
@@ -134,11 +134,19 @@ inline void write_into_place(value_collection data, llvm::Value*& target, bool s
 	uint64_t offset = 0;
 	for (auto& single_object : data.objects)
 	{
-		for (uint64_t subplace = 0; subplace < single_object.second; ++subplace)
+		uint64_t size;
+		if (single_object == nullptr) continue;
+		llvm::Type* type_of_single = single_object->getType();
+		if (llvm::isa<llvm::IntegerType>(type_of_single))
+			size = 1;
+		else if (auto array = llvm::dyn_cast<llvm::ArrayType>(type_of_single))
+			size = array->getNumElements();
+		else if (auto aggregate = llvm::dyn_cast<llvm::StructType>(type_of_single))
+			size = aggregate->getNumElements();
+		else error("what fucking size is the Value anyway");
+		for (uint64_t subplace = 0; subplace < size; ++subplace)
 		{
-			check(single_object.second != 0, "tried to store 0 size object");
-
-			llvm::Value* integer_transfer = (single_object.second > 1) ? builder->CreateExtractValue(single_object.first, subplace) : single_object.first;
+			llvm::Value* integer_transfer = (size > 1) ? builder->CreateExtractValue(single_object, subplace) : single_object;
 
 			//transfer the values
 			if (ssa)

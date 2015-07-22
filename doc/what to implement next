@@ -1,6 +1,4 @@
-write_to_memory doesn't need a size parameter, but it needs to handle aggregates
-when creating default_allocation, we don't need to CreateLoad
-we can make two consturctors for ReturnInfo, instead of requiring that exactly one field be nullptr
+we can make two constructors for ReturnInfo, instead of requiring that exactly one field be nullptr
 
 test that removing the fuzzer actually deletes the symbols we want to delete
 remove special_fields from the AST_descriptor

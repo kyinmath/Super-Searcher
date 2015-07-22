@@ -18,6 +18,7 @@ processes: isolation. automatic cross-thread boundaries. separate sovereigns; no
 	out-of-control things are isolated, since acceptance is required from both ends. this lets us place a full system on only a single CPU, instead of requiring multiple discrete systems.
 	much less potential for programmer (me) error, since the threading is entirely gone. no threads, no thread ASTs, no memory fences, etc.
 	less potential for outside error, such as data races in llvm, wrong atomics in llvm, improper isolation in llvm, or the kernel. smaller attack surface
+		example: <EricWF> There were some problems with _Atomic in clang around 3.5. I think this was a compiler bug that got fixed.
 	we'd need communication anyway, since users in a country need to communicate during a competition. now, since we can fit every user on a single machine, it's far easier.
 		much faster country communication, since each user is so much lighter in threads, so I can fit the entire country on a single system.
 	less AST complexity, since no need to manage the different threads. a layer of interference has disappeared. otherwise, there would be functionality duplicated between thread culling and user culling, and many more ASTs to worry about
@@ -27,3 +28,8 @@ processes: isolation. automatic cross-thread boundaries. separate sovereigns; no
 	parameter-less functions work, because you can make the parameters in a stack-like fashion without worrying about other functions mishandling the global variables you're touching.
 	super easy atomics for us. no memory fences at all. that means we can reorder instructions like a total mofo with zero thought, by making write_into_single super delayed.
 	event-driven framework. no need for specific threads. have a single point of communication instead of worrying about which thread "owns" the user.
+
+Untested = not working. example:
+	llvm commit 2cf40d1ae5aaa43d1d2bf5b9d20ada5793fb599a
+	[SROA] Fix a nasty pile of bugs to do with big-endian, different alloca 
+	the entire SROA stack was broken completely on big endian systems.

@@ -135,7 +135,7 @@ public:
 		else return val;
 	}
 	Tptr& field(uint64_t offset) const {
-		//check(val > Typen("never reached"), "trying to get the field of a tptr with no fields");
+		check(val > Typen("never reached"), "trying to get the field of a tptr with no fields");
 		return *(Tptr*)(val + sizeof(uint64_t) * (offset + 1));
 	}
 	constexpr operator uint64_t() const { return val; }

@@ -267,7 +267,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			{
 				allocations.push_back(memory_allocation(size_of_return));
 				default_allocation = &allocations.back();
-				write_into_place(value_collection(return_value, size_of_return), default_allocation->allocation);
+				write_into_place(return_value, default_allocation->allocation);
 			}
 
 			//whether or not you made a new location, the Value is nullptr, which signifies that it's a reference.
@@ -568,7 +568,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 			//we have to handle stupid things like i64 vs [4 x i64] and that nonsense. we can't just extract values easily.
 			llvm::Value* final_value = (total_size == 1) ? llvm::UndefValue::get(llvm_i64()) : llvm::UndefValue::get(llvm_array(total_size));
-			write_into_place({{{field_results[0].IR, half_size[0]}, {field_results[1].IR, half_size[1]}}}, final_value, true);
+			write_into_place({{field_results[0].IR, field_results[1].IR}}, final_value, true);
 			Tptr final_type = concatenate_types({field_results[0].type, field_results[1].type});
 			finish_special(final_value, final_type);
 		}
@@ -579,7 +579,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (field_results[0].place == nullptr) return_code(missing_reference, 0);
 			if (type_check(RVO, field_results[1].type, field_results[0].type) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
 
-			write_into_place(value_collection(field_results[1].IR, get_size(field_results[1].type)), field_results[0].place->allocation);
+			write_into_place(field_results[1].IR, field_results[0].place->allocation);
 			finish(0);
 		}
 	case ASTn("dyn_subobj"):
@@ -694,7 +694,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 			llvm::Value* integer_pointer_to_object = builder->CreateExtractValue(result_of_conc, {1}, s("pointer to object"));
 			llvm::Value* pointer_to_object = builder->CreateIntToPtr(integer_pointer_to_object, llvm_i64()->getPointerTo());
-			write_into_place({field_results[1].IR, get_size(field_results[1].type)}, pointer_to_object);
+			write_into_place(field_results[1].IR, pointer_to_object);
 			finish(result_of_conc);
 		}
 	case ASTn("compile"):

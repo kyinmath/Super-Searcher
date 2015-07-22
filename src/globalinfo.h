@@ -30,6 +30,7 @@ extern bool VERBOSE_DEBUG;
 
 
 //s("test") returns "test" if enabled, and nothing otherwise
+//check() calls abort if the condition is false. beware: in release mode, the expression inside will not be executed.
 //the condition is true when the program behaves normally.
 #ifdef NOCHECK
 #define check(x, y)
