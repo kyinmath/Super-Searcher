@@ -14,6 +14,7 @@ enum IRgen_status {
 	null_AST, //tried to generate_IR() a nullptr but was caught, which is normal.
 	pointer_without_target, //tried to get a pointer to an AST, but it was not found at all
 	pointer_to_temporary, //tried to get a pointer to an AST, but it was not placed on the stack.
+	missing_reference, //tried to store, but the target didn't have a reference available.
 	missing_label, //tried to goto a label, but the label was not found
 	label_incorrect_stack, //tried to goto a label, but the stack elements didn't match
 	label_duplication, //a label was pointed to in the tree twice
@@ -171,9 +172,10 @@ llvm::AllocaInst* create_empty_alloca();
 struct memory_allocation
 {
 	llvm::Value* allocation; //AllocaInst* a = alloca i64, size, or an allocate() address
-	uint64_t size;
 
-	memory_allocation(uint64_t s) : allocation(create_actual_alloca(s)), size(s) {}
+	memory_allocation(uint64_t s) : allocation(create_actual_alloca(s)) {}
+	memory_allocation(llvm::Value* existing_location) : allocation(existing_location) {} //used for hidden references.
+	memory_allocation() : allocation(0) {}
 private:
 	bool self_is_full = false; //use turn_full(). don't manipulate this directly.
 public:
@@ -183,6 +185,18 @@ public:
 		if (self_is_full == false)
 		{
 			self_is_full = true;
+
+			uint64_t size;
+			if (auto k = llvm::dyn_cast<llvm::AllocaInst>(allocation))
+			{
+				if (auto const_size = llvm::dyn_cast<llvm::ConstantInt>(k->getArraySize()))
+				{
+					size = const_size->getZExtValue();
+					goto successful_size_get;
+				}
+			}
+			error("couldn't get size properly");
+			successful_size_get: //the if conditions are inverted because we need to see the if condition.
 
 			llvm::Instruction* new_alloca;
 			llvm::Value* allocator = llvm_function(allocate, llvm_i64()->getPointerTo(), llvm_i64());
@@ -216,29 +230,34 @@ inline llvm::Value* load_from_memory(llvm::Value* location, uint64_t size)
 }
 
 //every time IR is generated, this holds the relevant return info.
+//IRi is active <=> memory_location = 0.
+//if memory_location is active, hidden_reference may still be true or false. this affects whether you can get a pointer to it.
+//hidden_reference => no pointers allowed. hidden_reference => memory_location is active. 
 struct Return_Info
 {
 	IRgen_status error_code;
 
 	//either IR or place is active, not both.
-	//if memory_location_active == false, then IR is active. otherwise, place is active.
-	//place is active when memory_location_active = true.
+	//if memory_location_primary == false, then IR is active. otherwise, place is active.
+	//place is active when memory_location_primary = true.
 	//either way, the internal type doesn't change.
 	llvm::Value* IR;
-	memory_allocation* place;
+	memory_allocation* place; //public, because [pointer] wants to turn it full.
 
 	Tptr type;
-	bool memory_location_active;
-	//either b or m must be null. both of them can't be active at the same time.
-	Return_Info(IRgen_status err, llvm::Value* b, memory_allocation* m, Tptr t)
-		: error_code(err), IR(b), place(m), type(t), memory_location_active((b == 0) ? true : false)
-	{
-		check((b == 0) || (m == 0), "at least one must be 0"); //both can be 0, if it's an error code.
-	}
+	bool memory_location_primary; //if this is false, the IR is the primary. if this is true, the memory_location is the primary.
+	//if this is false, the allocation isn't something we own. that is, geting a pointer to it is disallowed.
+	bool hidden_reference; //this is used for store(). set by load() load_subobj(), dyn_subobj(), stack_degree == 2. it's true if you can get a reference.
+
+	Return_Info(IRgen_status err, llvm::Value* b, Tptr t, bool h = false)
+		: error_code(err), IR(b), place(0), type(t), memory_location_primary(place), hidden_reference(h) {}
+	Return_Info(IRgen_status err, memory_allocation* m, Tptr t, bool h = false)
+		: error_code(err), IR(0), place(m), type(t), memory_location_primary(place), hidden_reference(h)
+	{ IR = load_from_memory(place->allocation, get_size(type)); }
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
-	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), memory_location_active(false) {}
+	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), memory_location_primary(false), hidden_reference(false) {}
 };
 
 
@@ -256,6 +275,15 @@ struct builder_context_stack
 	}
 };
 
+
+inline uint64_t* copy_object(Tptr type, uint64_t* pointer)
+{
+	uint64_t total_size = get_size(type);
+	uint64_t* new_memory = allocate(total_size);
+	for (uint64_t x = 0; x < total_size; ++x)
+		new_memory[x] = pointer[x];
+	return new_memory;
+}
 
 
 //makes a deep copy of ASTs.
@@ -277,7 +305,9 @@ private:
 			copy_mapper.insert({user_target, target});
 
 			target->preceding_BB_element = internal_copy(target->preceding_BB_element);
-			for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
+			if (target->tag == ASTn("imv"))
+				copy_object(target->fields[0].num, (uint64_t*)target->fields[1].ptr);
+			else for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
 				target->fields[x].ptr = internal_copy(target->fields[x].ptr);
 		}
 		else target = search_for_copy->second;

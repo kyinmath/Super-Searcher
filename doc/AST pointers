@@ -131,3 +131,31 @@ since ASTs/types/functions/dynamics are pointers, we need a way to copy their ta
 
 ASTs don't specify their return/parameter types, because then there's no way to manipulate them. you can't load them from dynamic pointers. it's impossible to get references to them.
 it's impossible to say, "I have an AST", because any time you want to change an object, you need to know its type.
+
+
+
+
+
+
+
+the current problem is AST offsets + reference. you're not allowed to get a reference to a null AST.
+	maybe we can just return the base AST. this is easy. except, now we have to pass in the location of the base AST to our function instead of the value of the AST. that would be a total pain.
+	but, what if the base AST is already nullptr? can we just return 
+	IDEA: we can pass in the previous_BB_element. that's really great. so, any overflow goes immediately to the previous_BB element, which means we no longer have to check the previous_BB element.
+	but, we still have a problem if the base is a null AST.
+	so, I guess you have to ceck for null before calling. if check fails, you specify a local alloca that does nothing (it's write-only)
+
+the time() function also can't be reordered before/after busy activity. thus, it should stay out of the system values.
+
+
+
+
+perhaps our previous_BB pointers should now point the normal way.
+because when you read a function, and you only want to learn a limited amount, you can start, then stop. you'll have a complete understanding of your limited part.
+	whereas if you start from the end, you _must_ trace to the front completely. you can't stop halfway.
+	in any case, you must start at the front.
+does this make modification harder? not anymore, now that we can modify our ASTs. you can keep track of the very last AST.
+	the problem is that this wrecks the normal return values. if we have [label {[a] [b]}], then [b] is still the return value. but now the label points to [a].
+		what's more, this will result in excessive changing. you have to change the next_BB element every time you add. instead of just making the new one appropriately.
+but: when someone wants to read a function, you have to start from the beginning. if we have previous_BB pointers, then not only must you trace to the front, you must also remember.
+problem: when you point to an AST, that AST no longer encodes the things before it. so you can't ask the computer, "what's the type of this function".

@@ -61,7 +61,7 @@ uint64_t compiler_object::compile_AST(uAST* target)
 
 	builder_context_stack b(&new_builder, new_context.get());
 
-	if (VERBOSE_DEBUG) console << "starting compilation\ntarget is " << target << '\n'; //in case it crashes here because target is not valid
+	if (VERBOSE_DEBUG) print("starting compilation\ntarget is ", target, '\n'); //in case it crashes here because target is not valid
 	if (target == nullptr) return IRgen_status::null_AST;
 	using namespace llvm;
 	FunctionType *dummy_type(FunctionType::get(llvm_void(), false));
@@ -80,7 +80,7 @@ uint64_t compiler_object::compile_AST(uAST* target)
 
 	auto size_of_return = get_size(return_object.type);
 	FunctionType* FT(FunctionType::get(llvm_type_including_void(size_of_return), false));
-	if (VERBOSE_DEBUG) console << "Size of return is " << size_of_return << '\n';
+	if (VERBOSE_DEBUG) print("Size of return is ", size_of_return, '\n');
 	std::string function_name = GenerateUniqueName("");
 	Function *F(Function::Create(FT, Function::ExternalLinkage, function_name, M.get())); //marking this private linkage seems to fail
 	F->addFnAttr(Attribute::NoUnwind); //7% speedup. and required to get Orc not to leak memory, because it doesn't unregister EH frames
@@ -113,7 +113,7 @@ uint64_t compiler_object::compile_AST(uAST* target)
 #endif
 	if (OPTIMIZE)
 	{
-		console << "optimized code: \n";
+		print("optimized code: \n");
 		llvm::legacy::FunctionPassManager FPM(M.get());
 		M->setDataLayout(*TM->getDataLayout());
 
@@ -135,7 +135,7 @@ uint64_t compiler_object::compile_AST(uAST* target)
 
 	if (!DONT_ADD_MODULE_TO_ORC)
 	{
-		if (VERBOSE_DEBUG) console << "adding module...\n";
+		if (VERBOSE_DEBUG) print("adding module...\n");
 		auto H = J.addModule(std::move(M));
 
 		// Get the address of the JIT'd function in memory.
@@ -203,15 +203,15 @@ currently, the finish() macro takes in the array itself, not the pointer-to-arra
 Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
-#define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, nullptr, nullptr, u::null); } while (0)
+#define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, (llvm::Value*)nullptr, u::null); } while (0)
 	//if (stack_degree == 2) stack_degree = 0; //we're trying to diagnose the memory problems with label. this does nothing.
 
 	if (VERBOSE_DEBUG)
 	{
-		console << "generate_IR single AST start ^^^^^^^^^\n";
+		print("generate_IR single AST start ^^^^^^^^^\n");
 		if (target) output_AST(target);
-		console << "stack degree " << stack_degree;
-		console << '\n';
+		print("stack degree ", stack_degree);
+		print('\n');
 	}
 
 	check(stack_degree != 1, "no more stack degree 1");
@@ -220,6 +220,11 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	if (target == nullptr) return Return_Info();
 
 	uint64_t final_stack_position = ~0ull;
+	
+	memory_allocation* default_allocation = nullptr;
+	//this will point to the back of the deque. because if you're in a previous_BB element, it'll die too fast. and if you're passing through a reference, such as using goto's fail branch, it'll die too fast. so we need to put it in the deque, so it'll last longer.
+	//it needs to be wrapped in a memory_allocation because it might experience a turn_full(), which will invalidate all pointers except for one. so we need to keep the pointer to the location in one place, which is the memory_location.
+	//flipping the previous_BB element won't actually help, because then we'll have problems with return object passthrough. you'll have to shuttle the return object from the top to the bottom.
 
 	//generated IR of the fields of the AST
 	std::vector<Return_Info> field_results; //we don't actually need the return code, but we leave it anyway.
@@ -236,41 +241,53 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 		if (VERBOSE_DEBUG && return_value != nullptr)
 		{
-			console << "finish() in generate_IR, Value is ";
+			print("finish() in generate_IR, Value is ");
 			return_value->print(*llvm_console);
-			console << "\nand the llvm type is ";
+			print("\nand the llvm type is ");
 			return_value->getType()->print(*llvm_console);
-			console << "\nand the internal type is ";
+			print("\nand the internal type is ");
 			output_type_and_previous(type);
-			console << '\n';
+			print('\n');
 		}
-		else if (VERBOSE_DEBUG) console << "finish() in generate_IR, null value\n";
+		else if (VERBOSE_DEBUG) print("finish() in generate_IR, null value\n");
 		if (VERBOSE_DEBUG)
 		{
 			builder->GetInsertBlock()->getParent()->print(*llvm_console, nullptr);
-			console << "generate_IR single AST " << target << " " << AST_descriptor[target->tag].name << " vvvvvvvvv\n";
+			print("generate_IR single AST ", target, " ", AST_descriptor[target->tag].name, " vvvvvvvvv\n");
 		}
 
+		bool existing_hidden_location = (default_allocation != 0);
 		if (stack_degree == 2) clear_stack(final_stack_position);
 		uint64_t size_of_return = get_size(type);
 		if (size_of_return >= 1 && stack_degree == 2)
 		{
 			///default values. they become hidden parameters to finish().
 
-			allocations.push_back(memory_allocation(size_of_return));
-			memory_allocation* base = &allocations.back();
-			write_into_place(value_collection(return_value, size_of_return), base->allocation);
+			if (!existing_hidden_location)
+			{
+				allocations.push_back(memory_allocation(size_of_return));
+				default_allocation = &allocations.back();
+				write_into_place(value_collection(return_value, size_of_return), default_allocation->allocation);
+			}
 
-			new_object(target, Return_Info(IRgen_status::no_error, nullptr, base, type));
-			return Return_Info(IRgen_status::no_error, nullptr, base, type);
+			//whether or not you made a new location, the Value is nullptr, which signifies that it's a reference.
+			new_object(target, Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location));
+			return Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location);
 		}
 		//we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for justification.
 		else if (size_of_return >= 1)
 		{
 			check(stack_degree == 0, "stack degree 1 not allowed");
-
-			new_object(target, Return_Info(IRgen_status::no_error, return_value, nullptr, type));
-			return Return_Info(IRgen_status::no_error, return_value, nullptr, type);
+			if (default_allocation)
+			{
+				new_object(target, Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location));
+				return Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location);
+			}
+			else
+			{
+				new_object(target, Return_Info(IRgen_status::no_error, return_value, type, existing_hidden_location));
+				return Return_Info(IRgen_status::no_error, return_value, type, existing_hidden_location);
+			}
 		}
 		else return Return_Info();
 	};
@@ -290,15 +307,17 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	auto looking_for_reference = objects.find(target);
 	if (looking_for_reference != objects.end())
 	{
-		if (VERBOSE_DEBUG) console << "I'm copying\n";
-		//if memory_location_active is false, we should copy instead of loading.
-		Return_Info AST_to_load = looking_for_reference->second;
-		if (AST_to_load.memory_location_active == false) finish_special(AST_to_load.IR, AST_to_load.type);
-		else finish_special(load_from_memory(AST_to_load.place->allocation, get_size(AST_to_load.type)), AST_to_load.type);
+		if (VERBOSE_DEBUG) print( "I'm copying\n");
+		//we're not going to copy it/make a new location for it, even though this would let us have two versions. because of name collisions: there would be absolutely no way to refer to the newly created object.
+		//if you want a new object, use a dummy concatenate()
+		auto refreshed_load = looking_for_reference->second;
+		if (refreshed_load.place)
+			refreshed_load.IR = load_from_memory(refreshed_load.place->allocation, get_size(refreshed_load.type)); //refresh the IR
+		return refreshed_load;
 	}
 
 
-	//if we've seen this AST before, we're stuck in an infinite loop. return an error.
+	//if we've seen this AST before, and we need to reprocess all its fields, then we're stuck in an infinite loop. return an error.
 	if (loop_catcher.insert(target).second == false) return_code(infinite_loop, 10); //for now, 10 is a special value, and means not any of the fields
 	//after we're done with this AST, we remove it from loop_catcher.
 	struct loop_catcher_destructor_cleanup
@@ -313,7 +332,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	//compile the previous elements in the basic block.
 	if (target->preceding_BB_element)
 	{
-		if (VERBOSE_DEBUG) console << "I'm previousing\n";
+		if (VERBOSE_DEBUG) print( "I'm previousing\n");
 		auto previous_elements = generate_IR(target->preceding_BB_element, 2);
 		if (previous_elements.error_code) return previous_elements;
 	}
@@ -333,9 +352,9 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 		if (VERBOSE_DEBUG)
 		{
-			console << "type checking. result type is \n";
+			print("type checking. result type is \n");
 			output_type_and_previous(result.type);
-			console << "desired type is \n";
+			print("desired type is \n");
 			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x].type);
 		}
 
@@ -418,43 +437,37 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			llvm::Value* comparison = builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("if() condition"));
 			llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
 
-			// Create blocks for the then and else cases. Insert the blocks at the end of the function; this is ok because the builder position is the thing that affects instruction insertion. it's necessary to insert them into the function so that we can avoid memleak on errors
-			llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(*context, s("then"), TheFunction);
-			llvm::BasicBlock *ElseBB = llvm::BasicBlock::Create(*context, s("else"), TheFunction);
+			// it's necessary to insert blocks into the function so that we can avoid memleak on early return
 			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
 
-			builder->CreateCondBr(comparison, ThenBB, ElseBB);
-			builder->SetInsertPoint(ThenBB);
+			llvm::BasicBlock* caseBB[2];
+			Return_Info case_IR[2];
+			for (uint64_t x : {0, 1})
+				caseBB[x] = llvm::BasicBlock::Create(*context, s("ifcase"), TheFunction);
 
-			//calls with stack_degree as 1 in the called function, if it is 2 outside.
-			Return_Info then_IR = generate_IR(target->fields[1].ptr, 0);
-			if (then_IR.error_code) return then_IR;
-
-			//get rid of any temporaries
-			clear_stack(if_stack_position);
-
-			builder->CreateBr(MergeBB);
-			ThenBB = builder->GetInsertBlock();
-			builder->SetInsertPoint(ElseBB);
-
-			Return_Info else_IR = generate_IR(target->fields[2].ptr, 0);
-			if (else_IR.error_code) return else_IR;
-
-			Tptr result_type = then_IR.type; //first, we assume then_IR is the main type.
-			//RVO, because that's what defines the slot.
-			if (type_check(RVO, else_IR.type, then_IR.type) != type_check_result::perfect_fit)
+			builder->CreateCondBr(comparison, caseBB[0], caseBB[1]);
+			
+			for (uint64_t x : {0, 1})
 			{
-				result_type = else_IR.type; //if it didn't work, try seeing if else_IR can be the main type.
-				if (type_check(RVO, then_IR.type, else_IR.type) != type_check_result::perfect_fit)
+				builder->SetInsertPoint(caseBB[x]);
+				case_IR[x] = generate_IR(target->fields[x + 1].ptr, 0);
+				if (case_IR[x].error_code) return case_IR[x];
+				clear_stack(if_stack_position);
+				builder->CreateBr(MergeBB);
+				caseBB[x] = builder->GetInsertBlock();
+			}
+
+			Tptr result_type = case_IR[0].type; //first, we assume then_IR is the main type.
+			//RVO, because that's what defines the slot.
+			if (type_check(RVO, case_IR[1].type, case_IR[0].type) != type_check_result::perfect_fit)
+			{
+				result_type = case_IR[1].type; //if it didn't work, try seeing if else_IR can be the main type.
+				if (type_check(RVO, case_IR[0].type, case_IR[1].type) != type_check_result::perfect_fit)
 					return_code(type_mismatch, 2);
 			}
 
-			//for the second branch
-			builder->CreateBr(MergeBB);
-			ElseBB = builder->GetInsertBlock();
-
 			builder->SetInsertPoint(MergeBB);
-			llvm::Value* endPN = llvm_create_phi({then_IR.IR, else_IR.IR}, {then_IR.type, else_IR.type}, {ThenBB, ElseBB});
+			llvm::Value* endPN = llvm_create_phi({case_IR[0].IR, case_IR[1].IR}, {case_IR[0].type, case_IR[1].type}, {caseBB[0], caseBB[1]});
 			finish_special(endPN, result_type);
 		}
 
@@ -535,7 +548,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		{
 			auto found_AST = objects.find(target->fields[0].ptr);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
-			if (found_AST->second.memory_location_active == false) return_code(pointer_to_temporary, 0);
+			if (found_AST->second.memory_location_primary == false) return_code(pointer_to_temporary, 0);
 			Tptr new_pointer_type = new_type(Typen("pointer"), found_AST->second.type);
 
 			llvm::Value* final_result = builder->CreatePtrToInt(found_AST->second.place->allocation, llvm_i64(), s("flattening pointer"));
@@ -544,34 +557,29 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("concatenate"):
 		{
-			Return_Info half[2];
 			uint64_t half_size[2];
 			uint64_t total_size = 0;
 			for (int x : {0, 1})
 			{
-				half[x] = generate_IR(target->fields[x].ptr, 0);
-				if (half[x].error_code) return half[x];
-				if (half[x].type == u::does_not_return) finish_special(nullptr, u::does_not_return);
-				half_size[x] = get_size(half[x].type);
+				half_size[x] = get_size(field_results[x].type);
 				total_size += half_size[x];
 			}
 			if (total_size == 0) finish_special(nullptr, u::null);
 
 			//we have to handle stupid things like i64 vs [4 x i64] and that nonsense. we can't just extract values easily.
 			llvm::Value* final_value = (total_size == 1) ? llvm::UndefValue::get(llvm_i64()) : llvm::UndefValue::get(llvm_array(total_size));
-			write_into_place({{{half[0].IR, half_size[0]}, {half[1].IR, half_size[1]}}}, final_value, true);
-			Tptr final_type = concatenate_types({half[0].type, half[1].type});
+			write_into_place({{{field_results[0].IR, half_size[0]}, {field_results[1].IR, half_size[1]}}}, final_value, true);
+			Tptr final_type = concatenate_types({field_results[0].type, field_results[1].type});
 			finish_special(final_value, final_type);
 		}
 
 	case ASTn("store"):
 		{
 			if (field_results[0].type == 0) return_code(type_mismatch, 0);
-			if (field_results[0].type.ver() != Typen("pointer")) return_code(type_mismatch, 0);
-			if (type_check(RVO, field_results[1].type, field_results[0].type.field(0)) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
-			llvm::Value* memory_location = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
+			if (field_results[0].place == nullptr) return_code(missing_reference, 0);
+			if (type_check(RVO, field_results[1].type, field_results[0].type) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
 
-			write_into_place(value_collection(field_results[1].IR, get_size(field_results[1].type)), memory_location);
+			write_into_place(value_collection(field_results[1].IR, get_size(field_results[1].type)), field_results[0].place->allocation);
 			finish(0);
 		}
 	case ASTn("dyn_subobj"):
@@ -627,13 +635,16 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 						llvm::Value* first_value = builder->CreateInsertValue(undef_value, desired_type_to_store, {0}); //this single type is wrong. we must change it to the load of n+1.
 						loaded_object = builder->CreateInsertValue(first_value, pointer_value, {1});
+
+						//we can't expose the pointer as a reference because it isn't one. we converted it to a dynamic pointer.
+						new_object(target, Return_Info(IRgen_status::no_error, loaded_object, loaded_object_type, false));
 					}
 					else
 					{
 						loaded_object_type = (Tptr)x;
-						loaded_object = load_from_memory(correct_pointer, Type_descriptor[x].size);
+						memory_allocation reference(correct_pointer);
+						new_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true));
 					}
-					new_object(target, Return_Info(IRgen_status::no_error, loaded_object, nullptr, loaded_object_type));
 
 
 					Return_Info case_IR = generate_IR(target->fields[x + 1].ptr, false);
@@ -691,7 +702,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			llvm::Value* compile_function = llvm_function(compile_returning_legitimate_object, llvm_void(), llvm_i64()->getPointerTo(), llvm_i64());
 
 			llvm::AllocaInst* return_holder = create_actual_alloca(3);
-			llvm::Value* forcing_return_type = builder->CreatePointerCast(return_holder, llvm_i64()->getPointerTo(), "forcing return type");
+			llvm::Value* forcing_return_type = builder->CreatePointerCast(return_holder, llvm_i64()->getPointerTo(), s("forcing return type"));
 			builder->CreateCall(compile_function, {forcing_return_type, field_results[0].IR}); //, s("compile"). void type means no name allowed
 			auto return_object = builder->CreateLoad(return_holder);
 			finish(return_object);
@@ -717,7 +728,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("load_imv_from_AST"):
 		{
-			auto loader = llvm_function(load_imv_from_AST, double_int(), llvm_i64());
+			auto loader = llvm_function(load_imv_from_AST, double_int(), llvm_i64()); //todo: this copies the dynamic pointer, which is a bad thing. and, we should load a reference.
 			finish(builder->CreateCall(loader, field_results[0].IR));
 		}
 	case ASTn("run_function"):
@@ -758,9 +769,9 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					if (llvm::ConstantInt* k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
 					{
 						uint64_t offset = k->getZExtValue();
-						if (offset == 0)
+						if (offset == 0) //no concatenation
 						{
-							//no concatenation
+							default_allocation = new_reference(field_results[0].IR);
 							finish_special(load_from_memory(field_results[0].IR, get_size(type_of_object)), type_of_object);
 						}
 						else //yes concatenation
@@ -771,6 +782,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 							uint64_t size_of_load = get_size_conc(type_of_object, offset, &skip_this_many);
 							llvm::Value* pointer_cast = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 							llvm::Value* place = skip_this_many ? builder->CreateConstInBoundsGEP1_64(pointer_cast, skip_this_many, s("offset")) : pointer_cast;
+
+							default_allocation = new_reference(place);
 							finish_special(load_from_memory(place, size_of_load), type_of_object.field(offset + 1));
 						}
 					}
@@ -778,9 +791,40 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				}
 			case Typen("AST pointer"):
 				{
-					llvm::Value* AST_offset = llvm_function(AST_subfield, llvm_i64(), llvm_i64(), llvm_i64());
-					llvm::Value* result_AST = builder->CreateCall(AST_offset, {field_results[0].IR, field_results[1].IR});
-					finish_special(result_AST, u::AST_pointer);
+
+					llvm::Value* comparison = builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("AST zero check"));
+					llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
+
+					// it's necessary to insert blocks into the function so that we can avoid memleak on early return
+					llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
+
+					llvm::BasicBlock* caseBB[2];
+					llvm::Value* location[2];
+					for (uint64_t x : {0, 1})
+						caseBB[x] = llvm::BasicBlock::Create(*context, s("AST check case"), TheFunction);
+
+					builder->CreateCondBr(comparison, caseBB[0], caseBB[1]);
+					for (uint64_t x : {0, 1})
+					{
+						builder->SetInsertPoint(caseBB[x]);
+						if (x == 0)
+						{
+							llvm::Value* AST_offset = llvm_function(AST_subfield, llvm_i64(), llvm_i64(), llvm_i64());
+							location[x] = builder->CreateCall(AST_offset, {field_results[0].IR, field_results[1].IR});
+						}
+						else
+						{
+							location[x] = create_actual_alloca(1);
+							builder->CreateStore(llvm_integer(0), location[x]);
+						}
+						builder->CreateBr(MergeBB);
+						caseBB[x] = builder->GetInsertBlock();
+					}
+					
+					builder->SetInsertPoint(MergeBB);
+					llvm::Value* final_location = llvm_create_phi({location[0], location[1]}, {u::AST_pointer, u::AST_pointer}, {caseBB[0], caseBB[1]});
+					default_allocation = new_reference(final_location);
+					finish_special(builder->CreateLoad(final_location), u::AST_pointer);
 				}
 			case Typen("type pointer"):
 				{
@@ -789,19 +833,11 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					finish_special(result_type, u::type);
 				}
 			case Typen("function pointer"):
-				if (llvm::ConstantInt* k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
+				if (auto k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
 				{
 					uint64_t offset = k->getZExtValue();
-					if (offset == 0)
-					{
-						llvm::Value* result = builder->CreateCall(llvm_function(AST_from_function, llvm_i64(), llvm_i64()), field_results[0].IR);
-						finish_special(result, u::AST_pointer);
-					}
-					else if (offset == 1)
-					{
-						llvm::Value* result = builder->CreateCall(llvm_function(type_from_function, llvm_i64(), llvm_i64()), field_results[0].IR);
-						finish_special(result, u::type);
-					}
+					if (offset == 0) finish_special(builder->CreateCall(llvm_function(AST_from_function, llvm_i64(), llvm_i64()), field_results[0].IR), u::AST_pointer);
+					else if (offset == 1) finish_special(builder->CreateCall(llvm_function(type_from_function, llvm_i64(), llvm_i64()), field_results[0].IR), u::type);
 					else return_code(oversized_offset, 1);
 				}
 				return_code(requires_constant, 1);

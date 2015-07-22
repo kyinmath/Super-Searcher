@@ -1,9 +1,15 @@
-__Judgment starting configuration__
+Advanced AST modification:
+1. start walking along the AST, storing the return type of each AST. and some junk information.
+2. we must use the junk information to make decisions. so we can't just store the junk information in a vector; we must also centralize some information like "best place to split"
+for encryption breaking, we have two options. we can either do things like llvm's optimization passes: one set of functions generates analysis, and another does the work. horizontal splitting.
+the other option is vertical splitting. every function both does work and does analysis. and then we have many of these functions.
+	the second option is much better. when something goes wrong or right, we know exactly who to blame. and, we can run many functions in parallel, then boost the ones that work. this is just like the human immune system.	
 
-vector: judgment
-	repairing overflows, bugs, etc. but not overly critical
-vector: super emergency judgment
-	for repairing infinite loops, which cripple the user
+
+Revolution and kingship. necessary, because judgment can't repair itself.
+eventually, we'll want some kind of sexual reproduction. well, that's hard.
+	it's easy if users can communicate by sending big objects to each other. (in this case, the important thing is to know the total size of the object)
+
 
 random generation:
 random generation ought to produce useful things.

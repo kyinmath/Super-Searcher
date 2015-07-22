@@ -18,7 +18,7 @@ namespace std {
 				hash ^= f.field(x);
 			//we're ignoring con_vec, but that's probably ok
 
-			if (UNIQUE_VERBOSE_DEBUG) console << "hash is" << hash << '\n';
+			if (UNIQUE_VERBOSE_DEBUG) print("hash is", hash, '\n');
 			return hash;
 		}
 	};
@@ -30,7 +30,7 @@ namespace std {
 		{
 			if (UNIQUE_VERBOSE_DEBUG)
 			{
-				console << "testing equal: await \"true\" response \n";
+				print("testing equal: await \"true\" response \n");
 				output_type(l);
 				output_type(r);
 			}
@@ -45,7 +45,7 @@ namespace std {
 				if (l.field(x) != r.field(x))
 					return false;
 
-			if (UNIQUE_VERBOSE_DEBUG) console << "equal to returned true\n";
+			if (UNIQUE_VERBOSE_DEBUG) print("equal to returned true\n");
 			return true;
 		}
 	};

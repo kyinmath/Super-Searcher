@@ -4,20 +4,17 @@
 
 /* this checks if a new reference can be bound to an old reference.
 
-
 we can only convert things that are FULLY IMMUT. just immut is not enough, because it might change anyway (perhaps it's inside a lock, or TU).
 that is, the fields[0] pointer must never be able to change those things.
 the first pointer's validity must assuredly last longer than the fields[0] pointer.
 so if the first pointer says the lock is immut, then we can treat it as fully immut. because it is immut for the duration of the fields[0] pointer's life.
 fully immut still requires the actual lock to also be immut, before you can start converting.
 
-we have two problems: 1. we might be interested in offsets. solution: you use another function to acquire the appropriate subtype.
-
 full pointers have to match the entire type.
 thus, we return: 0 if inequal for sure, 1 if fields[0] points to a valid subtype, and 2 if fields[0] points to a valid conversion that fills the entire type
 if version = reference, it checks if the first type can be referenced by the fields[0].
-*/
-/*if version == RVO: checks if an object of the first type can be placed in a memory slot of the fields[0] type. that means that the fields[0] type is what everyone will refer to it as.
+
+if version == RVO: checks if an object of the first type can be placed in a memory slot of the fields[0] type. that means that the fields[0] type is what everyone will refer to it as.
 don't worry about lock states of integers or pointers; the target will absorb the lock state anyway.
 example: an immut TU of pointer, 0, that's been fixed to a pointer, can be converted into just a pointer type.
 
@@ -31,7 +28,7 @@ type_check_result type_check(type_status version, Tptr existing_reference, Tptr 
 	std::array<Tptr, 2> iter{{existing_reference, new_reference}};
 	if (VERBOSE_DEBUG)
 	{
-		console << "type_checking these types: ";
+		print("type_checking these types: ");
 		output_type(existing_reference);
 		output_type(new_reference);
 	}
@@ -178,7 +175,7 @@ Tptr concatenate_types(llvm::ArrayRef<Tptr> components)
 	}
 	true_components[0] = (Tptr)(true_components.size() - 1); //get the number of fields in the eventual type
 	
-	//console << "size of true components is " << true_components.size();
+	//print("size of true components is ", true_components.size();
 	//output_type(components[0]);
 	//output_type(true_components[1]);
 

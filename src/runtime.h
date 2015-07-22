@@ -39,7 +39,7 @@ inline void compile_returning_legitimate_object(uint64_t* memory_location, uint6
 		function* new_location = new(allocate_function()) function(deep_AST_copier(target).result, a.return_type, a.parameter_type, a.fptr, c, a.result_module, std::move(a.new_context));
 		if (VERBOSE_GC)
 		{
-			console << *new_location;
+			print(*new_location);
 		}
 		*return_location = std::array < uint64_t, 3 > {{(uint64_t)new_location, error, 0ull}};
 		return;
@@ -49,15 +49,15 @@ inline void compile_returning_legitimate_object(uint64_t* memory_location, uint6
 inline void output_array(uint64_t* mem, uint64_t number)
 {
 	for (uint64_t idx = 0; idx < number; ++idx)
-		console << mem[idx] << ' ';
-	console << '\n';
+		print(mem[idx], ' ');
+	print('\n');
 }
 
 template<size_t array_num> inline void cout_array(std::array<uint64_t, array_num> object)
 {
-	console << "Evaluated to";
-	for (uint64_t x = 0; x < array_num; ++x) console << ' ' << object[x];
-	console << '\n';
+	print("Evaluated to");
+	for (uint64_t x = 0; x < array_num; ++x) print(' ', object[x]);
+	print('\n');
 }
 
 //parameter is a function*
@@ -72,7 +72,7 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 	void* fptr = func->fptr;
 	Tptr return_type = func->return_type;
 	uint64_t size_of_return = get_size(return_type);
-	console << "return type of run function is: "; output_type(return_type); console << '\n';
+	print("return type of run function is: "); output_type(return_type); print('\n');
 	if (size_of_return == 1)
 	{
 		uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
@@ -120,7 +120,6 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 #endif
 
 		auto H = c->addModule(std::move(M));
-
 		auto ExprSymbol = c->findUnmangledSymbol(function_name);
 
 		auto trampfptr = (uint64_t(*)())(ExprSymbol.getAddress());
@@ -185,14 +184,14 @@ inline uint64_t dynamic_to_AST(uint64_t tag, uint64_t previous, uint64_t type, u
 	}
 }
 
-inline void print_uint64_t(uint64_t x) {console << "printing " << x << '\n';}
+inline void print_uint64_t(uint64_t x) {print("printing ", x, '\n');}
 
-inline uint64_t AST_subfield(uAST* a, uint64_t offset)
+inline uAST** AST_subfield(uAST* a, uint64_t offset)
 {
-	if (a == nullptr) return 0;
+	check(a != nullptr, "checking should be done inside the function, since this returns lvalues");
 	uint64_t size = AST_descriptor[a->tag].pointer_fields; //we're not using the total fields type, because if it's a imv, we don't grab it.
-	if (offset >= size) return 0;
-	else return a->fields[offset].num;
+	if (offset >= size) return &a->preceding_BB_element;
+	else return &a->fields[offset].ptr;
 }
 
 inline uint64_t type_subfield(Tptr a, uint64_t offset)
@@ -261,7 +260,7 @@ inline void agency2(uint64_t first, uint64_t par)
 	switch (first)
 	{
 	case 0:
-		console << par << ' ';
+		print(par, ' ');
 		return;
 	default:
 		return;
@@ -285,23 +284,15 @@ inline std::array<uint64_t, 2> dynamic_subtype(Tptr type, uint64_t offset)
 			return{{0, 0}};
 		uint64_t skip_this_many;
 		get_size_conc(type, offset, &skip_this_many);
-		//if (VERBOSE_DEBUG) console << "dynamic_subtype is returning " << type.field(offset + 1) << " and " << skip_this_many << '\n';
+		//if (VERBOSE_DEBUG) print("dynamic_subtype is returning ", type.field(offset + 1), " and ", skip_this_many, '\n');
 		return{{type.field(offset + 1), skip_this_many}};
 	}
 }
 
-inline uint64_t* copy_object(Tptr type, uint64_t* pointer)
-{
-	uint64_t total_size = get_size(type);
-	uint64_t* new_memory = allocate(total_size);
-	for (uint64_t x = 0; x < total_size; ++x)
-		new_memory[x] = pointer[x];
-	return new_memory;
-}
 
 inline std::array < uint64_t, 2> load_imv_from_AST(uAST* p)
 {
 	if (p == 0) return{{0, 0}};
 	else if (p->tag != 0) return{{0, 0}};
-	else return{{p->fields[0].num, (uint64_t)copy_object(p->fields[0].num, (uint64_t*)p->fields[1].num)}};
+	else return{{p->fields[0].num, p->fields[1].num}};
 }

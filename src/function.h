@@ -23,7 +23,7 @@ struct function
 	{
 		if (!DONT_ADD_MODULE_TO_ORC && !DELETE_MODULE_IMMEDIATELY)
 		{
-			if (VERBOSE_GC) console << "removing module, where this is " << this << "\n";
+			if (VERBOSE_GC) print("removing module, where this is ", this, "\n");
 			thread_jit->removeModule(result_module);
 		}
 	}

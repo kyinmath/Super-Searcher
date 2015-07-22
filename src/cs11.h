@@ -64,6 +64,11 @@ class compiler_object
 	void clear_stack(uint64_t desired_stack_size);
 	//this runs the dtors. it's called by clear_stack, but also called by goto, which jumps stacks.
 	void emit_dtors(uint64_t desired_stack_size);
+	memory_allocation* new_reference(llvm::Value* IR)
+	{
+		allocations.push_back(IR);
+		return &allocations.back();
+	}
 
 	Return_Info generate_IR(uAST* user_target, uint64_t stack_degree);
 	

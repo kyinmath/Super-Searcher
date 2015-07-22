@@ -41,14 +41,14 @@ inline void output_type(const Tptr target)
 #ifndef NO_CONSOLE
 	if (target == 0)
 	{
-		console << "null type\n";
+		print("null type\n");
 		return;
 	}
-	console << "type " << Type_descriptor[target.ver()].name << "(" << target.ver() << "), addr " << target << ", ";
-	console << "fields";
+	print("type ", Type_descriptor[target.ver()].name, "(", target.ver(), "), addr ", target, ", ");
+	print("fields");
 	for (auto& x : Type_pointer_range(target))
-		console << ' ' << x;
-	console << '\n';
+		print(' ', x);
+	print('\n');
 #endif
 }
 
@@ -57,7 +57,7 @@ inline void output_type_and_previous(Tptr target)
 {
 	if (target == 0)
 	{
-		console << "type is null\n";
+		print("type is null\n");
 		return;
 	}
 	output_type(target);
@@ -72,12 +72,11 @@ inline void output_AST(uAST* target)
 #ifndef NO_CONSOLE
 	if (target == nullptr)
 	{
-		console << "null AST\n";
+		print("null AST\n");
 		return;
 	}
-	console << "AST " << AST_descriptor[target->tag].name << "(" << target->tag << "), addr " << target <<
-		", prev " << target->preceding_BB_element << ", ";
-	console << "fields " << target->fields[0].ptr << ' ' << target->fields[1].ptr << ' ' << target->fields[2].ptr << ' ' << target->fields[3].ptr << '\n';
+	print("AST ", AST_descriptor[target->tag].name, "(", target->tag, "), addr ", target, ", prev ", target->preceding_BB_element, ", ");
+	print("fields ", target->fields[0].ptr, ' ', target->fields[1].ptr, ' ', target->fields[2].ptr, ' ', target->fields[3].ptr, '\n');
 #endif
 }
 
@@ -88,7 +87,7 @@ inline void output_AST_and_previous(uAST* target)
 #ifndef NO_CONSOLE
 	if (target == nullptr)
 	{
-		console << "null AST\n";
+		print("null AST\n");
 		return;
 	}
 
@@ -96,7 +95,7 @@ inline void output_AST_and_previous(uAST* target)
 	static std::set<uAST*> AST_list;
 	if (AST_list.find(target) != AST_list.end())
 	{
-		console << target << '\n';
+		print(target, '\n');
 		return;
 	}
 	AST_list.insert(target);
@@ -148,7 +147,7 @@ struct output_AST_struct
 #ifndef NO_CONSOLE
 		if (AST_list.find(target) != AST_list.end())
 		{
-			output << target;
+			print(target);
 			return;
 		}
 		else AST_list.insert(target);
@@ -159,29 +158,29 @@ struct output_AST_struct
 			if (might_be_end_in_BB)
 			{
 				output_braces = true;
-				output << "{";
+				print("{");
 			}
 			output_output(target->preceding_BB_element, false);
-			output << ' ';
+			print(' ');
 		}
-		output << "[" << AST_descriptor[target->tag].name;
+		print("[", AST_descriptor[target->tag].name);
 		uint64_t x = 0;
 		for (; x < AST_descriptor[target->tag].pointer_fields; ++x)
 		{
-			output << ' ';
+			print(' ');
 			output_output(target->fields[x].ptr, true);
 		}
 
 		//any additional fields that aren't pointers
 		//pulling in both get_size and get_AST_full_type might make this debug function vulnerable to errors, which can be bad.
 		for (; x < get_size(get_AST_fields_type(target->tag)); ++x)
-			output << ' ' << target->fields[x].num;
-		output << ']';
+			print(' ', target->fields[x].num);
+		print(']');
 
-		if (reference_necessary.find(target) != reference_necessary.end()) output << target;
+		if (reference_necessary.find(target) != reference_necessary.end()) print(target);
 
 		if (output_braces)
-			output << "}";
+			print("}");
 #endif
 	}
 };
@@ -192,4 +191,4 @@ inline std::ostream& operator<< (std::ostream& o, const uAST& fred)
 	return o;
 }
 
-inline void output_AST_console_version(uAST* target) { console << *target << '\n'; }
+inline void output_AST_console_version(uAST* target) { print(*target, '\n'); }

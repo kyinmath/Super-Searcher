@@ -20,7 +20,7 @@ inline std::string GenerateUniqueName(const std::string &Root)
 	static uint64_t i = 0;
 	std::ostringstream NameStream;
 	NameStream << Root << ++i;
-	//console << "name is " << NameStream.str() << '\n';
+	//print("name is ", NameStream.str(), '\n');
 	return NameStream.str();
 }
 

@@ -67,7 +67,7 @@ void fuzztester(uint64_t iterations)
 		{
 			uint64_t result[3];
 			compile_returning_legitimate_object(result, (uint64_t)test_AST);
-			console << "results of user compile are " << result[0] << ' ' << result[1] << ' ' << result[2] << '\n';
+			print("results of user compile are ", result[0], ' ', result[1] , ' ' , result[2] , '\n');
 			auto func = (function*)result[0];
 			if (result[1] == 0)
 			{
@@ -92,16 +92,16 @@ void fuzztester(uint64_t iterations)
 			fuzztester_roots.push_back(test_AST);
 			if (fuzztester_roots.size() > max_fuzztester_size)
 				fuzztester_roots.pop_front();
-			console << fuzztester_roots.size() - 1 << "\n";
+			print(fuzztester_roots.size() - 1, "\n");
 			++hitcount[tag];
 		}
 		//else delete test_AST;
 		if (INTERACTIVE)
 		{
-			console << "Press enter to continue\n";
+			print("Press enter to continue\n");
 			std::cin.get();
 		}
-		console << "\n";
+		print("\n");
 		if ((generate_random() % (GC_TIGHT ? 1 : 30)) == 0)
 			start_GC();
 	}
@@ -160,7 +160,7 @@ class source_reader
 				input.ignore(1);
 				next_char = input.peek();
 			}
-			//console << "word is " << word << "|||\n";
+			//print("word is ", word, "|||\n");
 			return word;
 		}
 	}
@@ -171,7 +171,7 @@ class source_reader
 		string first = continued_string == "" ? get_token() : continued_string;
 		if (first != string(1, '[')) //it's a name reference.
 		{
-			//console << "first was " << first << '\n';
+			//print("first was ", first, '\n');
 			auto AST_search = ASTmap.find(first);
 			//check(AST_search != ASTmap.end(), string("variable name not found: ") + first);
 			if (AST_search == ASTmap.end())
@@ -189,7 +189,7 @@ class source_reader
 		uAST* new_type_location = new_AST(AST_type, previous_AST, dummy_uASTs); //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
 
 
-		if (READER_VERBOSE_DEBUG) console << "AST tag was " << AST_type << "\n";
+		if (READER_VERBOSE_DEBUG) print("AST tag was ", AST_type, "\n");
 		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
 
 
@@ -241,8 +241,8 @@ class source_reader
 
 		if (READER_VERBOSE_DEBUG)
 		{
-			console << "next char is" << (char)input.peek() << input.peek();
-			console << '\n';
+			print("next char is", (char)input.peek(), input.peek());
+			print('\n');
 		}
 		return new_type_location;
 	}
@@ -293,7 +293,7 @@ std::array<uint64_t, 2> compile_string(std::string input_string)
 {
 	std::stringstream div_test_stream;
 	div_test_stream << input_string << '\n';
-	if (VERBOSE_DEBUG) console << input_string << '\n';
+	if (VERBOSE_DEBUG) print(input_string, '\n');
 	source_reader k(div_test_stream, '\n');
 	uAST* end = k.read();
 	check(end != nullptr, "failed to make AST");
@@ -328,7 +328,7 @@ void cannot_compile_string(std::string input_string)
 {
 	std::stringstream div_test_stream;
 	div_test_stream << input_string << '\n';
-	if (VERBOSE_DEBUG) console << input_string << '\n';
+	if (VERBOSE_DEBUG) print(input_string, '\n');
 	source_reader k(div_test_stream, '\n');
 	uAST* end = k.read();
 	check(end != nullptr, "failed to make AST");
@@ -355,26 +355,29 @@ void test_suite()
 	//random value. then check that (x / k) * k + x % k == x
 	compile_verify_string("[system1 [imv 2]]a [subtract [add [multiply [udiv a [imv 4]] [imv 4]] [urem a [imv 4]]] a]", u::integer, 0);
 	//looping until finiteness ends, increasing a value. tests storing values
-	compile_verify_string("[imv 0]b [label]a [store [pointer b] [increment b]] [goto a] [concatenate b]", u::integer, FINITENESS_LIMIT);
+	compile_verify_string("[imv 0]b [label]a [store b [increment b]] [goto a] [concatenate b]", u::integer, FINITENESS_LIMIT);
 
 
 	//loading from dynamic objects. a single-object dynamic pointer, pointing to an int.
-	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store [pointer ret] subobj] [store [pointer empty] subobj]]subobj [concatenate ret]", u::integer, 40);
+	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store ret subobj] [store empty subobj]]subobj [concatenate ret]", u::integer, 40);
 	//try to load the next object. it should return nothing.
-	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store [pointer ret] subobj] [store [pointer empty] subobj]]subobj [concatenate empty]", u::dynamic_pointer, 0);
+	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store ret subobj] [store empty subobj]]subobj [concatenate empty]", u::dynamic_pointer, 0);
 
 	//again, try to load from dynamic objects. this time, a concatenation of two objects. load the int from the concatenation, then write it.
-	compile_verify_string("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer ret]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store [pointer ret] subobj] [label] [label] [label] [label] [store [pointer empty] subobj]]subobj [concatenate ret]", u::integer, 40);
+	compile_verify_string("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer ret]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store ret subobj] [label] [label] [label] [label] [store empty subobj]]subobj [concatenate ret]", u::integer, 40);
 	//load the pointer from the concatenation
-	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer ret]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 1] [store [pointer ret] subobj] [label] [label] [label] [label] [store [pointer empty] subobj]]subobj [concatenate empty]", u::dynamic_pointer);
+	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer ret]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 1] [store ret subobj] [label] [label] [label] [label] [store empty subobj]]subobj [concatenate empty]", u::dynamic_pointer);
 	//load the dynamic pointer from the concatenation
-	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [dynamify [pointer ret]]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 1] [store [pointer ret] subobj] [store [pointer empty] subobj]]subobj [concatenate empty]", u::dynamic_pointer);
+	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [dynamify [pointer ret]]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 1] [store ret subobj] [store empty subobj]]subobj [concatenate empty]", u::dynamic_pointer);
 
 	//loading a subobject from a concatenation, as well as copying across fields of a concatenation
 	compile_verify_string("[concatenate [imv 20]a [increment a]]co [load_subobj [pointer co] [imv 1]]", u::integer, 20 + 1);
 
 	//goto forward. should skip the second store, and produce 20.
-	compile_verify_string("[imv 0]b [label {[store [pointer b] [imv 20]] [goto a] [store [pointer b] [imv 40]]}]a [concatenate b]", u::integer, 20);
+	compile_verify_string("[imv 0]b [label {[store b [imv 20]] [goto a] [store b [imv 40]]}]a [concatenate b]", u::integer, 20);
+
+	//basic testing of if statement
+	compile_verify_string("[zero]k [imv 1]b [if k k b]", u::integer, 1);
 
 	//clear old unused stack allocas
 	compile_string("[label {[imv 40]a [label]}] [label {a [label]}]");
@@ -382,6 +385,8 @@ void test_suite()
 	compile_string("[concatenate {[imv 40]a [label]} {a [label]}]");
 	//can't get a pointer to ant, which has stack_degree == 2
 	cannot_compile_string("[concatenate [imv 40]ant [pointer ant]]");
+	//can't get a reference to ant either.
+	cannot_compile_string("[concatenate [imv 40]ant [store ant [imv 40]]]");
 
 
 	compile_string("[run_function [compile [convert_to_AST [system1 [imv 2]] [label] {[imv 0]v [dynamify [pointer v]]}]]]");
@@ -486,12 +491,12 @@ int main(int argc, char* argv[])
 		while (1)
 		{
 			source_reader k(std::cin, '\n'); //have to reinitialize to clear the ASTmap
-			console << "Input AST:\n";
+			print("Input AST:\n");
 			uAST* end = k.read();
-			if (READER_VERBOSE_DEBUG) console << "Done reading.\n";
+			if (READER_VERBOSE_DEBUG) print("Done reading.\n");
 			if (end == nullptr)
 			{
-				console << "it's nullptr\n";
+				print("it's nullptr\n");
 				std::cin.get();
 				continue;
 			}

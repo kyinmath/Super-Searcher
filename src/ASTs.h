@@ -101,7 +101,7 @@ constexpr AST_info AST_descriptor[] =
 	{"udiv", T::integer, T::integer, T::integer},
 	{"urem", T::integer, T::integer, T::integer},
 	a("pointer", special_return).add_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
-	a("concatenate", special_return).add_pointer_fields(2), //squashes two objects together to make a big object
+	a("concatenate", special_return, parameter_no_type_check, parameter_no_type_check), //squashes two objects together to make a big object
 	{"dynamify", T::dynamic_pointer, parameter_no_type_check}, //turns a regular pointer into a dynamic pointer. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
 	a("compile", T::function_pointer, T::AST_pointer), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
 	{"run_function", T::dynamic_pointer, T::function_pointer},
@@ -126,7 +126,7 @@ constexpr AST_info AST_descriptor[] =
 	//{"return", T::special_return, T::parameter_no_type_check}, have to check that the type matches the actual return type. call all dtors. we can take T::does_not_return, but that just disables the return.
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
-	{ "divss", 3 }, warning: integer division by -1 must be considered. (1 << 31) / -1 is segfault.
+	{ "divss", 3 }, warning: integer division by -1 must be considered. (1, 31) / -1 is segfault.
 	{ "less", 2 },
 	{ "lteq", 2 },
 	{ "less signed", 2 },

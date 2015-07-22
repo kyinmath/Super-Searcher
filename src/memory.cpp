@@ -75,13 +75,13 @@ uint64_t* allocate(uint64_t size)
 		{
 			if ((*check_value != collected_special_value) && (*check_value != initial_special_value))
 			{
-				console << "tried to allocate still-living memory with value " << *check_value << " at " << check_value << '\n';
+				print("tried to allocate still-living memory with value ", *check_value, " at ", check_value, '\n');
 				error("");
 			}
 		}
 	}
 
-	if (VERBOSE_GC) console << "allocating region " << found_place << " size, " << size << '\n';
+	if (VERBOSE_GC) print("allocating region ", found_place, " size, ", size, '\n');
 	return found_place;
 }
 
@@ -104,10 +104,10 @@ function* allocate_function()
 			function_pool_flags[x] |= bit_mask;
 			if (VERBOSE_GC)
 			{
-				console << "returning allocation " << &function_pool[x * 64 + offset] << " with number " << x * 64 + offset << '\n';
-				console << "the mask was " << mask << '\n';
-				console << "the bit mask was " << bit_mask << '\n';
-				console << "offset was " << offset << '\n';
+				print("returning allocation ", &function_pool[x * 64 + offset], " with number ", x * 64 + offset, '\n');
+				print("the mask was ", mask, '\n');
+				print("the bit mask was ", bit_mask, '\n');
+				print("offset was ", offset, '\n');
 			}
 			return &function_pool[x * 64 + offset];
 		}
@@ -123,13 +123,13 @@ void initialize_roots()
 {
 	for (auto& root_type : unique_type_roots)
 		to_be_marked.push(std::make_pair((uint64_t*)root_type.val, get_Type_full_type(root_type)));
-	//console << "outputting all types in hash table\n";
+	//print("outputting all types in hash table\n");
 	//for (auto& type : type_hash_table)
 	//	output_type(type);
 
 	for (auto& root_AST : fuzztester_roots)
 	{
-		console << "gc root AST at " << root_AST << '\n';
+		print("gc root AST at ", root_AST, '\n');
 		to_be_marked.push(std::make_pair((uint64_t*)root_AST, get_AST_full_type(root_AST->tag)));
 	}
 
@@ -144,10 +144,10 @@ void start_GC()
 		uint64_t total_memory_use = 0;
 		for (auto& x : free_memory)
 		{
-			console << "before GC: memory slot " << x.second << " size " << x.first << '\n';
+			print("before GC: memory slot ", x.second, " size ", x.first, '\n');
 			total_memory_use += x.first;
 		}
-		console << "total free before GC " << total_memory_use << '\n';
+		print("total free before GC ", total_memory_use, '\n');
 	}
 	sweep_function_pool_flags = new uint64_t[function_pool_size / 64]();
 	check(living_objects.empty(), "need to start GC with an empty tree");
@@ -159,29 +159,29 @@ void start_GC()
 		//instead, after we grab a task, we take it off the stack.
 		if (VERBOSE_GC)
 		{
-			console << "GC marking " << k.first << " ";
+			print("GC marking ", k.first, " ");
 			output_type(k.second);
-			console << "the size of the marking stack before marking is " << to_be_marked.size() << '\n';
+			print("the size of the marking stack before marking is ", to_be_marked.size(), '\n');
 		}
 		marky_mark(k.first, k.second);
 	}
 	if (VERBOSE_GC)
 	{
 		for (auto& x : living_objects)
-			console << "living object " << x.first << " size " << x.second << '\n';
+			print("living object ", x.first, " size ", x.second, '\n');
 	}
-	//console << "outputting unique types\n";
+	//print("outputting unique types\n");
 	//for (Tptr const & unique_type : type_hash_table) //clear the hash table of excess elements
 	//	output_type(unique_type);
-	//console << "done outputting unique types\n";
+	//print("done outputting unique types\n");
 	/*
 	//this doesn't work, since the erasure invalidates the iterator completely.
 	for (Tptr const & unique_type : type_hash_table) //clear the hash table of excess elements
 	{
-		console << "checking unique type " << unique_type << '\n';
+		print("checking unique type ", unique_type, '\n');
 		if (living_objects.find((uint64_t*)unique_type) == living_objects.end())
 		{
-			console << "erasing it\n";
+			print("erasing it\n");
 			uint64_t erased = type_hash_table.erase(unique_type);
 			check(erased == 1, "erased wrong number of elements");
 		}
@@ -202,10 +202,10 @@ void start_GC()
 		uint64_t total_memory_use = 0;
 		for (auto& x : free_memory)
 		{
-			console << "after GC: memory slot " << x.second << " size " << x.first << '\n';
+			print("after GC: memory slot ", x.second, " size ", x.first, '\n');
 			total_memory_use += x.first;
 		}
-		console << "total free after GC " << total_memory_use << '\n';
+		print("total free after GC ", total_memory_use, '\n');
 	}
 
 }
@@ -218,10 +218,10 @@ void marky_mark(uint64_t* memory, Tptr t)
 	living_objects.insert({memory, get_size(t)});
 	if (t.ver() == Typen("con_vec"))
 	{
-		//console << "marking convec\n";
+		//print("marking convec\n");
 		for (auto& subt : Type_pointer_range(t))
 		{
-			//console << "marking memory " << memory << " with value " << *memory << '\n';
+			//print("marking memory ", memory, " with value ", *memory, '\n');
 			//output_type(subt);
 			mark_single_element(memory, subt);
 			memory += get_size(subt);
@@ -232,7 +232,7 @@ void marky_mark(uint64_t* memory, Tptr t)
 
 void mark_single_element(uint64_t* memory, Tptr t)
 {
-	//console << "marking single " << memory << '\n';
+	//print("marking single ", memory, '\n');
 	check(memory != nullptr, "passed 0 memory pointer to mark_single");
 	check(t != 0, "passed 0 type pointer to mark_single");
 	switch (t.ver())
@@ -293,8 +293,8 @@ void sweepy_sweep()
 		if (VERBOSE_GC)
 		{
 			if (memory_incrementor != ending_location)
-				console << "memory available from " << memory_incrementor << " to " << ending_location << '\n';
-			else console << "no mem available at " << memory_incrementor << '\n';
+				print("memory available from ", memory_incrementor, " to ", ending_location, '\n');
+			else print("no mem available at ", memory_incrementor, '\n');
 		}
 		if (ending_location != memory_incrementor)
 		{
@@ -311,7 +311,7 @@ void sweepy_sweep()
 	if (memory_incrementor != &big_memory_pool[pool_size]) //the final bit of memory at the end
 	{
 		if (VERBOSE_GC)
-			console << "last memory available starting from " << memory_incrementor << '\n';
+			print("last memory available starting from ", memory_incrementor, '\n');
 		if (DEBUG_GC)
 		{
 			check(memory_incrementor < &big_memory_pool[pool_size], "memory incrementor past the end");
@@ -328,11 +328,11 @@ void sweepy_sweep()
 		uint64_t diffmask = function_pool_flags[x] - sweep_function_pool_flags[x];
 		if (diffmask)
 		{
-			if (VERBOSE_GC) console << "diffmask " << diffmask << '\n';
+			if (VERBOSE_GC) print("diffmask ", diffmask, '\n');
 			for (uint64_t offset = 0; offset < 64; ++offset)
 				if (diffmask & (1ull << offset))
 				{
-					if (VERBOSE_GC) console << "offset is " << offset << ' ';
+					if (VERBOSE_GC) print("offset is ", offset, ' ');
 					function_pool[x * 64 + offset].~function();
 				}
 			function_pool_flags[x] = sweep_function_pool_flags[x];

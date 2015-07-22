@@ -26,7 +26,7 @@ std::pair<Tptr, bool> get_unique_type_internal(Tptr model, bool can_reuse_parame
 
 	if (UNIQUE_VERBOSE_DEBUG)
 	{
-		console << "type of original model ";
+		print("type of original model ");
 		output_type(model);
 	}
 	check((model != 0) && ((uint64_t)model != Typen("pointer")), "our optimization is failing");
@@ -42,7 +42,7 @@ std::pair<Tptr, bool> get_unique_type_internal(Tptr model, bool can_reuse_parame
 	{
 		if (UNIQUE_VERBOSE_DEBUG)
 		{
-			console << "uniquefying subfield " << counter << '\n';
+			print("uniquefying subfield ", counter, '\n');
 		}
 		auto result = get_unique_type_internal(pointer, can_reuse_parameter);
 		create_new_for_sure |= result.second;
@@ -51,7 +51,7 @@ std::pair<Tptr, bool> get_unique_type_internal(Tptr model, bool can_reuse_parame
 	}
 	if (UNIQUE_VERBOSE_DEBUG)
 	{
-		console << "type of temporary model ";
+		print("type of temporary model ");
 		output_type(model);
 	}
 
