@@ -1,0 +1,66 @@
+ok, now we must figure out how to write into dynamic pointers.
+	the thing to note is that the writing check is mainly done AFTER all the work of creating the object to be written.
+in addition, I think by the time you're writing into something, you already basically know what the underlying object is.
+
+how is writing into pointers going to work?
+
+idea: dyn_subobj doesn't load a pointer precisely, but it loads a reference. like stack_degree == 2. so you can write into it after all.
+	the problem is that this is equivalent to getting subobject pointers. and that's not allowed to happen.
+	but...it's cheap. and it's what we want to have happen. so, are we going to resurrect lifetime values?
+
+
+ok, so my new idea is: we operate things like references.
+	1. no getting permanent references to them. only [store] is allowed to get super-temporary references to them.
+then, what happens if the object itself is a pointer? you might be loading it as either a pointer or a reference...
+	unless we simply disallow this from happening, or something?
+
+the barrier here is that we can't specify arbitrary destinations to be stored into. with references, the destinations are fixed for each store location.
+	idea: if it already exists in the objects map, it's a reference.
+	then, if it doesn't exist in the objects map, it's a pointer. however, this is no good, because it forces you to build the pointer right then.
+
+sure, this is looking good...idea: store() doesn't take in pointers at all. it always takes in references.
+	and to build references from pointers, you must dereference them first. just like in C++.
+
+sure, and we can "hide" the reference in Return_Info. so if you're trying to get a pointer to something, it'll return a pointer to the temporary. but getting a reference will actually see the correct location.
+	problem: if hidden_reference is a pointer to a memory allocation, and the memory gets cast to full, your pointer is now invalid.
+benefit: having these "mini" references, that are only used for store(), means that we don't need the general overhead of knowing your object has been aliased.
+	which means we can get subobject "pointers", which lets us store into things that wouldn't be possible otherwise.
+
+basically: store() now automatically raises objects into pointers, whenever necessary. this means that pointer() is no longer necessary. and it means that we don't have to worry about arbitrary pointers messing everything up.
+
+but: what happens when hidden references collide with stack_degree == 2?
+	I think the hidden references ought to win. if so, we still disallow you from getting pointers to it.
+	the only thing that benefits from stack_degree == 2 is being able to get pointers to it. to do that, you can use concatenate() to wipe out the hidden reference. but you can't get a hidden reference back.
+what about something like get_offset_AST? you're loading an AST location. however, it might be 0 instead. in that case, you definitely shouldn't be allowed to get anything.
+	loading from functions definitely is not allowed to get references (they can only be modified in special ways)
+	getting offsets from Types is definitely not allowed to get references (they're immut!)
+
+
+
+load_subobj should also take references, not pointers.
+
+idea: when returning a specific spot, you should turn hidden_references on.
+	this tells finish() that it should continue with hidden_references, and should not turn it into a separate memory_allocation, and that it should use the one provided.
+
+reference is basically a lvalue.
+
+
+no matter what the object ends up as, it's always going into the new_objects stack (so that you can copy).
+then, even if we take a Return Info which has active IR, and place it into a stack_degree == 2 location, we won't be able to refer to it. because the AST names will collide.
+
+
+so, this is because the loading gets deferred until you've left the BB. is it really ok to defer loading like this? perhaps the loading might bypass some other function that has an effect?
+no, it isn't ok. and the solution is: we grab the value by running IR().
+	the reason is that if you have a reference in the first branch, you better acquire it fast before the second branch runs.
+
+the problem is, this is an issue for all other commands as well, not just if().
+	perhaps the real solution is just to emit immediately. but then, when do we decide to use the existing value, and when do we decide to load freshly?
+	when we want to copy using new_objects, for example if we are referencing a previously-created thing, we load.
+	when we generate an AST normally, we load.
+	when we copy in any other way, we don't load.
+	perhaps on every creation of the Return_Info, we re-emit the IR. but we don't have tail call optimization/guaranteed copy elision, so passthrough would be a mess...
+basically, it's on creation of usage of a reference. copying creates a usage. the initial load creates a usage.
+
+idea: if we can guarantee that each return_info has its own, private Value, or something like that, then we can set up a dtor to erase the emitted loadinst if it's not used.
+	IR() can mark the loadinst as used.
+	let's just rely on the optimizer though. that's far easier and safer.

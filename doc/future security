@@ -40,3 +40,11 @@ idea: fuzzing to obfuscate. suppose I only want my code to run on a specific, va
 	the other calls should all give sort-of viable information.
 	the goal is to mask the initial input - you're feeding it into something that returns basically garbage. but in that sense, it's like a hash function...
 		better if you can access random memory this way. so you could potentially call any function. but then the adversary can trace the execution of your function.
+
+
+
+RDRAND is not the only source of randomness used for /dev/random.  It was at one point, but that's because the Intel engineers pushed a patch into the kernel.  Matt Mackall, the previous /dev/random maintainer, claimed to have "objected strenuously", but I saw no evidence of that in any of the mailing lists archives (and I do monitor LKML, so I should have seen it).
+Bottom line is I don't think there was any malice.  The Intel folks were sure that RDRAND was perfect, and they honestly thought their changes were an improvement.  (They still do, and they're unhappy that I reverted that change.)   I'm a bit annoyed that if Matt resigned, or "objected strenuously", it appears from my perspective to have been done in a very passive-aggressive manner, and for him to make himself as the martyr who tried and failed to stop those dastardly Intel folks was a bit over the top IMHO.
+	RDRAND was backdoored, and then was made as the only source of entropy. 
+
+while I was at Yosemite at a team-building event for my department at $WORK, I caught an attempted MITM attack against all connections between the Tenaya Lodge and all of MIT's centrally-managed IMAP servers (PO*.MIT.EDU).   How did I catch it? Because my IMAP client (http://isync.sourceforge.net) uses certificate pinning, and I investigated by using openssl s_client and dumping the (badly) forged certificate for po14.mit.edu

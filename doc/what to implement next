@@ -1,27 +1,11 @@
-we can make two constructors for ReturnInfo, instead of requiring that exactly one field be nullptr
 
-test that removing the fuzzer actually deletes the symbols we want to delete
 remove special_fields from the AST_descriptor
 move the fuzzer into AST format
 	getting types of ASTs
 		which requires being able to look at types.
 	how to figure out the internals of dynamic objects? since we don't have function parameters, we'll need to use global pointers to pass data.
-4. convert dynamic pointer, to dynamic object containing a pointer. this is necessary for static objects.
-acquisition of Type and AST values
-overwriting ASTs?
-changing type pointers. we want to remove the extra indirection.
-change GC to handle offset pointers
-
-pointer offsets/type slicing
-	should this load the object, or simply return a pointer?
-	for ASTs, you might want to store them. so a pointer would work. however, what if we want to change the AST's tag later? but changing tags might not work because you'd have to resize. so pointer-to-AST-pointer is fine. but if we return null, you're fucked, because regular pointers can't be 0.
-	for Types, you might as well load. they're immutable anyway.
-	for dynamic pointers, if we load, then...you'd need a store_N. and you'd also have to copy the dynamic pointer, in case the dynamic pointer changed in the middle.
-		but if we can't get offset pointers, 
-
-if we have a dynamic pointer, how do we extract information from it?
-	remember that we can't return a 0 pointer. so it won't be a guaranteed function.
-we can do a switch case. however, what will happen if we ever add a type?
+test coverage. we need to know that all ASTs are run. for example, load_tag doesn't have any coverage.
+snapshots? judgment MUST iterate very quickly. for example, when swinging a tennis racquet, you readjust after every shot.
 
 suppose we have a compiled function. it points to an AST. when the function dies, should we really unimmut the old ASTs? is that at all useful?
 	yeah, it's vital. we don't want to create new copies all the time. and we use compilation as error_checking, so we compile a function many times as we create it.
@@ -43,7 +27,5 @@ this system means we can't delete elements from the end of a vector...except we 
 
 we must always consider bootstrap issues. for example, how to make a function that returns compiled functions with fixed type?
 	if there's no guaranteed mechanism, then such a function would need a static object to substitute. and it's unlikely the judgment function is able to construct these dynamic objects on the fly.
-
-unlike loading from a dynamic object, writing doesn't necessarily have to succeed.
 
 how do we ever get a regular pointer from a dynamic pointer?

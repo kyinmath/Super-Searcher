@@ -34,6 +34,9 @@ cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_ASSERTIONS=On
 then make install lld?
 
 
+sudo apt-get install libcrypto++-dev libcrypto++-doc libcrypto++-utils
+
+
 
 For my project:
 

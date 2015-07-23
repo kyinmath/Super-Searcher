@@ -3,19 +3,16 @@ Advanced AST modification:
 2. we must use the junk information to make decisions. so we can't just store the junk information in a vector; we must also centralize some information like "best place to split"
 for encryption breaking, we have two options. we can either do things like llvm's optimization passes: one set of functions generates analysis, and another does the work. horizontal splitting.
 the other option is vertical splitting. every function both does work and does analysis. and then we have many of these functions.
-	the second option is much better. when something goes wrong or right, we know exactly who to blame. and, we can run many functions in parallel, then boost the ones that work. this is just like the human immune system.	
+	the second option is much better. when something goes wrong or right, we know exactly who to blame. and, we can run many functions in parallel, then boost the ones that work. this is just like the human immune system.
 
+honest communication is important between users. honesty should be enforceable
+users rank the other users by giving them numbers, like points. then, the total number of points is divided, to normalize.
+	users who fall below a certain threshold are wiped, then replaced by the user with the highest points.
+to judge the number of points, users grade performance by applying it to a monotonic curve.	
+	users also take into consideration others' ratings, as a long term game. this is to prevent gaming the system with tit-for-tat, which then leads to political parties.
 
-Revolution and kingship. necessary, because judgment can't repair itself.
 eventually, we'll want some kind of sexual reproduction. well, that's hard.
 	it's easy if users can communicate by sending big objects to each other. (in this case, the important thing is to know the total size of the object)
-
-
-random generation:
-random generation ought to produce useful things.
-that is, successful things should be reinforced. roll a random number to check if you should duplicate. (use a fixed random number generator, like adding together previous progress)
-	that means you should store your running history.
-things that are unsuccessful should be marginalized. that includes AST makers that consistently fail to produce valid ASTs.
 
 
 We have backpropagation judgment.

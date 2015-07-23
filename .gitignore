@@ -194,3 +194,4 @@ toy
 /core
 /orc-vs-mcjit-benchmark-for-memory
 /virtual/core
+*.ini

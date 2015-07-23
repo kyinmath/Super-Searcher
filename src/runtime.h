@@ -296,3 +296,15 @@ inline std::array < uint64_t, 2> load_imv_from_AST(uAST* p)
 	else if (p->tag != 0) return{{0, 0}};
 	else return{{p->fields[0].num, p->fields[1].num}};
 }
+
+
+inline uint64_t AST_tag(uAST* p)
+{
+	if (p == 0) return ~0ull;
+	else return p->tag;
+}
+
+inline uint64_t type_tag(Tptr p)
+{
+	return p.ver();
+}

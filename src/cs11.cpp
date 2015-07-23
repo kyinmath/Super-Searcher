@@ -359,7 +359,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 
 		//check that the type matches.
-		if (AST_descriptor[target->tag].parameter_types[x].state != parameter_no_type_check) //for fields that are compiled but not type checked
+		if (AST_descriptor[target->tag].parameter_types[x].state != compile_without_type_check) //for fields that are compiled but not type checked
 		{
 			if (get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false) == u::does_not_return)
 				finish_special(nullptr, u::does_not_return); //just get out of here, since we're never going to run the current command anyway.
@@ -725,6 +725,17 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			llvm::Value* AST_result = builder->CreateCall(converter, arguments, s("converter"));
 
 			finish(AST_result);
+		}
+	case ASTn("load_tag"):
+		{
+			Tptr type_of_pointer = field_results[0].type;
+			if (type_of_pointer == 0) return_code(type_mismatch, 0);
+			switch (type_of_pointer.ver())
+			{
+			case Typen("type pointer"): finish(builder->CreateCall(llvm_function(type_tag, llvm_i64(), llvm_i64()), field_results[0].IR));
+			case Typen("AST pointer"): finish(builder->CreateCall(llvm_function(AST_tag, llvm_i64(), llvm_i64()), field_results[0].IR));
+			default: return_code(type_mismatch, 0);
+			}
 		}
 	case ASTn("load_imv_from_AST"):
 		{

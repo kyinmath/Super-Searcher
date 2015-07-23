@@ -1,0 +1,23 @@
+to seed:
+simply ask the user to input junk on his keyboard. then run the generator once, take some more junk from the keyboard, and then xor. this solves the problem. bias is eliminated by the single generator run.
+
+encryptor AST: feed it the number of outputs you want.
+	for now, by default, it has 10 visible nodes, and 10 hidden nodes. and, it makes sure that every node is touched at least once.
+	operations:
+		1. add/subtract
+		2. swap
+		3. multiply, then divide by (1)
+		4. branch
+		5. increment/decrement
+		5. multiply by (1), then divide.
+	array operations? like shifting things around
+is this realistic, though? real life has the property that numbers never grow too large. but multiplication can cause troubles with huge overflows, thus spilling every single number to be very large.
+	solution: after every pass, we run some normalization function. maybe logarithm.
+
+
+
+
+is our encryption scheme sufficient? we don't want to end up with something stupid like cube boxes, which are only good for low-degree polynomials.
+	logarithm is good? the encryption scheme is equivalent to a fixed-degree polynomial. we know log will quench anything that tries to run away.
+how do we prevent things from settling down?
+	we need constant sources of random information. this will come from a true source of encryption (AES)

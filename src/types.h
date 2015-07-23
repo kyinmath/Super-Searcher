@@ -18,9 +18,10 @@ What AST_descriptor[] does is utilize this constructor to build a rich descripti
 Type_descriptor[] works similarly, using the enum-like class Type_info. Looking at the constructor for Type_info, we see that the first argument is the type name, the second type is the number of pointer fields each Type requires, and the third type is the size of the object that the Type describes.
 For example, { "cheap pointer", 1, 1 } tells us that there is a Type that has name "cheap pointer" (the first argument), and its first field is a pointer to a Type that describes the object that is being pointed to (the second argument), and the size of the pointer is 1 (the third argument).
 
-The class AST_info has some other functions, which are mainly for special cases. For example, the "if" AST should not have its fields automatically converted to IR, because it needs to build basic blocks before it can emit the IR in the correct basic block. Moreover, its return value is not known beforehand - it depends on its "then" and "else" fields. Therefore, its return value is "special_return", indicating that it cannot be treated in the usual way. Since its fields cannot be automatically compiled, its parameter types are left blank, and the function "make_pointer_fields" is applied instead. This says that the fields are there, but that IR should not be automatically generated for them.
+The class AST_info has some other functions, which are mainly for special cases. For example, the "if" AST should not have its fields automatically converted to IR, because it needs to build basic blocks before it can emit the IR in the correct basic block. Moreover, its return value is not known beforehand - it depends on its "then" and "else" fields. Therefore, its return value is "special_return", indicating that it cannot be treated in the usual way. Since its fields cannot be automatically compiled, its parameter types are left blank, and the function "add_pointer_fields" is applied instead. This says that the fields are there, but that IR should not be automatically generated for them.
 
-Later, we'll have some ASTs that let the user actually query this information.
+
+NOTE: the "-1" tag is currently used for nullptr, for both Types and ASTs. this makes it appropriate to get a -1 tagged AST, which will appropriately return nullptr. I think this is safer than returning 0, which might cause collisions somewhere with the true 0-tag objects.
 */
 
 #pragma once
@@ -131,7 +132,8 @@ public:
 	uint64_t val; //public only because copy_type() wants it
 	uint64_t ver() const
 	{
-		if (val > Typen("never reached")) return *(uint64_t*)val; //we're making a huge ABI assumption here, that pointers can't go near 0.
+		if (val == 0) return ~0ull;
+		if (val > Typen("never reached")) return *(uint64_t*)val; //we're making a huge ABI assumption here, that pointers can't go near 0. also, 0 represents both concatenate and nullptr.
 		else return val;
 	}
 	Tptr& field(uint64_t offset) const {

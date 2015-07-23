@@ -1,0 +1,12 @@
+our if handling is not right.
+in the branch, you can get a pointer to one of the possible types.
+	but it might RVO into a different type. you're left holding a pointer that's not valid.
+
+so no stack_degree == 1.
+
+
+
+
+[concatenate [imv 1] [imv 2]]
+	causes a ridiculous amount of GEPs when RVOing. in contrast, if we don't RVO, it's a simple "ret [2 x i64] [i64 1, i64 2]"
+	in the case of concatenate, stack_degree 2, there's no point in RVO into an existing slot. because you have to load it out from the slot anyway, one at a time.

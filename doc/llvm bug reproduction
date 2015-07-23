@@ -1,0 +1,3 @@
+how do detect bugs in the optimization:
+1. run the program once
+2. log everything that isn't deterministic. for example, the seed to the RNG, and then every call to the time() function.

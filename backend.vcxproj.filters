@@ -36,9 +36,6 @@
     <ClInclude Include="src\helperfunctions.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\lock.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="src\memory.h">
       <Filter>Source Files</Filter>
     </ClInclude>

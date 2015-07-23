@@ -405,7 +405,7 @@ int main(int argc, char* argv[])
 
 	std::unique_ptr<llvm::TargetMachine> TM_backer(llvm::EngineBuilder().selectTarget());
 	TM = TM_backer.get();
-	KaleidoscopeJIT c_holder(TM); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution. however, later we'll need to move this into each thread.
+	KaleidoscopeJIT c_holder(TM); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution
 	c = &c_holder;
 
 	bool BENCHMARK = false;
