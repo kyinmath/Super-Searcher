@@ -1,0 +1,21 @@
+cryptocpp:
+
+AutoSeededRandomPool rnd;
+// Generate a random key
+SecByteBlock key(0x00, AES::DEFAULT_KEYLENGTH);
+rnd.GenerateBlock( key, key.size() );
+// Generate a random IV
+byte iv[AES::BLOCKSIZE];
+rnd.GenerateBlock(iv, AES::BLOCKSIZE);
+
+
+
+
+to get 256 bits, note that we have 26 random letters = 5 bits per character.
+this means 50 characters.
+	realistically, we need 100 characters, since I have known patterns in typing.
+
+but the machine doesn't really need that security.
+instead, the parent machine can take in dev/urandom every once in a while to reseed things.
+
+question: OOM is going to be a problem. how do I force the OOM killer to kill the workers, instead of the admin?

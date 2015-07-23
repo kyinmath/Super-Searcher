@@ -84,6 +84,13 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 		FP();
 		return std::array < uint64_t, 2 > {{0, 0}};
 	}
+/*	else if (size_of_return >= 4)
+	{
+		auto FP = ((uint64_t*)(*)(uint64_t*))(void*)fptr;
+		uint64_t* k = FP(new uint64_t[size_of_return]);
+		output_array(&k[0], size_of_return);
+		return std::array < uint64_t, 2 > {{(uint64_t)return_type, (uint64_t)k}};
+	}*/
 	else //make a trampoline. this is definitely a bad solution, but too bad for us.
 	{
 		llvm::LLVMContext mini_context;
@@ -95,7 +102,7 @@ inline std::array<uint64_t, 2> run_null_parameter_function(uint64_t func_int)
 
 		std::string function_name = GenerateUniqueName("");
 		Function *trampoline(Function::Create(func_type, Function::ExternalLinkage, function_name, M.get()));
-		trampoline->addFnAttr(Attribute::NoUnwind); //7% speedup. and required to get Orc not to leak memory, because it doesn't unregister EH frames
+		trampoline->addFnAttr(Attribute::NoUnwind); //7% speedup. required to stop Orc from leaking memory, because it doesn't unregister EH frames
 
 
 		BasicBlock *BB(BasicBlock::Create(*context, "entry", trampoline));
@@ -136,10 +143,7 @@ inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_type, uint64_t
 	Tptr type[2] = {(Tptr)first_type, (Tptr)second_type};
 
 	uint64_t size[2];
-	for (int x : { 0, 1 })
-	{
-		size[x] = get_size((Tptr)type[x]);
-	}
+	for (int x : { 0, 1 }) size[x] = get_size((Tptr)type[x]);
 	if (size[0] + size[1] == 0) return {{0, 0}};
 	uint64_t* new_dynamic = allocate(size[0] + size[1]);
 	for (uint64_t idx = 0; idx < size[0]; ++idx) new_dynamic[idx] = pointer[idx];

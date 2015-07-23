@@ -2,9 +2,10 @@
 #include "types.h"
 #include "ASTs.h"
 #include "orc.h"
+#include <iomanip>
 
 //function in clouds has a pointer to this object.
-
+constexpr bool OUTPUT_ASSEMBLY = true;
 extern bool VERBOSE_GC;
 struct function
 {
@@ -17,8 +18,16 @@ struct function
 	std::unique_ptr<llvm::LLVMContext> context;
 	//todo: finiteness
 	//function() { the_AST = (uAST*)(this - 1); return_type = (Tptr)(this + 1); } //initializing the doubly-linked list.
-	function(uAST* a,Tptr r,Tptr p, void* f, KaleidoscopeJIT* j, KaleidoscopeJIT::ModuleHandleT m, std::unique_ptr<llvm::LLVMContext> c)
-		: the_AST(a), return_type(r), parameter_type(p), fptr(f), thread_jit(j), result_module(m), context(std::move(c)) {}
+	function(uAST* a, Tptr r, Tptr p, void* f, KaleidoscopeJIT* j, KaleidoscopeJIT::ModuleHandleT m, std::unique_ptr<llvm::LLVMContext> c)
+		: the_AST(a), return_type(r), parameter_type(p), fptr(f), thread_jit(j), result_module(m), context(std::move(c))
+	{
+		if (OUTPUT_ASSEMBLY)
+			for (int x = 0; x < 100; ++x)
+			{
+				//unsigned is necessary
+				print(std::hex, std::setfill('0'), std::setw(2), (unsigned)((unsigned char*)f)[x]);
+			}
+	}
 	~function()
 	{
 		if (!DONT_ADD_MODULE_TO_ORC && !DELETE_MODULE_IMMEDIATELY)

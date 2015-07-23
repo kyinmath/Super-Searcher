@@ -2,7 +2,9 @@
 	1.1 higher judgment functions. the higher judgment function is a quine, and occasionally makes copies of itself. contains many copies of the same command, so that randomness doesn't suddenly run out (we don't want our user to become a Turing machine)
 		on new-user event, it runs on the directed judgment function.
 		on new-country event, it runs on itself.
-	1.2 directed judgment functions. how do we store information on each of these? every time we copy it, we ought to copy some comments...
+	1.2 random judgment. works once per encryption run. copies and mutates judgment functions. 
+	1.3 directed judgment functions. works like the immune system, many judgments per encryption run. tries to optimize by splitting and duplicating good efforts.
+	how do we store information on each of these? every time we copy it, we ought to copy some comments...
 		we store 2. if something is going horribly wrong, we revert it.
 
 1. big set of things (dynarray)
@@ -52,9 +54,24 @@ Function recombination: modification of existing functions. each step is repeate
 	2. randomly change some AST locations to other ASTs.
 	3. randomly load imv values. do some modification to them, by incrementing/decrementing them randomly (this should be passed off to another function)
 
+note: when splicing DNA, we can splice from a function to itself.
+	and some level of locality is good too.
+	for example, with the AST tags, you want to have lots of casework. in that case, ideal splicing involves making lots of if statements, one for each AST tag.
+	thus, we splice from a function to itself, and also from functions to nearby functions.
+
 judgment must constantly take in information from the rest of the user.
 	for example, when choosing an AST to make, it better outsource this capability.
 
+for ideas that we want to happen, we need to provide meaningful initial implementations. so: values get the old "first value is goodness, second value is information" trick. and then the user regresses on these.
+	so the anti-encryption breaker should provide a meaningful correlation, to correlate fields with other fields.
+	try to find patterns. if you do find a pattern, immediately duplicate yourself.
+		should the duplication be external or internal? external. because otherwise, when modifying, there's potential for cancer.
+	and we need to verify that the pattern actually is correctly found. so an external judge will score various different contestants.
+basically, here we're testing the judgment function for a single encryption test run (consisting of a single function, and a series of output numbers).
+	each judgment function owns a bunch of things.
+	and there are many judgment functions for the single encryption test run.
+
+how to stop cancer? probably by limiting the various sources of new things, randomly permuting them, and culling them whenever necessary.
 
 Model:
 	1. judgment runs a "testme" AST. this sets up the encryptor, which runs the default runner a lot.

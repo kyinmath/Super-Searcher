@@ -29,7 +29,12 @@
 	other user crash (maybe GC OOM, system OOM, or something)
 	generic running
 	message
+	vote called, for killing someone (is there a threshold to start voting? can anyone call a vote? maybe you need N votes)
 
+are votes anonymous, or completely private, or public? 
+	will public votes lead to voting blocs?
+	public votes will likely lead to tit for tat. but public votes also lead to feedback on voting quality (meaningful feedback? in a way, yes, if there is honest feedback)
+	maybe voting blocs can be stamped out.
 
 
 __dynamic object
@@ -41,12 +46,11 @@ __dynamic object
 ()get Nth element.
 
 
-How is country competition going to work? King is not very good, because it has problems with single-point-of-failure.
+How is country competition going to work?
 	we need a voting system.
-	however, some things require single point of contact. for example, controlling a machine, or competing against other countries.
+	this requires single point of contact. for example, controlling a machine, or competing against other countries.
+	but King has problems with single-point-of-failure. and isolation of knowledge - he's the only one who knows how to do things.
 		unfortunately, having only a single king around means he has no competition to improve himself. if the other subusers in a country want a better king, it's hard, because nobody else has experience with kingship.
-Country-wide judgment
-	Overwrite user with other user (if you overwrite yourself, the new person becomes the king)
 %Delete user (can be overwritten later). You can't delete yourself; somebody has to be the king.
 %delegate kingship
 %revolution, if you are not king.

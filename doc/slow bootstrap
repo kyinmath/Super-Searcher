@@ -26,7 +26,6 @@ It holds special consideration for judgment and essential functions. After each 
 	Especially, it likes to modify the relative activity of each type of judgment.
 	And, it will randomly modify/add the runnable function vectors.
 It tries to randomly add in memory dependencies, fires to random neurons, or coupled read-writes.
-It likes to increase complexity of a function if backpropagation is doing a lot of modification to it.
 It likes to change "probationary" functions, which are often created by expansion judgment.
 to change specific functions into other specific functions (maybe reading the judgment notes).
 Duplicate a function into two functions, then make the original function randomly choose one of the two targets

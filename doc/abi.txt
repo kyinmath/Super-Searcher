@@ -1,0 +1,19 @@
+[zero]
+zeros eax
+
+2 zeros
+1c031d2c3
+zeros eax, edx
+
+[concatenate [concatenate [zero] [zero]] [zero]]
+31c031d231c9c3
+zeros eax, edx, ecx
+
+
+[concatenate [concatenate [concatenate [zero] [zero]] [zero]] [zero]]
+QWORD storage. pass in the first pointer, write 0s to memory, then return that pointer.
+	(parameter in rdi, store 4 0s in rdi, copy rdi to rax, then return in rax)
+
+
+[concatenate [concatenate [concatenate [concatenate [zero] [zero]] [zero]] [zero]] [zero]]
+more QWORD storage.
