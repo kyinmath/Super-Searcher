@@ -2,7 +2,6 @@
 #include <memory>
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
 #include "llvm/ExecutionEngine/Orc/NullResolver.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"

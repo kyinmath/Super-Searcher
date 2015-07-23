@@ -91,8 +91,8 @@ user: on first UT failure, put the problematic delayed fire in a special locatio
 USER:
 	user should remember "snippets of code" and sort them by usefulness.
 forloop? because, to setup the incrementor, decrement it, and then check it, is all part of a single concept, that deserves to be in one place
-delayed function call + sending originating function address + maybe something else, like an identifier
-AES random value generator, using a thread-local value as input
-	AES with built-in modulo. Get a random number between 0 and N-1, without biases.
-	this is nonreconstructible.
 function judgment history
+
+cancer will probably be a problem. so the goodness functions, whatever they are, should generally not be modified by the immediate judgment functions.
+is an event-driven model good for everything, not just functions? for example, playing chess...
+	I guess so. we can still run many different models simultaneously. we will only have one goodness function though. each model competes to maximize the goodness function.

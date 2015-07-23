@@ -9,3 +9,33 @@ dynamic objects must be able to handle nullptr.
 	to support variable numbers of arguments, such as for convert_to_AST.
 
 null types are useful for function return types. and for scope().
+
+
+we could go back to our old pointer-to-pointer scheme... what benefits would it have?
+	1. every single type is single-sized.
+	2. dynamic pointers own their targets.
+
+
+
+
+
+
+
+dynamic objects vs dynamic pointers?
+	dynamic objects I think, mainly want to be overwritten.
+	ASTs actually want dynamic objects, not pointers.
+	recursive types want dynamic pointers.
+the main issue is that if there are dynamic objects, an object's size can't be inferred from just its type.
+
+
+dynamic object-in-pointer objects are absolutely useless. can't store them except at the end of a type. locally, they can just be optimized dynamic pointers.
+	but in terms of ownership semantics, dynamic owning pointers can be useful.
+	you can have actual vectors, and expand these vectors, etc.
+
+
+current problem: we don't have a deque.
+	what that means is that our fuzztester won't work the way we want it to, since we can't erase from the front.
+we're going to have this problem in the future as well. how do we discard elements from a dynamic pointer?
+	I think, the problem here is ownership semantics. if we get the target of a dynamic_pointer, we can't get other pointers to the internal of the vector anyway, because of our full stack thing. but we can get other pointers to the vector itself.
+on the other hand, if we had dynamic_object, then we'd be able to ensure that there was only ever one handler. then we'd be able to fiddle with the vector's size however we liked, by deleting from either end, expanding, etc.
+	but to do this, every time we copied a dynamic object, we'd have to call a copy constructor. no more transparent copies.
