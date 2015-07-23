@@ -20,3 +20,13 @@ Under moving, "Any object that uses its address for anything is suspect. For exa
 we don't actually need a complete moving GC. we can move just the elements whose addresses aren't fixed in functions, since we now know exactly which those are.
 	so we preserve bump allocation, locality, and everything.
 	however, vector expansion would need to be special.
+
+we prohibit GC during thread running, because references to dynamic objects may point to missing memory.
+
+how do dynamic objects (ownership dynamic pointer) and dynamic pointers interact with each other in the type system?
+	if we have an ownership dynamic pointer, we can't let it be seen as a dynamic pointer, because that will let people get excessive references to it.
+		but it can RVO into a normal dynamic pointer.
+	if we have a normal dynamic pointer, we can't let it be seen as an ownership dynamic pointer, because then you can delete from the front and back, which would destroy things.
+
+perhaps dynamic objects are still unified? so the internal type of the dynamic pointer is made differently if the type is owned.
+	however, this causes trouble because 

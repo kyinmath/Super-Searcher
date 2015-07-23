@@ -28,9 +28,12 @@ dynamic objects vs dynamic pointers?
 the main issue is that if there are dynamic objects, an object's size can't be inferred from just its type.
 
 
-dynamic object-in-pointer objects are absolutely useless. can't store them except at the end of a type. locally, they can just be optimized dynamic pointers.
+dynamic object-in-pointer objects don't fit in our type system. can't store them except at the end of a type. locally, they can just be optimized dynamic pointers.
 	but in terms of ownership semantics, dynamic owning pointers can be useful.
-	you can have actual vectors, and expand these vectors, etc.
+	you can have actual vectors, and expand and shrink these vectors.
+		but the problem is, you might have references to the insides of the objects when they are moved around.
+		so in that case, "deleting" from the back or the front still leaves the valid memory there; it'll still be a valid reference. it'll just be inaccessible.
+ASTs basically have dynamic objects, since they own them.
 
 
 current problem: we don't have a deque.
@@ -39,3 +42,10 @@ we're going to have this problem in the future as well. how do we discard elemen
 	I think, the problem here is ownership semantics. if we get the target of a dynamic_pointer, we can't get other pointers to the internal of the vector anyway, because of our full stack thing. but we can get other pointers to the vector itself.
 on the other hand, if we had dynamic_object, then we'd be able to ensure that there was only ever one handler. then we'd be able to fiddle with the vector's size however we liked, by deleting from either end, expanding, etc.
 	but to do this, every time we copied a dynamic object, we'd have to call a copy constructor. no more transparent copies.
+
+can the type of a dynamic object be next to the object, or must it be separated?
+	if we want erasure from the front, it must be separated.
+	we can't move the pointer along with the base of the object, because we rely on missing memory to keep references valid.
+	however, we can specify an offset. so: type, offset, object.
+		well, circular buffer might be nice, but the problem is that it becomes hard to reallocate. how do you tell the system that you want an entire reallocation? maybe the system tells you how much memory you have left whenever you add an element. so you can just expand to the end of the memory right away?
+what about turning dynamic pointers into pointer-to-dynamic-object?

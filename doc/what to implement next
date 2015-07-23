@@ -1,4 +1,5 @@
-
+idea: since dynamic objects are necessarily full, we can force the type to be stored next to the object, instead of next to the pointer.
+	this ensures that all objects are 1 uint64_t size, which leads to efficient offsetting
 remove special_fields from the AST_descriptor
 move the fuzzer into AST format
 	getting types of ASTs

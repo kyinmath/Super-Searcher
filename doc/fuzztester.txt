@@ -23,7 +23,6 @@ fuzztester is only for error checking. not for actual operation.
 				fields.push_back((uAST*)(u::integer.ver())); //make a random integer
 				fields.push_back((uAST*)new_object(generate_exponential_dist()));
 			}
-			else error("fuzztester doesn't know how to make this special type, so I'm going to panic");
 		}
 		uAST* test_AST = new_AST(tag, fuzztester_roots.at(prev_AST), fields);
 		output_AST_console_version(test_AST);

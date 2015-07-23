@@ -120,6 +120,7 @@ constexpr AST_info AST_descriptor[] =
 	{"load_imv_from_AST", T::dynamic_pointer, T::AST_pointer}, //makes a copy of the imv as well, since it's const.
 	//a("do_after", T::special_return, compile_without_type_check).make_pointer_fields(2),
 	//{"return", T::special_return, T::compile_without_type_check}, have to check that the type matches the actual return type. call all dtors. we can take T::does_not_return, but that just disables the return.
+	//{"snapshot", T::dynamic_pointer}, //makes a deep copy.
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
 	{ "divss", 3 }, warning: integer division by -1 must be considered. (1, 31) / -1 is segfault.
