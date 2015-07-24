@@ -1,0 +1,17 @@
+inefficiency of dynamic objects:
+	every single dynamic object needs a reserved_size field. is that actually desirable?
+	whenever we want just a pointer to an arbitrary object, we need a double indirection, first going through a pointer, and then through the dynamic object's pointer. this is to handle the fact that the target object might expand or contract at any moment, which might force it to relocate.
+		but, not all objects will relocate. for those, is it possible to have just a regular, raw pointer? (which then forces knowledge that the type won't change)
+
+for example, suppose we're browsing the big tree of objects. we come across a raw pointer, which by our previous analysis must exist, since it's to force the target type. how do we understand and manipulate the target of this raw pointer?
+	maybe we'll have a "raw pointer" type, that will be passed around in our ASTs. but functionally, it'll be the same as a dynamic pointer...
+	perhaps the difference here is that we're forcing the dynamic pointer to become a second-class citizen, just like references. it can exist inside a function, but can't be stored in a global.
+having the type floating around in runtime is going to cause troubles with static checks. for example, if you have a static pointer with runtime-known type, and you try storing it into an existing slot for a pointer with some type, you'll be in trouble. well, it would be possible to try-store. logically, this ought to return whether it succeeded or failed.
+	furthermore, manipulating the target of this unknown-type pointer will be difficult - you'll need the usual dynamic pointer mechanisms to split into 7 branches.
+	with dynamic types, this isn't an issue, because you know it's a dynamic pointer. you know it has its type next to it. but with our fake dynamic pointers, there's nowhere for the type to go.
+
+is it possible to convert a fake dynamic pointer into a legitimate static pointer?
+	in that case, we'd need to do some type extraction.
+	but actually, with imv, that's not so bad. simply use the imv, then use a get_type() function which will take it.
+	or, simply store into the imv. this overwrites the temporary imv with the fake dynamic pointer, thus letting us exploit the existing behavior of the try_store.
+		however, the problem with this is that it requires us to hold a dummy object that has the type we want.
