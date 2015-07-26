@@ -1,0 +1,18 @@
+we want some things:
+1. move constructors. dynamic objects should not be copied.
+thus, we have a function which creates the object in the first branch, and then runs the second branch knowing the existence of the first branch.
+this must run immediately after the left is done.
+	if it waits for the overall object to fall from the stack, then if it's placed on the stack, it will take forever. but in that case, you might as well not use do_after?
+	here, we're making an object, then modifying it. for example, creating a dynamic_object.
+goto() has this already.
+
+2. destructor cleanup.
+	in this case, we mainly want early returns to be nice. and objects must be destructed in reverse order of construction.
+	some way to delay the cleanup is essential.
+		what we could do here is use the before-mentioned structure. but everything afterwards goes in the first slot of the do_after. thus, it takes a long time before the second slot runs.
+		however, this means the second slot runs even when the first slot isn't properly created. which is impossible, since the second slot can see the results of the first slot.
+
+Do we need two separate things or one?
+	two. because the move_ctor() shouldn't run if anything fails.
+
+maybe if() statements should also work as move_ctors.

@@ -1,8 +1,19 @@
-dynamic_conc is pretty inefficient because it makes lots of copies. but for now, we don't care too much
+dynamic pointers are impossible to work with. the major selling point of a dynamic object is being able to change its contents. this especially means adding contents.
+normally, this would be semi-ok. we'd move the type back to the object instead of being at the dynamic object.	
+	the breaking feature is references. once you get a reference to the inside of a dynamic object, it is good the next time you check it.
+	but with deletion and creation of elements, this is no longer true. do we want to enforce constant rechecking?
+		no, it's good to have success be automatic. make the user worry less.
+		but the problem is, if you relocate by adding too much, all the previous references are now dead. so maybe a deque is a better idea.
+so instead: the dynamic object knows:
+1. offset to actual object, 2. size of object. 3. number of missing elements 3. nonunique type of actual object, 4. nonunique type of missing elements at the end.
+	the nonunique types are automatic concatenations.
+	3 and 4 are just pointers to arrays.
+when you delete an obj
+
 
 let's say you're browsing through the Big Tree of Stuff, and you get a dynamic pointer. it contains some structure and a function.
 	how does the dynamic pointer assert into a static type?
-
+	we have try_store().
 
 dynamic objects must be able to handle nullptr.
 	to support recursive objects
@@ -10,29 +21,24 @@ dynamic objects must be able to handle nullptr.
 
 null types are useful for function return types. and for scope().
 
-
-we could go back to our old pointer-to-pointer scheme... what benefits would it have?
-	1. every single type is single-sized.
-	2. dynamic pointers own their targets.
-
-
-
+are references allowed?
+	+no need to recheck
+	+no need for additional command to store into dynamic object. instead, reuse the natural store commands. (unless we prohibit calling functions while a reference is up, which would be a terrible idea)
+	-must use deque instead of vector, if references are to stay valid across resizing.
+		maybe we don't care. the references aren't valid, but they don't break the type system on relocation
 
 
 
 
-dynamic objects vs dynamic pointers?
-	dynamic objects I think, mainly want to be overwritten.
-	ASTs actually want dynamic objects, not pointers.
-	recursive types want dynamic pointers.
-the main issue is that if there are dynamic objects, an object's size can't be inferred from just its type.
+embedded dynamic objects are bad.
+	means that object's size can't be inferred from just its type.
+	means that the dynamic object can only go on the end of an object.
 
+ASTs actually want owned dynamic objects, not pointers.
 
-dynamic object-in-pointer objects don't fit in our type system. can't store them except at the end of a type. locally, they can just be optimized dynamic pointers.
-	but in terms of ownership semantics, dynamic owning pointers can be useful.
-	you can have actual vectors, and expand and shrink these vectors.
-		but the problem is, you might have references to the insides of the objects when they are moved around.
-		so in that case, "deleting" from the back or the front still leaves the valid memory there; it'll still be a valid reference. it'll just be inaccessible.
+you can have actual vectors, and expand and shrink these vectors.
+	but the problem is, you might have references to the insides of the objects when they are moved around.
+	so in that case, "deleting" from the back or the front still leaves the valid memory there; it'll still be a valid reference. it'll just be inaccessible.
 ASTs basically have dynamic objects, since they own them.
 
 
@@ -49,3 +55,28 @@ can the type of a dynamic object be next to the object, or must it be separated?
 	however, we can specify an offset. so: type, offset, object.
 		well, circular buffer might be nice, but the problem is that it becomes hard to reallocate. how do you tell the system that you want an entire reallocation? maybe the system tells you how much memory you have left whenever you add an element. so you can just expand to the end of the memory right away?
 what about turning dynamic pointers into pointer-to-dynamic-object?
+
+problem: suppose you delete an element. there's still a reference to the deleted element.
+	then, you can't recreate that element, because it may be of a different type.
+	well, perhaps we could fiddle with references?
+	or, we could keep track of state. if you delete part of it, the type is still stored, in case you add another element.
+
+Thus, possible constructions:
+1. array, can expand
+	then, this pointer must own its target. one pointer per target.
+2. array, can expand and contract
+	then, we either have trouble with references, or the array is repetition of a fixed type.
+	if we have trouble with references, then either the previous reference information is stored and checked on add attempts, or the array stores the place you erased.
+	we can still make things work by moving the vector somewhere else.
+we could let you erase from only one end, and then add to the other end. this requires an offset field.
+
+at least, we need some way to shrink vectors. if we have ownership, it's not so easy to make a new vector. copy constructors make everything hard, since you must figure out when to run the copy construtors, and when you have move constructors, etc. and it's not easy to build one locally, then copy it over.
+	this means you can't just copy parts of the vector over to a new vector.
+	but here is where our magical do_after comes into play. do_after triggers its second field when it goes out of scope?
+
+
+
+how are user snapshots going to work?
+	you'll need to do a huge copy.
+		maybe dynamic owning pointers? when you copy, you automatically make subcopies?
+		that sounds good. you encode what is owned and what isn't.

@@ -8,7 +8,6 @@ idea: dyn_subobj doesn't load a pointer precisely, but it loads a reference. lik
 	the problem is that this is equivalent to getting subobject pointers. and that's not allowed to happen.
 	but...it's cheap. and it's what we want to have happen. so, are we going to resurrect lifetime values?
 
-
 ok, so my new idea is: we operate things like references.
 	1. no getting permanent references to them. only [store] is allowed to get super-temporary references to them.
 then, what happens if the object itself is a pointer? you might be loading it as either a pointer or a reference...
@@ -64,3 +63,8 @@ basically, it's on creation of usage of a reference. copying creates a usage. th
 idea: if we can guarantee that each return_info has its own, private Value, or something like that, then we can set up a dtor to erase the emitted loadinst if it's not used.
 	IR() can mark the loadinst as used.
 	let's just rely on the optimizer though. that's far easier and safer.
+
+
+note that you can't pass references as parameters; you'll need to pass pointers
+
+if we allow references, then note that dynamic_subobj is not equivalent to returning a fake-dynamic pointer. because the fake-dynamic pointer might be stored somewhere.

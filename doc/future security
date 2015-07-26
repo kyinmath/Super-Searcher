@@ -7,8 +7,7 @@ So... TL;DR: More cores, more cache, different nitty-gritty features, more RAM c
 
 on Amazon:
 use O3 to obfuscate.
-preferably, obfuscate using something else as well.
-	upx is not an obfuscator. it just compresses. it'll unpack everything into memory anyway; that's useless
+upx is not an obfuscator. it just compresses. it'll unpack everything into memory anyway; that's useless
 never upload source code.
 objdump --full-contents --section=.comment toy
 readelf -s toy
@@ -30,6 +29,8 @@ they can do microcode updates on CPUs in the wild...
 	or any control really. sandbox completely, because some control = admin control. Windows is as leaky as a sponge.
 but linux is vulnerable too. and clang, and any of the services used. intel probably is a small concern.
 	moreover, they're vulnerable even non maliciously.
+
+<Fiora> jokereph: as far as I know, arm systems are notorious for being very proprietary (like, every SoC doing things its own way)
 
 problem: if the user doesn't have admin, someone from outside can come in and compromise things. then it's root vs non root.
 

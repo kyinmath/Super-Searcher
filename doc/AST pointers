@@ -1,16 +1,4 @@
-1. no getting normal references to the insides of an AST, ever. because if the AST is suddenly immuted and you're left holding a non-immut reference, you are boned
-2. immut references are ok? in that case, we might as well just load the values out, instead of bothering with immutness.
-3. there's a lock over the AST, so that we know when it can't be changed.
-3. we can always load from an AST.
-4. we can't always store into an AST.
-5. when we try to store into an AST, and we don't change the tag, it would be good if the AST could be kept the same way.
-	if we do change the tag, we know that we must have a lock. since we have a lock anyway, why not embed the dynamic pointer directly, as its pair of values, so it's a single indirection?
-		since we can only copy anyways. does this result in funky mechanics?
-	also, we can keep ASTs in place, and change them in place.
-	this is fine for ASTs, but not for dynamic pointers, because it prevents references to the interior
-
-with an AST, the first number must be fixed.
-	if we don't let the user set the first integer, that's fine too though.
+note that we can't do the Tptr optimization, because other ASTs may also point there.
 
 problem with pointer_to_AST: is that we can't exactly have ownership.
 for example, if we want to create an AST, we pass in a dynamic type. but can we really create a reference to that type as an AST?
@@ -50,31 +38,9 @@ I think the problem with convert_to_AST is that we shouldn't have a backup plan.
 	for example, consider a function that returns an AST. unless it stores a backup plan in a dynamic object, it has no way to guarantee that it can actually create this AST, and thus the function cannot be compiled.
 	and requiring the storage of a dynamic object has severe bootstrap problems.
 
-we need: passthrough AST, since our dynamic objects can't change types.
-does this mean we also need a passthrough Type? but both of these are actually already possible, using concatenate() in Type or AST.
+passthrough AST is concatenate()
 
-
-problem: user probably wants locks on AST pointers, so he can mess with them and prevent anyone else from looking at them.
-	atomic operations on AST pointers is not enough.
-	but since AST pointers are baked in, this isn't possible.
-	well, he can make concatenate() and then scope some comment objects.
-
-we can't abuse the AST pointer by making it also function as a lock, because that means that copying the pointer may not always give the correct value.
-
-
-so we're trying to move ASTs to be dynamic...the problem is that AST_info needs to be constexpr. will variable-memory lengths work with our constexpr?
-
-
-I think: maybe the pointer should be the one templated to the lock. not the actual contents.
-	because: we work with pointers all the time. not with the object.
-	however, having the pointer be templated will cause trouble when trying to construct the object.
-
-we're probably going to have 3 things:
-uASTs, for users. can have loops and pathological behavior.
-AST, for us. is immut, unique, behaves nicely. degenerates to uAST cleanly.
-
-if ASTs are always immut, that will result in an absolute shitload of copying whenever you want to change even the smallest things.
-that's impossible. and especially impossible for goto().
+we could eventually immut the function ASTs, to save space. maybe good or maybe not.
 
 maybe we do unique ASTs. so ASTs in a special region are locked forever.
 +never have to put locks on them. so no lock-checking either.
