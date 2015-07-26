@@ -1,0 +1,8 @@
+idea: dynamic pointers have fixed targets. so no expansion or deletion. you can replace the pointer with another pointer though.
+however, vectors have arbitrary targets. which have fixed types.
+unfortunately, in this case we need to work out ownership semantics...
+	also, how the hell do we grab the inside of an arbitrary vector?
+
+in practice, the loss of information from having only vectors, instead of arbitrary variadics, is pretty low.
+	I never needed it in C++. and you can have a vector of dynamic pointers anyway.
+	the plus side is that the type info is very short. so vectors are a very common use case.
