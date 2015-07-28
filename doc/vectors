@@ -33,4 +33,4 @@ solved: how are you going to specify the vector type? it's impossible for the us
 
 
 vectors have serious bootstrapping issues. this is important for AST creation.
-we're fixing this by using typeof().
+we're fixing this by using typeof(). and then, we allow for convert_to_AST to take a null third field, which means that all fields should be null.

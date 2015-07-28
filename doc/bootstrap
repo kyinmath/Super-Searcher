@@ -50,9 +50,10 @@ Function recombination: modification of existing functions. each step is repeate
 1. browsing mode
 	1. choose a random function to obtain from
 	2. snip the function by choosing a head, then copying
+		INTEGER: size of snip
 2. insertion mode
 	1. in some other function, find some location by randomly browsing.
-	2. find a snipping location by going down previous_BB pointers, and choosing two points.
+	2. find a snipping location by going down previous_BB pointers, and choosing two points. INTEGER: distance between points.
 		insert the head in the top of the snip.
 		browse through the snippet's backpointers to find the bottom. change the bottom's AST to point to the original snip.
 3. random modification. insertion adds in code, but now we have to mix the code to make it interact.

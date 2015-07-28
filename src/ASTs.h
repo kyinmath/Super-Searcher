@@ -107,7 +107,7 @@ constexpr AST_info AST_descriptor[] =
 	//{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, compile_without_type_check}, //concatenate the interiors of two dynamic pointers
 	a("goto", special_return).add_pointer_fields(3), //first field is label, second field is success, third field is failure
 	a("label", T::null).add_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
-	a("convert_to_AST", T::AST_pointer, T::integer, compile_without_type_check, compile_without_type_check), //returns 0 on failure, the null AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
+	a("convert_to_AST", T::AST_pointer, T::integer, compile_without_type_check, compile_without_type_check), //returns 0 on failure, the null AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST. integer, then previous_BB, then a vector/nothing.
 	{"store", T::null, compile_without_type_check, compile_without_type_check}, //pointer, then value.
 	{"load_subobj", special_return, compile_without_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields.
 	a("dyn_subobj", T::type, T::dynamic_object, T::integer).add_pointer_fields(Typen("pointer") + 1), //if it's a pointer, we make a special dynamic pointer instead. returns the type obtained.

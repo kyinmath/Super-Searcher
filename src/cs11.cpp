@@ -1,5 +1,4 @@
-/* see README.md for how to run this program.
-Functions which create ASTs:
+/*
 main() handles the commandline arguments. if console input is requested, it will handle input too. however, it won't parse the input.
 fuzztester() generates random, possibly malformed ASTs.
 for console input, read_single_AST() parses a single AST and its field's ASTs, then creates a tree of ASTs out of it.
@@ -30,7 +29,6 @@ generate_IR() is the main AST conversion tool. it turns ASTs into llvm::Values, 
 
 
 
-namespace l = llvm;
 
 bool OPTIMIZE = false;
 bool VERBOSE_DEBUG = false;
@@ -239,7 +237,6 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	auto finish_internal = [&](llvm::Value* return_value, Tptr type) -> Return_Info
 	{
 		check(type == get_unique_type(type, false), "returned non unique type in finish()");
-
 
 		if (VERBOSE_DEBUG && return_value != nullptr)
 		{
@@ -738,6 +735,14 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				previous_AST = field_results[1].IR;
 			else return_code(type_mismatch, 1);
 
+			//this is necessary to solve the bootstrapping issue. can't get an AST without a vector of ASTs; can't get a vector of ASTs without an AST.
+			if (field_results[2].type == T::null)
+			{
+				llvm::Value* converter = llvm_function(no_dynamic_to_AST, llvm_i64(), llvm_i64(), llvm_i64());
+				std::vector<llvm::Value*> arguments{field_results[0].IR, previous_AST};
+				llvm::Value* AST_result = builder->CreateCall(converter, arguments, s("converter"));
+				finish(AST_result);
+			}
 
 			if (type_check(RVO, field_results[2].type, u::vector_of_ASTs) != type_check_result::perfect_fit) //previous AST is nullptr.
 				return_code(type_mismatch, 2);

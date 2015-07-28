@@ -191,6 +191,26 @@ inline uint64_t* dynamic_to_AST(uint64_t tag, uint64_t previous, svector* vector
 	return new_AST;
 }
 
+inline uint64_t* no_dynamic_to_AST(uint64_t tag, uint64_t previous)
+{
+	if (tag >= ASTn("never reached")) return 0; //you make a null AST if the tag is too high
+	if (tag == ASTn("imv")) return 0; //no making imvs this way.
+	uint64_t AST_size = get_full_size_of_AST(tag);
+	uint64_t* new_AST = new_object(AST_size);
+	for (uint64_t x = 0; x < AST_size; ++x)
+	{
+		if (x == 0)
+			new_AST[x] = tag;
+		else if (x == 1)
+			new_AST[x] = previous;
+		else
+		{
+			new_AST[x] = 0;
+		}
+	}
+	return new_AST;
+}
+
 inline void print_uint64_t(uint64_t x) {print("printing ", x, '\n');}
 
 inline uAST** AST_subfield(uAST* a, uint64_t offset)

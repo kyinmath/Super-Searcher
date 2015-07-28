@@ -39,9 +39,10 @@ secure: ../src/*
 	rm -If core
 
 check: ../src/*
-	clang++ -g -Wall -fsanitize=address -fsanitize=integer -fsanitize=undefined -fsanitize=dataflow -fsanitize=safe-stack -fno-rtti -fno-exceptions $(LLVM_CONFIG_CXX_SUBSTITUTE) $(CPP_FILES) `llvm-config  --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
+	clang++ -g -Wall -fsanitize=integer -fsanitize=dataflow -fsanitize=safe-stack -fno-rtti -fno-exceptions $(LLVM_CONFIG_CXX_SUBSTITUTE) $(CPP_FILES) `llvm-config  --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
 	rm -If core
 
+#If you want MemorySanitizer to work properly and not produce any false positives, you must ensure that all the code in your program and in libraries it uses is instrumented (i.e. built with -fsanitize=memory). In particular, you would need to link against MSan-instrumented C++ standard library. We recommend to use libc++ for that purpose. That is, don't worry about errors here for now.
 checkmem: ../src/*
 	clang++ -g -Wall -fsanitize=memory -fno-rtti -fno-exceptions $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
 	rm -If core
