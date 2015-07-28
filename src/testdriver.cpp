@@ -361,6 +361,8 @@ void test_suite()
 	//looping until finiteness ends, increasing a value. tests storing values
 	compile_verify_string("[imv 0]b [label]a [store b [increment b]] [goto a] [concatenate b]", u::integer, FINITENESS_LIMIT);
 
+	//vector creation and pushback
+	compile_string("[nvec [typeof [zero]]]vec [vector_push vec [imv 40]] [concatenate vec]");
 
 	//loading from dynamic objects. a single-object dynamic object, pointing to an int.
 	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [imv 40]]dyn [imv 0] [label] [store ret subobj] [store empty subobj]]subobj [concatenate ret]", u::integer, 40);
@@ -521,8 +523,7 @@ int main(int argc, char* argv[])
 			dynobj* run_result = run_null_parameter_function((function*)compile_result[0]); //even if it's 0, it's fine.
 			if (compile_result[1] != 0)
 				std::cout << "wrong! error code " << compile_result[1] << "\n";
-			else
-				output_array(&(*run_result)[0], run_result ? get_size(run_result->type) : 0);
+			else if (run_result) output_array(&(*run_result)[0], get_size(run_result->type));
 		}
 	}
 #endif

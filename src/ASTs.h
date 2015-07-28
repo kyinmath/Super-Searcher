@@ -100,6 +100,7 @@ constexpr AST_info AST_descriptor[] =
 	{"urem", T::integer, T::integer, T::integer},
 	a("pointer", special_return).add_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
 	a("concatenate", special_return, compile_without_type_check, compile_without_type_check), //squashes two objects together to make a big object
+	a("nvec", special_return, T::type), //makes a new vector, type of interior can't be chosen by a constant int, because pointers need further types.
 	{"dynamify", T::dynamic_object, compile_without_type_check}, //turns a regular pointer into a dynamic pointer. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
 	a("compile", T::function_pointer, T::AST_pointer), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
 	{"run_function", T::dynamic_object, T::function_pointer},
@@ -110,6 +111,8 @@ constexpr AST_info AST_descriptor[] =
 	{"store", T::null, compile_without_type_check, compile_without_type_check}, //pointer, then value.
 	{"load_subobj", special_return, compile_without_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields.
 	a("dyn_subobj", T::type, T::dynamic_object, T::integer).add_pointer_fields(Typen("pointer") + 1), //if it's a pointer, we make a special dynamic pointer instead. returns the type obtained.
+	a("vector_push", T::null, compile_without_type_check, compile_without_type_check), //push an object.
+	{"typeof", T::type, compile_without_type_check}, //returns the type of an object. necessary to create new vectors.
 	{"system1", T::integer, T::integer}, //find a system value, using only one parameter. this is a read-only operation, with no effects.
 	{"system2", T::integer, T::integer, T::integer},
 	{"agency1", T::null, T::integer}, //this has side effects. it's split out because system reading is not dangerous, and this is. the user generally should worry about running this AST.

@@ -28,5 +28,9 @@ problem: how to see the inside of a vector. not even old 2-size dynamic pointers
 problem: with vector double-load, what we're doing is two checks. one check for the vector size, then another check for the actual size
 problem: how do get references to vector objects? if you're past the end, you're basically boned.
 	we disallow the reference in that case.
-solved. how are you going to specify the vector type? it's impossible for the user to specify what the type of an empty vector should be. 
+solved: how are you going to specify the vector type? it's impossible for the user to specify what the type of an empty vector should be. 
 	for now, if we only allow one object per vector, we can pass in a constantint, specifying the size.
+
+
+vectors have serious bootstrapping issues. this is important for AST creation.
+we're fixing this by using typeof().

@@ -17,6 +17,7 @@
     <ClInclude Include="src\ASTs.h" />
     <ClInclude Include="src\cs11.h" />
     <ClInclude Include="src\debugoutput.h" />
+    <ClInclude Include="src\dynamic.h" />
     <ClInclude Include="src\function.h" />
     <ClInclude Include="src\globalinfo.h" />
     <ClInclude Include="src\helperfunctions.h" />
@@ -25,6 +26,7 @@
     <ClInclude Include="src\types.h" />
     <ClInclude Include="src\type_creator.h" />
     <ClInclude Include="src\runtime.h" />
+    <ClInclude Include="src\vector.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\cs11.cpp" />

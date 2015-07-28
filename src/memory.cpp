@@ -11,9 +11,12 @@
 //todo: actually figure out memory size according to the computer specs
 //the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. 
 //thus, we wrap them in a unique() function, so that the user only ever sees GC-handled objects.
-
+#ifdef NOCHECK
+bool DEBUG_GC = false;
+#else
 bool DEBUG_GC = true; //do some checking to make sure the GC is tracking free memory accurately. slow. mainly: whenever GCing or creating, it sets memory locations to special values.
-bool VERBOSE_GC = true;
+#endif
+bool VERBOSE_GC = false;
 
 constexpr const uint64_t pool_size = 100000ull;
 constexpr const uint64_t function_pool_size = 2000ull * 64;

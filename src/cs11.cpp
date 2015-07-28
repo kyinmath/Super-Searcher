@@ -25,6 +25,7 @@ generate_IR() is the main AST conversion tool. it turns ASTs into llvm::Values, 
 #include "runtime.h"
 #include "cs11.h"
 #include "orc.h"
+#include "vector.h"
 #include "helperfunctions.h"
 
 
@@ -169,6 +170,7 @@ void compiler_object::clear_stack(uint64_t desired_stack_size)
 		object_stack.pop();
 		uint64_t number_of_erased = objects.erase(to_be_removed);
 		check(number_of_erased == 1, "erased too many or too few elements"); //we shouldn't put the erase operation in the check, because check() might be no-op'd, and erase has side effects
+		(void)number_of_erased; //here to avoid unused variable warning, in case the check disappears
 	}
 }
 
@@ -476,6 +478,17 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			llvm::Value* endPN = llvm_create_phi({case_IR[0].IR, case_IR[1].IR}, {case_IR[0].type, case_IR[1].type}, {caseBB[0], caseBB[1]});
 			finish_special(endPN, result_type);
 		}
+	case ASTn("nvec"):
+
+		if (auto k = llvm::dyn_cast<llvm::ConstantInt>(field_results[0].IR)) //we need the second field to be a constant.
+		{
+			Tptr type = k->getZExtValue();
+			if (type == 0) return_code(type_mismatch, 0);
+			if (type.ver() == 0) return_code(vector_cant_take_large_objects, 0);
+			else if (type.ver() > Typen("pointer")) return_code(type_mismatch, 0);
+			finish_special(builder->CreateCall(llvm_function(new_vector, llvm_i64(), llvm_i64()), field_results[0].IR), new_type(Typen("vector"), type));
+		}
+		return_code(requires_constant, 1);
 
 	case ASTn("label"):
 		{
@@ -652,6 +665,15 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 			builder->SetInsertPoint(MergeBB);
 			finish(single_type);
+		}
+	case ASTn("vector_push"):
+		{
+			if (field_results[0].place == nullptr) return_code(missing_reference, 0);
+			if (field_results[0].type.ver() != Typen("vector")) return_code(type_mismatch, 0);
+			if (type_check(RVO, field_results[1].type, field_results[0].type.field(0)) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
+			llvm::Value* pusher = llvm_function(pushback, llvm_void(), llvm_i64()->getPointerTo(), llvm_i64());
+			builder->CreateCall(pusher, {field_results[0].place->allocation, field_results[1].IR});
+			finish(0);
 		}
 	case ASTn("dynamify"):
 		{
@@ -859,6 +881,10 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			default:
 				return_code(type_mismatch, 0);
 			}
+		}
+	case ASTn("typeof"):
+		{
+			finish(llvm_integer(field_results[0].type));
 		}
 	case ASTn("system1"):
 		{

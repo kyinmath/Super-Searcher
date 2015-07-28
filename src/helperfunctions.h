@@ -19,7 +19,8 @@ enum IRgen_status {
 	label_incorrect_stack, //tried to goto a label, but the stack elements didn't match
 	label_duplication, //a label was pointed to in the tree twice
 	oversized_offset, //when offsetting a pointer, you gave an excessively large offset
-	requires_constant //when offsetting a pointer, you gave something that wasn't a constant
+	requires_constant, //when offsetting a pointer, you gave something that wasn't a constant
+	vector_cant_take_large_objects, //vectors, for now, can only take 1-sized objects.
 };
 
 //solely for convenience
@@ -238,14 +239,14 @@ inline llvm::Value* load_from_memory(llvm::Value* location, uint64_t size)
 }
 
 //every time IR is generated, this holds the relevant return info.
-//IRi is active <=> memory_location = 0.
 //if memory_location is active, hidden_reference may still be true or false. this affects whether you can get a pointer to it.
-//hidden_reference => no pointers allowed. hidden_reference => memory_location is active. 
+//hidden_reference := no pointers allowed. hidden_reference => memory_location is active. 
 struct Return_Info
 {
 	IRgen_status error_code;
 
-	//either IR or place is active, not both.
+	//if hidden_reference is active, then IR is just a load from the place.
+	//whenever place is up, it's always the primary object. but you may still be able to load from the IR if you want.
 	//if memory_location_primary == false, then IR is active. otherwise, place is active.
 	//place is active when memory_location_primary = true.
 	//either way, the internal type doesn't change.

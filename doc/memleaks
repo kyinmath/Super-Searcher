@@ -1,1 +1,0 @@
-valgrind --leak-check=yes ./toy timer quiet limited label limited random

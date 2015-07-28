@@ -2,6 +2,8 @@
 #include "types.h"
 #include "memory.h"
 
+constexpr bool VECTOR_DEBUG = true;
+
 //vector containing a single object per element.
 struct svector
 {
@@ -13,7 +15,7 @@ struct svector
 		return *((uint64_t*)(&reserved_size) + i + 1);
 	}
 	//after this come the contents
-	//std::array<uint64_t, 0> contents;
+	//std::array<uint64_t, 0> contents; this causes segfaults with asan/ubsan. don't do it.
 };
 
 inline svector* new_vector(Tptr type)
@@ -23,5 +25,29 @@ inline svector* new_vector(Tptr type)
 	new_location[0] = type;
 	new_location[1] = 0;
 	new_location[2] = default_initial_size;
+	if (VECTOR_DEBUG) print("new location at ", new_location, '\n');
 	return (svector*)new_location;
+}
+
+inline void pushback_int(svector*& s, uint64_t value)
+{
+	if (VECTOR_DEBUG) print("pushing back vector at ", s, " value ", value, '\n');
+	if (s->size == s->reserved_size)
+	{
+		uint64_t new_size = s->reserved_size + (s->reserved_size >> 1);
+
+		uint64_t* new_location = allocate(sizeof(svector) / sizeof(uint64_t) + new_size);
+		new_location[0] = s->type;
+		new_location[1] = s->size;
+		new_location[2] = new_size;
+		for (uint64_t x = 0; x < s->size; ++x)
+			new_location[2 + x] = (*s)[x];
+		s = (svector*)new_location;
+	}
+	(*s)[s->size++] = value;
+}
+
+inline void pushback(svector** s, uint64_t value)
+{
+	pushback_int(*s, value);
 }
