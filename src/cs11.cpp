@@ -358,11 +358,12 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x].type);
 		}
 
+		if (get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false) == u::does_not_return)
+			finish_special(nullptr, u::does_not_return); //just get out of here, since we're never going to run the current command anyway.
+
 		//check that the type matches.
 		if (AST_descriptor[target->tag].parameter_types[x].state != compile_without_type_check) //for fields that are compiled but not type checked
 		{
-			if (get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false) == u::does_not_return)
-				finish_special(nullptr, u::does_not_return); //just get out of here, since we're never going to run the current command anyway.
 			//this is fine with labels even though labels require emission whether reached or not, because labels don't compile using the default mechanism
 			//even if there are labels skipped over by this escape, nobody can see them because of our try-catch goto scheme.
 			if (type_check(RVO, result.type, get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false)) != type_check_result::perfect_fit) return_code(type_mismatch, x);
@@ -370,6 +371,11 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 		field_results.push_back(result);
 	}
+	/*
+	//Note: this is a general purpose writer. it's good for things!
+	llvm::Value* printer = llvm_function(print_uint64_t, llvm_void(), llvm_i64());
+	builder->CreateCall(printer, desired_type_to_store);
+	*/
 
 	//we generate code for the AST, depending on its tag.
 	switch (target->tag)
@@ -584,60 +590,49 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("dyn_subobj"):
 		{
-			llvm::Value* overall_type = builder->CreateExtractValue(field_results[0].IR, {0}, s("type of overall dynamic"));
-			llvm::Value* int_pointer = builder->CreateExtractValue(field_results[0].IR, {1}, s("object of overall dynamic"));
-			llvm::Value* pointer = builder->CreateIntToPtr(int_pointer, llvm_i64()->getPointerTo());
+			llvm::Value* overall_dynamic_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
+			llvm::Value* overall_type = builder->CreateLoad(overall_dynamic_object, s("type of overall dynamic"));
 			llvm::Value* offset = field_results[1].IR;
+			llvm::Value* offset_from_pointer = builder->CreateAdd(offset, llvm_integer(1)); //skip over the type.
 
 			auto dynamic_func = llvm_function(dynamic_subtype, double_int(), llvm_i64(), llvm_i64());
-			auto offset_data = builder->CreateCall(dynamic_func, {overall_type, offset}, s("dynamic sub"));
+			auto type_data = builder->CreateCall(dynamic_func, {overall_type, offset}, s("dynamic sub"));
 
-			llvm::Value* single_type = builder->CreateExtractValue(offset_data, {0}, s("type of subdynamic"));
-			llvm::Value* memory_offset = builder->CreateExtractValue(offset_data, {1}, s("object of subdynamic"));
-			llvm::Value* correct_pointer = builder->CreateInBoundsGEP(pointer, memory_offset);
+			llvm::Value* single_type = builder->CreateExtractValue(type_data, {0}, s("type of subdynamic"));
+			llvm::Value* correct_pointer = builder->CreateGEP(overall_dynamic_object, offset_from_pointer); //might not be inbounds.
+			llvm::Value* switch_type = builder->CreateExtractValue(type_data, {1}, s("switch type"));
 
 			uint64_t starting_stack_position = object_stack.size();
 			llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
 
 			//pointer is the default switch case. we can get away with this because it's the only non-concatenate type that has more than one field.
-			llvm::BasicBlock *pointerBB = llvm::BasicBlock::Create(*context, "", TheFunction);
+			llvm::BasicBlock *failed_to_get = llvm::BasicBlock::Create(*context, "", TheFunction);
 
-			auto switch_on_type = builder->CreateSwitch(single_type, pointerBB, Typen("does not return") - 1, 0); //dependency on type
+			auto switch_on_type = builder->CreateSwitch(switch_type, failed_to_get, Typen("does not return") - 1, 0); //dependency on type
 			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
-			//problem: pointer should be the default
-			for (uint64_t x = 0; x < Typen("does not return"); ++x) //dependency on type
+			for (uint64_t x = 0; x <= Typen("pointer"); ++x) //dependency on type
 			{
-				if (x != Typen("pointer"))
+				if (x != 0)
 				{
 					llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*context, "", TheFunction);
 					builder->SetInsertPoint(caseBB);
 					switch_on_type->addCase(llvm_integer(x), caseBB);
 				}
-				else builder->SetInsertPoint(pointerBB);
+				else builder->SetInsertPoint(failed_to_get);
 				if (x != 0) //if it's 0, don't bother doing any of this stuff, because the type is empty.
 				{
-					llvm::Value* loaded_object;
 					Tptr loaded_object_type = 0;
 					if (x == Typen("pointer")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
 					{
-						loaded_object_type = u::dynamic_pointer;
-						llvm::Value* pointer_value = load_from_memory(correct_pointer, Type_descriptor[x].size);
-						llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(2));
-						auto pointer_to_type = builder->CreateIntToPtr(single_type, llvm_i64()->getPointerTo());
-						auto pointer_to_field = builder->CreateConstInBoundsGEP1_64(pointer_to_type, 1);
-						auto desired_type_to_store = builder->CreateLoad(pointer_to_field);
-
-						/*
-						//Note: this is a general purpose writer. it's good for things!
-						llvm::Value* printer = llvm_function(print_uint64_t, llvm_void(), llvm_i64());
-						builder->CreateCall(printer, desired_type_to_store);
-						*/
-
-						llvm::Value* first_value = builder->CreateInsertValue(undef_value, desired_type_to_store, {0}); //this single type is wrong. we must change it to the load of n+1.
-						loaded_object = builder->CreateInsertValue(first_value, pointer_value, {1});
-
-						//we can't expose the pointer as a reference because it isn't one. we converted it to a dynamic pointer.
-						new_object(target, Return_Info(IRgen_status::no_error, loaded_object, loaded_object_type, false));
+						loaded_object_type = Typen("pointer to something");
+						memory_allocation reference(correct_pointer);
+						new_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true));
+					}
+					if (x == Typen("vector")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
+					{
+						loaded_object_type = Typen("vector of something");
+						memory_allocation reference(correct_pointer);
+						new_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true));
 					}
 					else
 					{
@@ -647,7 +642,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					}
 
 
-					Return_Info case_IR = generate_IR(target->fields[x + 1].ptr, false);
+					Return_Info case_IR = generate_IR(target->fields[x + 2].ptr, false);
 					if (case_IR.error_code) return case_IR;
 
 					clear_stack(starting_stack_position);
@@ -661,20 +656,25 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	case ASTn("dynamify"):
 		{
 			if (field_results[0].type == 0)
-				finish(llvm::ConstantArray::get(llvm_array(2), {llvm_integer(0), llvm_integer(0)}));
-			if (field_results[0].type.ver() == Typen("pointer"))
-			{
-				llvm::Value* dynamic_object_address = field_results[0].IR;
-				llvm::Constant* integer_type_pointer = llvm_integer((uint64_t)field_results[0].type.field(0));
+				finish(llvm_integer(0));
 
-				llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(2));
-				llvm::Value* first_value = builder->CreateInsertValue(undef_value, integer_type_pointer, { 0 });
-				llvm::Value* full_value = builder->CreateInsertValue(first_value, dynamic_object_address, { 1 });
-				finish(full_value);
-			}
-			else return_code(type_mismatch, 0);
+			uint64_t size_of_object_minus_type = get_size(field_results[0].type);
+			uint64_t size_of_object = size_of_object_minus_type + 1;
+			llvm::Value* allocator = llvm_function(allocate, llvm_i64()->getPointerTo(), llvm_i64());
+			llvm::Value* dynamic_object = builder->CreateCall(allocator, llvm_integer(size_of_object), s("dyn_allocate_memory"));
+
+			//store the returned type and value into the acquired address
+			auto integer_type_pointer = llvm_integer((uint64_t)field_results[0].type);
+			write_into_place(integer_type_pointer, dynamic_object);
+			llvm::Value* dynamic_actual_object_address = builder->CreateGEP(dynamic_object, llvm_integer(1));
+			write_into_place(field_results[0].IR, dynamic_actual_object_address);
+
+
+			llvm::Value* dynamic_address = builder->CreatePtrToInt(dynamic_object, llvm_i64());
+
+			finish(dynamic_address);
 		}
-	case ASTn("dynamic_conc"):
+	/*case ASTn("dynamic_conc"):
 		{
 			llvm::Value* type;
 			llvm::Value* pointer;
@@ -696,7 +696,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			llvm::Value* pointer_to_object = builder->CreateIntToPtr(integer_pointer_to_object, llvm_i64()->getPointerTo());
 			write_into_place(field_results[1].IR, pointer_to_object);
 			finish(result_of_conc);
-		}
+		}*/
 	case ASTn("compile"):
 		{
 			llvm::Value* compile_function = llvm_function(compile_returning_legitimate_object, llvm_void(), llvm_i64()->getPointerTo(), llvm_i64());
@@ -717,11 +717,12 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			else return_code(type_mismatch, 1);
 
 
-			llvm::Value* type = builder->CreateExtractValue(field_results[2].IR, {0}, s("type of hopeful AST"));
-			llvm::Value* pointer = builder->CreateExtractValue(field_results[2].IR, {1}, s("fields of hopeful AST"));
+			if (type_check(RVO, field_results[2].type, u::vector_of_ASTs) != type_check_result::perfect_fit) //previous AST is nullptr.
+				return_code(type_mismatch, 2);
+			llvm::Value* hopeful_vector = field_results[2].IR;
 
-			llvm::Value* converter = llvm_function(dynamic_to_AST, llvm_i64(), llvm_i64(), llvm_i64(), llvm_i64(), llvm_i64());
-			std::vector<llvm::Value*> arguments{field_results[0].IR, previous_AST, type, pointer};
+			llvm::Value* converter = llvm_function(dynamic_to_AST, llvm_i64(), llvm_i64(), llvm_i64(), llvm_i64());
+			std::vector<llvm::Value*> arguments{field_results[0].IR, previous_AST, hopeful_vector};
 			llvm::Value* AST_result = builder->CreateCall(converter, arguments, s("converter"));
 
 			finish(AST_result);
@@ -739,7 +740,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("load_imv_from_AST"):
 		{
-			auto loader = llvm_function(load_imv_from_AST, double_int(), llvm_i64()); //todo: this copies the dynamic pointer, which is a bad thing. and, we should load a reference.
+			auto loader = llvm_function(load_imv_from_AST, llvm_i64(), llvm_i64()); //todo: we should load a reference.
 			finish(builder->CreateCall(loader, field_results[0].IR));
 		}
 	case ASTn("run_function"):
@@ -751,8 +752,11 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("imv"): //bakes in the value into the compiled function. changes by the function are temporary.
 		{
-			Tptr type_of_object = (uint64_t)target->fields[0].ptr;
-			uint64_t* array_of_integers = (uint64_t*)(target->fields[1].ptr);
+			uint64_t* dynamic_object = (uint64_t*)target->fields[0].ptr;
+			if (dynamic_object == nullptr)
+				finish_special(0, 0);
+			Tptr type_of_object = *(Tptr*)dynamic_object;
+			uint64_t* array_of_integers = (uint64_t*)(dynamic_object + 1);
 			uint64_t size_of_object = get_size(type_of_object);
 			if (size_of_object)
 			{

@@ -70,7 +70,7 @@ struct Type_info
 constexpr uint64_t minus_one = ~0ull; //note that a -1 literal, without specifying ll, can either be int32 or int64, so we could be in great trouble.
 
 /* Guidelines for new Types:
-you must create an entry in type_check.
+create an entry in type_check.
 marky_mark.
 dynamic offset AST, as well as dynamic_subtype()
 change the T::Types, if you create a Type that takes more subfields, because the tag is actually meaningless much of the time.
@@ -79,12 +79,15 @@ constexpr Type_info Type_descriptor[] =
 {
 	{"con_vec", minus_one, minus_one}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types. is 0, because this is a very special case, and we'll be comparing this against 0 all the time.
 	{"integer", 0, 1}, //64-bit integer
-	{"dynamic pointer", 0, 2}, //dynamic pointer. first field is type, second field object. if either is null, both are null together. this order fixes the type position, because it must always be read first, even if we optimize the dynamic object to be an array occasionally, such as with ASTs
+	{"dynamic object", 0, 1}, //in the pointed-to object, the first field is type, second field object. if type is null, base pointer is null.
 	{"AST pointer", 0, 1}, //can be nullptr. the actual object has tag, then previous, then some fields.
 	{"type pointer", 0, 1}, //can be nullptr. actual object is tag + fields.
 	{"function pointer", 0, 1}, //can be nullptr. the purpose of not specifying the return/parameter type is given in "doc/AST pointers"
+	{"vector", 1, 1}, //base pointer cannot be null. interior type must be exactly size 1. todo: fix dynamic offset AST for this.
 	{"pointer", 1, 1}, //nullptr prohibited. comes last, because our dynamic offset AST is fragile and relies on it.
-	{"does not return", 0, 0}, //a special value
+	{"pointer to something", 0, 1}, //an in-function type. you better be storing the actual type somewhere. this can never be stored into anything. however, we are currently enforcing that this must be a valid full pointer. so if you convert it to another valid pointer type, you actually can store it somewhere.
+	{"vector of something", 0, 1}, //an in-function type. same as the pointer to something; used for dynamic_subobj.
+	{"does not return", 0, 0}, //an in-function type
 	{"never reached", 0, 0},
 	//we want the parameter AST to be before everything that might use it, so having it as a first_pointer is not good, since the beginning of the function might change.
 };
@@ -130,9 +133,9 @@ class Tptr
 {
 public:
 	uint64_t val; //public only because copy_type() wants it
-	uint64_t ver() const
+	uint64_t ver() const //returns -1 on nullptr? no, should return 0. you must check the Tptr for nullptr before calling this. benefit: easy to switch on, used for dynamic_subobj
 	{
-		if (val == 0) return ~0ull;
+		if (val == 0) return 0;
 		if (val > Typen("never reached")) return *(uint64_t*)val; //we're making a huge ABI assumption here, that pointers can't go near 0. also, 0 represents both concatenate and nullptr.
 		else return val;
 	}
@@ -163,6 +166,7 @@ struct Type_pointer_range
 	}
 };
 
+//can't use nullptr on this.
 inline uint64_t total_valid_fields(const Tptr t)
 {
 	return (t.ver() == Typen("con_vec")) ? t.field(0) + 1 : Type_descriptor[t.ver()].pointer_fields;
@@ -214,10 +218,11 @@ namespace T
 {
 	constexpr uint64_t does_not_return = Typen("does not return"); //the field can't return. used for goto. effectively makes type checking always pass.
 	constexpr uint64_t integer = Typen("integer"); //describes an integer type
-	constexpr uint64_t dynamic_pointer = Typen("dynamic pointer");
+	constexpr uint64_t dynamic_object = Typen("dynamic object");
 	constexpr uint64_t type = Typen("type pointer");
 	constexpr uint64_t AST_pointer = Typen("AST pointer");
 	constexpr uint64_t function_pointer = Typen("function pointer");
+	//constexpr uint64_t vector = Typen("vector"); you must use the u:: version instead. making this constexpr is too hard.
 	constexpr Tptr null = 0;
 };
 
@@ -226,10 +231,11 @@ namespace u
 {
 	extern Tptr does_not_return;
 	extern Tptr integer;
-	extern Tptr dynamic_pointer;
+	extern Tptr dynamic_object;
 	extern Tptr type;
 	extern Tptr AST_pointer;
 	extern Tptr function_pointer;
+	extern Tptr vector_of_ASTs;
 	constexpr Tptr null = 0;
 };
 Tptr concatenate_types(llvm::ArrayRef<Tptr> components);
@@ -249,9 +255,8 @@ constexpr uint64_t get_size(Tptr target)
 	else if (target.ver() == Typen("con_vec"))
 	{
 		check(target.field(0) > 1, "concatenation with insufficient types"); //this is a meaningful check because pointer to nowhere gives tag = 0 (concat), fields = 0.
-		uint64_t total_size = 0;
-		for (auto& x : Type_pointer_range(target)) total_size += get_size(x);
-		return total_size;
+		//we now rely on every object being size 1
+		return target.field(0);
 	}
 	error("couldn't get size of type tag, check backtrace for target->tag");
 }

@@ -284,15 +284,14 @@ struct builder_context_stack
 };
 
 
-inline uint64_t* copy_object(Tptr type, uint64_t* pointer)
+inline uint64_t* copy_object(uint64_t total_size, uint64_t* pointer)
 {
-	uint64_t total_size = get_size(type);
 	uint64_t* new_memory = allocate(total_size);
 	for (uint64_t x = 0; x < total_size; ++x)
 		new_memory[x] = pointer[x];
 	return new_memory;
 }
-
+#include "dynamic.h"
 
 //makes a deep copy of ASTs.
 struct deep_AST_copier
@@ -314,7 +313,11 @@ private:
 
 			target->preceding_BB_element = internal_copy(target->preceding_BB_element);
 			if (target->tag == ASTn("imv"))
-				copy_object(target->fields[0].num, (uint64_t*)target->fields[1].ptr);
+			{
+				auto object = (dynobj*)target->fields[0].num;
+				uint64_t part_size = object ? get_size(object->type) : 0;
+				copy_object(part_size, (uint64_t*)object);
+			}
 			else for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
 				target->fields[x].ptr = internal_copy(target->fields[x].ptr);
 		}

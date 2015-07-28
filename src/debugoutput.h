@@ -173,7 +173,7 @@ struct output_AST_struct
 
 		//any additional fields that aren't pointers
 		//pulling in both get_size and get_AST_full_type might make this debug function vulnerable to errors, which can be bad.
-		for (; x < get_size(get_AST_fields_type(target->tag)); ++x)
+		for (; x < get_full_size_of_AST(target->tag) - 2; ++x)
 			print(' ', target->fields[x].num);
 		print(']');
 

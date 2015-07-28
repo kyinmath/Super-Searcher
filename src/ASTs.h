@@ -5,7 +5,7 @@ enum special_type
 {
 	normal, //the return type is correctly specified in the constexpr array. get it from there
 	missing_field, //the parameter field is entirely missing
-	compile_without_type_check, //the parameter type is not to be type checked using the default mechanism
+	compile_without_type_check, //the parameter type is not to be type checked using the default mechanism. however, does_not_return is still checked for.
 	special_return //indicates that a return type is to be handled differently
 };
 
@@ -64,7 +64,6 @@ struct AST_info
 		: name(a), return_object(r), parameter_types{incoming_fields...}, pointer_fields(sizeof...(incoming_fields)), fields_to_compile(sizeof...(incoming_fields)) {}
 	//in AST_descriptor[], fields_to_compile and pointer_fields are normally set to the number of parameter types specified.
 	//	however, they can be overridden by make_fields_to_compile() and make_pointer_fields()
-
 };
 
 using a = AST_info;
@@ -88,7 +87,7 @@ keep AST names to one word only, because our console input takes a single word f
 */
 constexpr AST_info AST_descriptor[] =
 {
-	a("imv", special_return, T::dynamic_pointer).make_special_fields(1), //immediate value, like "int x = 40". loaded value can be modified in-function, but any changes are temporary.
+	a("imv", special_return, T::dynamic_object).make_special_fields(1), //immediate value, like "int x = 40". loaded value can be modified in-function, but any changes are temporary.
 	{"zero", T::integer}, //Peano axioms zero
 	{"decrement", T::integer, T::integer}, //Peano axioms increment operation.
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
@@ -101,26 +100,26 @@ constexpr AST_info AST_descriptor[] =
 	{"urem", T::integer, T::integer, T::integer},
 	a("pointer", special_return).add_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
 	a("concatenate", special_return, compile_without_type_check, compile_without_type_check), //squashes two objects together to make a big object
-	{"dynamify", T::dynamic_pointer, compile_without_type_check}, //turns a regular pointer into a dynamic pointer. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
+	{"dynamify", T::dynamic_object, compile_without_type_check}, //turns a regular pointer into a dynamic pointer. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
 	a("compile", T::function_pointer, T::AST_pointer), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
-	{"run_function", T::dynamic_pointer, T::function_pointer},
-	{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, compile_without_type_check}, //concatenate the interiors of two dynamic pointers
+	{"run_function", T::dynamic_object, T::function_pointer},
+	//{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, compile_without_type_check}, //concatenate the interiors of two dynamic pointers
 	a("goto", special_return).add_pointer_fields(3), //first field is label, second field is success, third field is failure
 	a("label", T::null).add_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
-	a("convert_to_AST", T::AST_pointer, T::integer, compile_without_type_check, T::dynamic_pointer), //returns 0 on failure, the null AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
+	a("convert_to_AST", T::AST_pointer, T::integer, compile_without_type_check, compile_without_type_check), //returns 0 on failure, the null AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST.
 	{"store", T::null, compile_without_type_check, compile_without_type_check}, //pointer, then value.
 	{"load_subobj", special_return, compile_without_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields.
-	a("dyn_subobj", T::type, T::dynamic_pointer, T::integer).add_pointer_fields(6), //if it's a pointer, we make a special dynamic pointer instead. returns the type obtained.
+	a("dyn_subobj", T::type, T::dynamic_object, T::integer).add_pointer_fields(Typen("pointer") + 1), //if it's a pointer, we make a special dynamic pointer instead. returns the type obtained.
 	{"system1", T::integer, T::integer}, //find a system value, using only one parameter. this is a read-only operation, with no effects.
 	{"system2", T::integer, T::integer, T::integer},
 	{"agency1", T::null, T::integer}, //this has side effects. it's split out because system reading is not dangerous, and this is. the user generally should worry about running this AST.
 	{"agency2", T::null, T::integer, T::integer},
 	//we need a specific "overwrite function" AST, that can't be the usual store. because it might fail, and so we must return an error code.
 	a("load_tag", T::integer, compile_without_type_check), //takes AST or type.
-	{"load_imv_from_AST", T::dynamic_pointer, T::AST_pointer}, //makes a copy of the imv as well, since it's const.
+	{"load_imv_from_AST", T::dynamic_object, T::AST_pointer}, //makes a copy of the imv as well, since it's const.
 	//a("do_after", T::special_return, compile_without_type_check).make_pointer_fields(2),
 	//{"return", T::special_return, T::compile_without_type_check}, have to check that the type matches the actual return type. call all dtors. we can take T::does_not_return, but that just disables the return.
-	//{"snapshot", T::dynamic_pointer}, //makes a deep copy.
+	//{"snapshot", T::dynamic_pointer, T::dynamic pointer}, //makes a deep copy. ought to return size as well, since size is a way to cheat, by growing larger.
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
 	{ "divss", 3 }, warning: integer division by -1 must be considered. (1, 31) / -1 is segfault.
@@ -145,6 +144,7 @@ constexpr uint64_t ASTn(const char name[])
 { return get_enum_from_name<const AST_info, AST_descriptor>(name); }
 
 //there's zero point in having "well-formed" ASTs.
+//warning: the previous_BB element has dependencies from lots of things, especially get_AST_fields, and the size functions.
 struct uAST
 {
 	//std::mutex lock;
@@ -176,6 +176,12 @@ inline Tptr get_AST_fields_type(uint64_t tag)
 inline Tptr get_AST_full_type(uint64_t tag)
 {
 	return concatenate_types({u::integer, u::AST_pointer, get_AST_fields_type(tag)});
+}
+
+inline uint64_t get_full_size_of_AST(uint64_t tag)
+{
+	if (tag == ASTn("imv")) return 3;
+	return AST_descriptor[tag].pointer_fields + 2;
 }
 
 #include "memory.h"

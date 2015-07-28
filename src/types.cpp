@@ -95,6 +95,7 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 	{
 		switch (iter[1].ver())
 		{
+		case Typen("vector"): //for now, this is ok being here because the interior type must have size 1.
 		case Typen("pointer"):
 			if (iter[0].ver() == iter[1].ver())
 			{
@@ -110,13 +111,17 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 			//we'd have to think about that. the current system allows for large types in the new reference to accept pieces, but I don't know if that's the best.
 			return type_check_result::different;
 
-		case Typen("dynamic pointer"):
+		case Typen("dynamic object"):
 		case Typen("AST pointer"):
 		case Typen("function pointer"):
 		case Typen("type pointer"):
 			if (iter[0].ver() == iter[1].ver())
 				return type_check_result::perfect_fit;
+			//fall through to the ::different result.
+		case Typen("vector of something"): //we'd need a way to help if() to stick two of these together. also, a pointer to something can't be stored in another pointer to something. for example, we expose dynamic subobjects as pointers and vectors to something.
+		case Typen("pointer to something"): //same here.
 			return type_check_result::different;
+
 		default:
 			error("default switch in fully immut/RVO branch " + std::string(Type_descriptor[iter[1].ver()].name));
 		}
@@ -134,6 +139,7 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 
 		switch (iter[1].ver())
 		{
+		case Typen("vector"): //for now, this is ok being here because the interior type must have size 1.
 		case Typen("pointer"):
 			{
 				auto result = type_check(reference, iter[0].field(0), iter[1].field(0));
@@ -145,8 +151,9 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 		case Typen("AST pointer"):
 		case Typen("function pointer"):
 		case Typen("type pointer"):
-		case Typen("dynamic pointer"):
-
+		case Typen("dynamic object"):
+		case Typen("vector of something"):
+		case Typen("pointer to something"):
 				return type_check_result::perfect_fit;
 	
 		default:

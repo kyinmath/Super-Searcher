@@ -22,11 +22,14 @@ struct function
 		: the_AST(a), return_type(r), parameter_type(p), fptr(f), thread_jit(j), result_module(m), context(std::move(c))
 	{
 		if (OUTPUT_ASSEMBLY)
+		{
+			print("fptr at ", fptr, ": ");
 			for (int x = 0; x < 100; ++x)
 			{
 				//unsigned is necessary
 				print(std::hex, std::setfill('0'), std::setw(2), (unsigned)((unsigned char*)f)[x]);
 			}
+		}
 	}
 	~function()
 	{

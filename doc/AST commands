@@ -1,3 +1,7 @@
+note: break, and return, are basically goto...
+	the difference is that with goto, you aren't returning an object. but that's easily fixed.
+	
+
 ()reverse_concatenate for constructing out of order
 ()sizeof Type, which counts the memory it occupies. maybe we should also have a version that counts other overhead.
 	this is what's used to find the size of a normal dynamic object
@@ -34,7 +38,7 @@
 are votes anonymous, or completely private, or public? 
 	will public votes lead to voting blocs?
 	public votes will likely lead to tit for tat. but public votes also lead to feedback on voting quality (meaningful feedback? in a way, yes, if there is honest feedback)
-	maybe voting blocs can be stamped out.
+	maybe voting blocs can be stamped out. an anti-bloc system is a valuable thing that develops, so we'll implement one initially.
 
 
 __dynamic object

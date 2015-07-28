@@ -52,10 +52,9 @@ void fuzztester(uint64_t iterations)
 			fields.push_back(fuzztester_roots.at(mersenne() % fuzztester_roots.size())); //get pointers to previous ASTs
 		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
 		{
-			if (AST_descriptor[tag].parameter_types[incrementor].type == T::dynamic_pointer)
+			if (AST_descriptor[tag].parameter_types[incrementor].type == T::dynamic_object)
 			{
-				fields.push_back((uAST*)(u::integer.ver())); //make a random integer
-				fields.push_back((uAST*)new_object(generate_exponential_dist()));
+				fields.push_back((uAST*)new_object(u::integer.ver(), generate_exponential_dist())); //make a random integer
 			}
 			else error("fuzztester doesn't know how to make this special type, so I'm going to panic");
 		}
@@ -79,9 +78,9 @@ void fuzztester(uint64_t iterations)
 				if (DONT_ADD_MODULE_TO_ORC || DELETE_MODULE_IMMEDIATELY)
 					continue;
 
-				std::array<uint64_t, 2> dynamic_result = run_null_parameter_function(result[0]);
-				uint64_t size_of_return = get_size((Tptr)dynamic_result[0]);
-				output_array((uint64_t*)dynamic_result[1], size_of_return);
+				dynobj* dynamic_result = run_null_parameter_function((function*)result[0]);
+				uint64_t size_of_return = dynamic_result ? get_size(dynamic_result->type) : 0;
+				if (size_of_return) output_array(&(*dynamic_result)[0], size_of_return);
 				//theoretically, this action is disallowed. these ASTs are pointing to already-immuted ASTs, which can't happen. however, it's safe as long as we isolate these ASTs from the user
 				++hitcount[tag];
 			}
@@ -216,8 +215,7 @@ class source_reader
 						isNumber = isNumber && isdigit(k);
 					check(isNumber, string("tried to input non-number ") + next_token);
 					check(next_token.size(), "token is empty, probably a missing ]");
-					new_type_location->fields[field_num] = (uint64_t)u::integer;
-					new_type_location->fields[field_num + 1] = (uint64_t)new_object(std::stoull(next_token));
+					new_type_location->fields[field_num] = (uint64_t)new_object(u::integer, std::stoull(next_token));
 				}
 				else error("trying to write too many fields");
 			}
@@ -289,7 +287,7 @@ public:
 };
 
 //no StringRef because stringstreams can't take it
-std::array<uint64_t, 2> compile_string(std::string input_string)
+dynobj* compile_string(std::string input_string)
 {
 	std::stringstream div_test_stream;
 	div_test_stream << input_string << '\n';
@@ -301,26 +299,27 @@ std::array<uint64_t, 2> compile_string(std::string input_string)
 	uint64_t compile_result[3];
 	compile_returning_legitimate_object(compile_result, (uint64_t)end);
 	check(compile_result[1] == 0, string("failed to compile, error code ") + std::to_string(compile_result[1]));
-	return run_null_parameter_function(compile_result[0]); //even if it's 0, it's fine.
+	return run_null_parameter_function((function*)compile_result[0]); //even if it's 0, it's fine.
 }
 
 void compile_verify_string(std::string input_string, Tptr type, uint64_t value)
 {
-	auto k = compile_string(input_string);
-	check((Tptr)k[0] == type, "test failed type");
-	check(*(uint64_t*)k[1] == value, "test failed value, got " + std::to_string(*(uint64_t*)k[1]));
+	dynobj* k = compile_string(input_string);
+	check(k->type == type, "test failed type, got " + std::to_string(k->type) + " wanted " + std::to_string(type));
+	check((*k)[0] == value, "test failed value, got " + std::to_string((*k)[0]) + " wanted " + std::to_string(value));
 }
 void compile_verify_string_nonzero_value(std::string input_string, Tptr type)
 {
 	auto k = compile_string(input_string);
-	check((Tptr)k[0] == type, "test failed type");
-	check(*(uint64_t*)k[1] != 0, "test failed value, got " + std::to_string(*(uint64_t*)k[1]));
+	check(k->type == type, "test failed type, got " + std::to_string(k->type) + " wanted " + std::to_string(type));
+	check((*k)[0] != 0, "test failed value, got " + std::to_string((*k)[0]) + " wanted nonzero");
 }
 
 void compile_verify_string(std::string input_string, Tptr type)
 {
 	auto k = compile_string(input_string);
-	check((Tptr)k[0] == type, "test failed type");
+	if (type == 0) check(k == 0, "test failed type, got nonzero");
+	check(k->type == type, "test failed type, got " + std::to_string(k->type) + " wanted " + std::to_string(type));
 }
 
 //functions passed into here are required to fail compilation.
@@ -346,11 +345,16 @@ void test_suite()
 	Tptr pointer_zero = new_type(Typen("pointer"), unique_zero);
 	check(pointer_zero == new_type(Typen("pointer"), unique_zero), "pointers don't unique");
 	check(pointer_zero != unique_zero, "pointers uniqueing to integers");
-	Tptr unique_pointer_dynamic = new_type(Typen("dynamic pointer"), {});
+	Tptr unique_pointer_dynamic = new_type(Typen("dynamic object"), {});
 	check(pointer_zero != unique_pointer_dynamic, "different pointers unique");
 
 	check(u::integer == get_unique_type(u::integer, false), "u::types aren't unique");
 	check(u::integer == get_unique_type(T::integer, false), "u::types don't come from T::types");
+
+	//basics
+	compile_verify_string("[zero]", u::integer, 0);
+	compile_verify_string("[imv 1]", u::integer, 1);
+	compile_string("[concatenate [imv 100] [imv 200]]");
 
 	//random value. then check that (x / k) * k + x % k == x
 	compile_verify_string("[system1 [imv 2]]a [subtract [add [multiply [udiv a [imv 4]] [imv 4]] [urem a [imv 4]]] a]", u::integer, 0);
@@ -358,17 +362,26 @@ void test_suite()
 	compile_verify_string("[imv 0]b [label]a [store b [increment b]] [goto a] [concatenate b]", u::integer, FINITENESS_LIMIT);
 
 
-	//loading from dynamic objects. a single-object dynamic pointer, pointing to an int.
-	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store ret subobj] [store empty subobj]]subobj [concatenate ret]", u::integer, 40);
+	//loading from dynamic objects. a single-object dynamic object, pointing to an int.
+	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [imv 40]]dyn [imv 0] [label] [store ret subobj] [store empty subobj]]subobj [concatenate ret]", u::integer, 40);
 	//try to load the next object. it should return nothing.
-	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store ret subobj] [store empty subobj]]subobj [concatenate empty]", u::dynamic_pointer, 0);
+	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [imv 40]]dyn [imv 0] [label] [store ret subobj] [store empty subobj]]subobj [concatenate empty]", u::dynamic_object, 0);
+
+	//todo: implement the "pointer to something", then test it here.
 
 	//again, try to load from dynamic objects. this time, a concatenation of two objects. load the int from the concatenation, then write it.
-	compile_verify_string("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer ret]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 0] [store ret subobj] [label] [label] [label] [label] [store empty subobj]]subobj [concatenate ret]", u::integer, 40);
+	compile_verify_string("[dynamify]empty [imv 0]ret [dyn_subobj [dynamify [concatenate [imv 40]in [pointer ret]]]dyn [imv 0] [label] [store ret subobj]]subobj [concatenate ret]", u::integer, 40);
 	//load the pointer from the concatenation
-	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer ret]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 1] [store ret subobj] [label] [label] [label] [label] [store empty subobj]]subobj [concatenate empty]", u::dynamic_pointer);
-	//load the dynamic pointer from the concatenation
-	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [dynamify [pointer ret]]]a [dyn_subobj [dynamify [pointer a]]dyn [imv 1] [store ret subobj] [store empty subobj]]subobj [concatenate empty]", u::dynamic_pointer);
+	//compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [dyn_subobj [dynamify [concatenate [imv 40]in [imv 40]]]dyn [imv 1] [label] [store ret subobj]]subobj [concatenate empty]", u::dynamic_object);
+	//load the dynamic object from the concatenation
+	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [dyn_subobj [dynamify [concatenate [imv 40]in [dynamify [zero]]]]dyn [imv 1] [label] [store ret subobj] [store empty subobj]]subobj [concatenate empty]", u::dynamic_object);
+	/*
+	//again, try to load from dynamic objects. this time, a concatenation of two objects. load the int from the concatenation, then write it.
+	compile_verify_string("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer ret]]a [dyn_subobj [dynamify [imv 40]]dyn [imv 0] [store ret subobj] [label] [label] [label] [label] [store empty subobj]]subobj [concatenate ret]", u::integer, 40);
+	//load the pointer from the concatenation
+	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [imv 40]]a [dyn_subobj [dynamify [imv 40]]dyn [imv 1] [store ret subobj] [label] [label] [label] [label] [store empty subobj]]subobj [concatenate empty]", u::dynamic_object);
+	//load the dynamic object from the concatenation
+	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [dynamify [imv 40]]]a [dyn_subobj [dynamify [imv 40]]dyn [imv 1] [store ret subobj] [store empty subobj]]subobj [concatenate empty]", u::dynamic_object);*/
 
 	//loading a subobject from a concatenation, as well as copying across fields of a concatenation
 	compile_verify_string("[concatenate [imv 20]a [increment a]]co [load_subobj [pointer co] [imv 1]]", u::integer, 20 + 1);
@@ -389,8 +402,9 @@ void test_suite()
 	cannot_compile_string("[concatenate [imv 40]ant [store ant [imv 40]]]");
 
 
-	compile_string("[run_function [compile [convert_to_AST [system1 [imv 2]] [label] {[imv 0]v [dynamify [pointer v]]}]]]");
-	compile_string("[run_function [compile [convert_to_AST [imv 1] [label] [dynamify]]]]"); //produces 0 inside the dynamic pointer, using the zero AST.
+	//compile_string("[run_function [compile [convert_to_AST [system1 [imv 2]] [label] {[imv 0]v [dynamify [pointer v]]}]]]");
+	//compile_string("[run_function [compile [convert_to_AST [imv 1] [label] [dynamify]]]]"); //produces 0 inside the dynamic pointer, using the zero AST.
+	//todo: implement vectors, then test them here
 
 	//debugtypecheck(T::does_not_return); stopped working after type changes to bake in tags into the pointer. this is useless anyway, in a unity build.
 }
@@ -504,11 +518,11 @@ int main(int argc, char* argv[])
 			finiteness = FINITENESS_LIMIT;
 			uint64_t compile_result[3];
 			compile_returning_legitimate_object(compile_result, (uint64_t)end);
-			auto run_result = run_null_parameter_function(compile_result[0]); //even if it's 0, it's fine.
+			dynobj* run_result = run_null_parameter_function((function*)compile_result[0]); //even if it's 0, it's fine.
 			if (compile_result[1] != 0)
 				std::cout << "wrong! error code " << compile_result[1] << "\n";
 			else
-				output_array((uint64_t*)run_result[1], get_size((Tptr)run_result[0]));
+				output_array(&(*run_result)[0], run_result ? get_size(run_result->type) : 0);
 		}
 	}
 #endif
