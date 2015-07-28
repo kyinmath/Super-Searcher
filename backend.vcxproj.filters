@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <None Include="ClassDiagram.cd" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="src\ASTs.h">
       <Filter>Source Files</Filter>
     </ClInclude>

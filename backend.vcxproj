@@ -11,9 +11,6 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <None Include="ClassDiagram.cd" />
-  </ItemGroup>
-  <ItemGroup>
     <ClInclude Include="src\ASTs.h" />
     <ClInclude Include="src\cs11.h" />
     <ClInclude Include="src\debugoutput.h" />
