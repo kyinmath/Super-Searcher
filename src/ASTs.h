@@ -110,7 +110,7 @@ constexpr AST_info AST_descriptor[] =
 	a("convert_to_AST", T::AST_pointer, T::integer, compile_without_type_check, compile_without_type_check), //returns 0 on failure, the null AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST. integer, then previous_BB, then a vector/nothing.
 	{"store", T::null, compile_without_type_check, compile_without_type_check}, //pointer, then value.
 	{"load_subobj", special_return, compile_without_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields.
-	a("dyn_subobj", T::type, T::dynamic_object, T::integer).add_pointer_fields(Typen("pointer") + 1), //if it's a pointer, we make a special dynamic pointer instead. returns the type obtained.
+	a("dyn_subobj", T::type, compile_without_type_check, T::integer).add_pointer_fields(Typen("pointer") + 1), //if the proper type is a pointer/vector, we return the "pointer to something"/"vector of something". returns the type obtained. can take in either a dynamic pointer, a pointer to something, or a vector of something.
 	a("vector_push", T::null, compile_without_type_check, compile_without_type_check), //push an object.
 	{"typeof", T::type, compile_without_type_check}, //returns the type of an object. necessary to create new vectors.
 	{"system1", T::integer, T::integer}, //find a system value, using only one parameter. this is a read-only operation, with no effects.

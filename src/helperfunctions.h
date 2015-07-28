@@ -21,6 +21,7 @@ enum IRgen_status {
 	oversized_offset, //when offsetting a pointer, you gave an excessively large offset
 	requires_constant, //when offsetting a pointer, you gave something that wasn't a constant
 	vector_cant_take_large_objects, //vectors, for now, can only take 1-sized objects.
+	lost_hidden_subtype, //when working with a pointer to something, you better have its true type lying around in runtime
 };
 
 //solely for convenience
@@ -253,15 +254,18 @@ struct Return_Info
 	llvm::Value* IR;
 	memory_allocation* place; //public, because [pointer] wants to turn it full.
 
+	//this is for "vector of something" and "pointer to something".
+	llvm::Value* hidden_subtype;
+
 	Tptr type;
 	bool memory_location_primary; //if this is false, the IR is the primary. if this is true, the memory_location is the primary.
 	//if this is false, the allocation isn't something we own. that is, geting a pointer to it is disallowed.
 	bool hidden_reference; //this is used for store(). set by load() load_subobj(), dyn_subobj(), stack_degree == 2. it's true if you can get a reference.
 
-	Return_Info(IRgen_status err, llvm::Value* b, Tptr t, bool h = false)
-		: error_code(err), IR(b), place(0), type(t), memory_location_primary(place), hidden_reference(h) {}
-	Return_Info(IRgen_status err, memory_allocation* m, Tptr t, bool h = false)
-		: error_code(err), IR(0), place(m), type(t), memory_location_primary(place), hidden_reference(h)
+	Return_Info(IRgen_status err, llvm::Value* b, Tptr t, bool h = false, llvm::Value* hid_type = nullptr)
+		: error_code(err), IR(b), place(0), type(t), memory_location_primary(place), hidden_reference(h), hidden_subtype(hid_type) {}
+	Return_Info(IRgen_status err, memory_allocation* m, Tptr t, bool h = false, llvm::Value* hid_type = nullptr)
+		: error_code(err), IR(0), place(m), type(t), memory_location_primary(place), hidden_reference(h), hidden_subtype(hid_type)
 	{ IR = load_from_memory(place->allocation, get_size(type)); }
 
 	//default constructor for a null object

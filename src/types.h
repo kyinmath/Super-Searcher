@@ -236,6 +236,8 @@ namespace u
 	extern Tptr AST_pointer;
 	extern Tptr function_pointer;
 	extern Tptr vector_of_ASTs;
+	extern Tptr pointer_to_something;
+	extern Tptr vector_of_something;
 	constexpr Tptr null = 0;
 };
 Tptr concatenate_types(llvm::ArrayRef<Tptr> components);

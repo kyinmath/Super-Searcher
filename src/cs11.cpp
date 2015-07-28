@@ -600,17 +600,48 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("dyn_subobj"):
 		{
-			llvm::Value* overall_dynamic_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
-			llvm::Value* overall_type = builder->CreateLoad(overall_dynamic_object, s("type of overall dynamic"));
+			llvm::Value* single_type; //the final single type.
+			llvm::Value* switch_type; //the version, which we will switch on.
+			llvm::Value* correct_pointer; //the pointer to the object we'll be loading.
+
 			llvm::Value* offset = field_results[1].IR;
-			llvm::Value* offset_from_pointer = builder->CreateAdd(offset, llvm_integer(1)); //skip over the type.
+			if (type_check(RVO, field_results[0].type, u::dynamic_object) == type_check_result::perfect_fit)
+			{
+				llvm::Value* overall_dynamic_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
+				llvm::Value* overall_type = builder->CreateLoad(overall_dynamic_object, s("type of overall dynamic"));
+				llvm::Value* offset_from_pointer = builder->CreateAdd(offset, llvm_integer(1)); //skip over the type.
+				llvm::Value* correct_pointer = builder->CreateGEP(overall_dynamic_object, offset_from_pointer); //might not be inbounds.
 
-			auto dynamic_func = llvm_function(dynamic_subtype, double_int(), llvm_i64(), llvm_i64());
-			auto type_data = builder->CreateCall(dynamic_func, {overall_type, offset}, s("dynamic sub"));
+				auto dynamic_func = llvm_function(dynamic_subtype, double_int(), llvm_i64(), llvm_i64());
+				auto type_data = builder->CreateCall(dynamic_func, {overall_type, offset}, s("dynamic sub"));
+				single_type = builder->CreateExtractValue(type_data, {0}, s("type of subdynamic"));
+				switch_type = builder->CreateExtractValue(type_data, {1}, s("switch type"));
+			}
+			else
+			{
+				if (field_results[0].hidden_subtype == nullptr) return_code(lost_hidden_subtype, 0);
+				if (field_results[0].type == u::pointer_to_something)
+				{
+					auto dynamic_func = llvm_function(dynamic_subtype, double_int(), llvm_i64(), llvm_i64());
+					auto type_data = builder->CreateCall(dynamic_func, {field_results[0].hidden_subtype, offset}, s("dynamic sub"));
+					single_type = builder->CreateExtractValue(type_data, {0}, s("type of subdynamic"));
+					switch_type = builder->CreateExtractValue(type_data, {1}, s("switch type"));
 
-			llvm::Value* single_type = builder->CreateExtractValue(type_data, {0}, s("type of subdynamic"));
-			llvm::Value* correct_pointer = builder->CreateGEP(overall_dynamic_object, offset_from_pointer); //might not be inbounds.
-			llvm::Value* switch_type = builder->CreateExtractValue(type_data, {1}, s("switch type"));
+					llvm::Value* overall_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
+					llvm::Value* correct_pointer = builder->CreateGEP(overall_object, offset); //might not be inbounds.
+
+				}
+				else if (field_results[0].type == u::vector_of_something)
+				{
+					single_type = field_results[0].hidden_subtype;
+					switch_type = builder->CreateCall(llvm_function(type_tag, llvm_i64(), llvm_i64()), field_results[0].hidden_subtype);
+
+					llvm::Value* overall_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
+					llvm::Value* offset_from_pointer = builder->CreateAdd(offset, llvm_integer(vector_header_size)); //skip over the vector.
+					correct_pointer = builder->CreateGEP(overall_object, offset_from_pointer);
+				}
+				else return_code(type_mismatch, 0);
+			}
 
 			uint64_t starting_stack_position = object_stack.size();
 			llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
@@ -636,13 +667,13 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					{
 						loaded_object_type = Typen("pointer to something");
 						memory_allocation reference(correct_pointer);
-						new_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true));
+						new_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true, single_type));
 					}
 					if (x == Typen("vector")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
 					{
 						loaded_object_type = Typen("vector of something");
 						memory_allocation reference(correct_pointer);
-						new_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true));
+						new_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true, single_type));
 					}
 					else
 					{

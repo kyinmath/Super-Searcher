@@ -3,6 +3,7 @@
 #include "memory.h"
 
 constexpr bool VECTOR_DEBUG = true;
+constexpr uint64_t vector_header_size = sizeof(svector) / sizeof(uint64_t);
 
 //vector containing a single object per element.
 struct svector
@@ -21,7 +22,7 @@ struct svector
 inline svector* new_vector(Tptr type)
 {
 	uint64_t default_initial_size = 3;
-	uint64_t* new_location = allocate(sizeof(svector) / sizeof(uint64_t) + default_initial_size);
+	uint64_t* new_location = allocate(vector_header_size + default_initial_size);
 	new_location[0] = type;
 	new_location[1] = 0;
 	new_location[2] = default_initial_size;
@@ -36,7 +37,7 @@ inline void pushback_int(svector*& s, uint64_t value)
 	{
 		uint64_t new_size = s->reserved_size + (s->reserved_size >> 1);
 
-		uint64_t* new_location = allocate(sizeof(svector) / sizeof(uint64_t) + new_size);
+		uint64_t* new_location = allocate(vector_header_size + new_size);
 		new_location[0] = s->type;
 		new_location[1] = s->size;
 		new_location[2] = new_size;

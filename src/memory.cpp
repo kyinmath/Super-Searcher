@@ -388,7 +388,9 @@ namespace u
 	Tptr AST_pointer = get_unique_type(T::AST_pointer, false);
 	Tptr function_pointer = get_unique_type(T::function_pointer, false);
 	Tptr vector_of_ASTs = new_type(Typen("vector"), AST_pointer);
+	Tptr pointer_to_something = Typen("pointer to something");
+	Tptr vector_of_something = Typen("vector of something");
 };
 
 //this comes below the types, to prevent static fiasco.
-std::vector< Tptr > unique_type_roots{u::does_not_return, u::integer, u::dynamic_object, u::type, u::AST_pointer, u::function_pointer, u::vector_of_ASTs};
+std::vector< Tptr > unique_type_roots{u::does_not_return, u::integer, u::dynamic_object, u::type, u::AST_pointer, u::function_pointer, u::vector_of_ASTs, u::pointer_to_something, u::vector_of_something};
