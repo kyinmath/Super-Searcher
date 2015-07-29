@@ -208,7 +208,7 @@ class source_reader
 			}
 			else //it's a static object, "imv". make an integer
 			{
-				if (AST_type == 0 && field_num == 0)
+				if (AST_type == ASTn("imv") && field_num == 0)
 				{
 					bool isNumber = true;
 					for (auto& k : next_token)
@@ -524,6 +524,9 @@ int main(int argc, char* argv[])
 			if (compile_result[1] != 0)
 				std::cout << "wrong! error code " << compile_result[1] << "\n";
 			else if (run_result) output_array(&(*run_result)[0], get_size(run_result->type));
+
+			if ((generate_random() % (GC_TIGHT ? 1 : 30)) == 0)
+				start_GC();
 		}
 	}
 #endif

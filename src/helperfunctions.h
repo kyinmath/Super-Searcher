@@ -13,7 +13,8 @@ enum IRgen_status {
 	type_mismatch, //in an if statement, the two branches had different types.
 	null_AST, //tried to generate_IR() a nullptr but was caught, which is normal.
 	pointer_without_target, //tried to get a pointer to an AST, but it was not found at all
-	pointer_to_temporary, //tried to get a pointer to an AST, but it was not placed on the stack.
+	pointer_to_temporary, //tried to get a pointer to an object, but it was not placed on the stack.
+	pointer_to_reference, //tried to get a pointer to an object, but it was a reference, which might not be a full object.
 	missing_reference, //tried to store, but the target didn't have a reference available.
 	missing_label, //tried to goto a label, but the label was not found
 	label_incorrect_stack, //tried to goto a label, but the stack elements didn't match
@@ -92,8 +93,10 @@ template<typename... should_be_type_ptr, typename fptr> inline llvm::Value* llvm
 	return builder->CreateIntToPtr(function_address, function_pointer_type, s("convert address to function"));
 }
 
-//we already typechecked and received 3. then, they're the same size, unless one of them is T::does_not_return
+//we already typechecked and received perfect_fit. then, they're the same size, unless one of them is T::does_not_return
 //thus, we check for T::nonexistent
+//note: if the size is 1, it might be either i64 or i64*. if size > 1, can take [] or {}.
+//the second parameter, types, is just to check for "does not return". otherwise, each type should be the correct size. the particular type doesn't matter, just its size, and whether it's "does not return"
 inline llvm::Value* llvm_create_phi(llvm::ArrayRef<llvm::Value*> values, llvm::ArrayRef<Tptr> types, llvm::ArrayRef<llvm::BasicBlock*> basic_blocks)
 {
 	check(values.size() == types.size(), "wrong number of arguments");
@@ -102,21 +105,42 @@ inline llvm::Value* llvm_create_phi(llvm::ArrayRef<llvm::Value*> values, llvm::A
 	uint64_t choices = values.size();
 	if (types[0] == 0) return nullptr;
 	uint64_t eventual_size;
-	std::set<uint64_t> legitimate_values; //ones that aren't T::does_not_return
+	llvm::Type* eventual_type; //because the phi may also take in an i64*
+	std::vector<std::pair<llvm::Value*, llvm::BasicBlock*>> legitimate_values; //ones that aren't T::does_not_return
 	for (uint64_t idx = 0; idx < choices; ++idx)
 	{
 		if (types[idx].ver() != Typen("does not return"))
 		{
-			legitimate_values.insert(idx);
+			legitimate_values.push_back({values[idx], basic_blocks[idx]});
 			eventual_size = get_size(types[idx]);
+			eventual_type = values[idx]->getType();
 		}
 	}
 	if (legitimate_values.size() == 0) return nullptr;
-	if (legitimate_values.size() == 1) return values[*legitimate_values.begin()];
+	if (legitimate_values.size() == 1) return legitimate_values.begin()->first;
 
-	llvm::PHINode* PN = builder->CreatePHI(eventual_size == 1 ? (llvm::Type*)llvm_i64() : llvm_array(eventual_size), legitimate_values.size()); //phi with two incoming variables
-	for (uint64_t idx : legitimate_values)
-		PN->addIncoming(values[idx], basic_blocks[idx]);
+	//problem here is that concatenated types might have either [] structure or {} structure.
+	if (eventual_size != 1)
+	{
+		for (auto& x : legitimate_values)
+		{
+			if (!x.first->getType()->isArrayTy()) //since we permit {i64, i64}, we have to canonicalize the type here.
+			{
+				llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(eventual_size));
+				for (uint64_t a = 0; a < eventual_size; ++a)
+				{
+					llvm::Value* integer_transfer = builder->CreateExtractValue(x.first, {(unsigned)a});
+					undef_value = builder->CreateInsertValue(undef_value, integer_transfer, {(unsigned)a});
+				}
+				x.first = undef_value;
+			}
+		}
+	}
+
+
+
+	llvm::PHINode* PN = builder->CreatePHI(eventual_size == 1 ? eventual_type : llvm_array(eventual_size), legitimate_values.size()); //phi with two incoming variables
+	for (auto& x : legitimate_values) PN->addIncoming(x.first, x.second);
 	return PN;
 }
 
@@ -248,29 +272,28 @@ struct Return_Info
 
 	//if hidden_reference is active, then IR is just a load from the place.
 	//whenever place is up, it's always the primary object. but you may still be able to load from the IR if you want.
-	//if memory_location_primary == false, then IR is active. otherwise, place is active.
-	//place is active when memory_location_primary = true.
 	//either way, the internal type doesn't change.
 	llvm::Value* IR;
 	memory_allocation* place; //public, because [pointer] wants to turn it full.
 
+
+	Tptr type;
+
+	//if this is false, the allocation isn't something we own. that is, geting a pointer to it is disallowed.
+	bool hidden_reference; //this is used for store(). set by load() load_subobj(), dyn_subobj(), stack_degree == 2. it's true if you are disallowed from getting a pointer.
+
 	//this is for "vector of something" and "pointer to something".
 	llvm::Value* hidden_subtype;
 
-	Tptr type;
-	bool memory_location_primary; //if this is false, the IR is the primary. if this is true, the memory_location is the primary.
-	//if this is false, the allocation isn't something we own. that is, geting a pointer to it is disallowed.
-	bool hidden_reference; //this is used for store(). set by load() load_subobj(), dyn_subobj(), stack_degree == 2. it's true if you can get a reference.
-
 	Return_Info(IRgen_status err, llvm::Value* b, Tptr t, bool h = false, llvm::Value* hid_type = nullptr)
-		: error_code(err), IR(b), place(0), type(t), memory_location_primary(place), hidden_reference(h), hidden_subtype(hid_type) {}
+		: error_code(err), IR(b), place(0), type(t), hidden_reference(h), hidden_subtype(hid_type) {}
 	Return_Info(IRgen_status err, memory_allocation* m, Tptr t, bool h = false, llvm::Value* hid_type = nullptr)
-		: error_code(err), IR(0), place(m), type(t), memory_location_primary(place), hidden_reference(h), hidden_subtype(hid_type)
+		: error_code(err), IR(0), place(m), type(t), hidden_reference(h), hidden_subtype(hid_type)
 	{ IR = load_from_memory(place->allocation, get_size(type)); }
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
-	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), memory_location_primary(false), hidden_reference(false) {}
+	Return_Info() : error_code(IRgen_status::no_error), IR(nullptr), place(), type(T::null), hidden_reference(false), hidden_subtype(nullptr) {}
 };
 
 
@@ -291,6 +314,7 @@ struct builder_context_stack
 
 inline uint64_t* copy_object(uint64_t total_size, uint64_t* pointer)
 {
+	check(total_size != 0, "copying 0 size object");
 	uint64_t* new_memory = allocate(total_size);
 	for (uint64_t x = 0; x < total_size; ++x)
 		new_memory[x] = pointer[x];
@@ -320,8 +344,10 @@ private:
 			if (target->tag == ASTn("imv"))
 			{
 				auto object = (dynobj*)target->fields[0].num;
-				uint64_t part_size = object ? get_size(object->type) : 0;
-				copy_object(part_size, (uint64_t*)object);
+				if (object != nullptr)
+				{
+					target->fields[0].ptr = (uAST*)copy_dynamic((dynobj*)target->fields[0].ptr);
+				}
 			}
 			else for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
 				target->fields[x].ptr = internal_copy(target->fields[x].ptr);
@@ -330,3 +356,28 @@ private:
 		return target;
 	}
 };
+
+using IRemitter = std::function<llvm::Value*()>;
+//typedef llvm::Value* (*IRemitter)();
+
+inline llvm::Value* create_if_value(IRemitter condition, IRemitter true_case, IRemitter false_case)
+{
+	llvm::Value* comparison = condition();
+	llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
+	llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
+	llvm::Value* iftype[2];
+	llvm::BasicBlock* dynshuffleBB[2];
+	for (uint64_t x : {0, 1}) dynshuffleBB[x] = llvm::BasicBlock::Create(*context, s(""), TheFunction);
+	builder->CreateCondBr(comparison, dynshuffleBB[0], dynshuffleBB[1]);
+	for (uint64_t x : {0, 1})
+	{
+		builder->SetInsertPoint(dynshuffleBB[x]);
+		if (x == 0) iftype[x] = true_case();
+		else if (x == 1) iftype[x] = false_case();
+		builder->CreateBr(MergeBB);
+		dynshuffleBB[x] = builder->GetInsertBlock();
+	}
+	builder->SetInsertPoint(MergeBB);
+	llvm::Value* result = llvm_create_phi({iftype[0], iftype[1]}, {u::type, u::type}, {dynshuffleBB[0], dynshuffleBB[1]});
+	return result;
+}

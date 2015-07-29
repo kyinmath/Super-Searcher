@@ -154,61 +154,31 @@ inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_type, uint64_t
 	return std::array<uint64_t, 2>{{(uint64_t)concatenate_types({type[0], type[1]}), (uint64_t)new_dynamic}};
 }*/
 
-
-inline dynobj* copy_dynamic(dynobj* dyn)
-{
-	if (dyn == 0) return 0;
-	Tptr type = dyn->type;
-	uint64_t size = get_size(type);
-	check(size != 0, "dynamic pointer can't have null type; only base pointer can be null");
-	dynobj* mem_slot = (dynobj*)allocate(size + 1);
-	mem_slot->type = dyn->type;
-	for (uint64_t ind = 0; ind < size; ++ind)
-		(*mem_slot)[ind] = (*dyn)[ind];
-	return mem_slot;
-}
 #include "vector.h"
-//returns pointer-to-AST
-inline uint64_t* dynamic_to_AST(uint64_t tag, uint64_t previous, svector* vector_of_ASTs)
+//returns pointer-to-AST. if the vector_of_ASTs is nullptr (which only happens when the object passed in is null, use no_dynamic_to_AST), then it's assumed to be empty
+inline uAST* dynamic_to_AST(uint64_t tag, uAST* previous, svector* vector_of_ASTs)
 {
 	if (tag >= ASTn("never reached")) return 0; //you make a null AST if the tag is too high
 	if (tag == ASTn("imv")) return 0; //no making imvs this way.
 	uint64_t AST_size = get_full_size_of_AST(tag);
-	uint64_t* new_AST = new_object(AST_size);
-	for (uint64_t x = 0; x < AST_size; ++x)
+	uAST* new_AST = (uAST*)new_object(AST_size);
+	new_AST->tag = tag;
+	new_AST->preceding_BB_element = previous;
+	for (uint64_t x = 0; x < AST_size - 2; ++x)
 	{
-		if (x == 0)
-			new_AST[x] = tag;
-		else if (x == 1)
-			new_AST[x] = previous;
-		else
-		{
-			if (vector_of_ASTs->size > x)
-				new_AST[x] = (*vector_of_ASTs)[x];
-			else new_AST[x] = 0;
-		}
+		if (vector_of_ASTs == nullptr)
+			new_AST->fields[x].num = 0;
+		else if (vector_of_ASTs->size > x)
+			new_AST->fields[x].num = (*vector_of_ASTs)[x];
+		else new_AST->fields[x].num = 0;
 	}
+	print("making new AST ", new_AST, '\n');
 	return new_AST;
 }
 
-inline uint64_t* no_dynamic_to_AST(uint64_t tag, uint64_t previous)
+inline uAST* no_dynamic_to_AST(uint64_t tag, uAST* previous)
 {
-	if (tag >= ASTn("never reached")) return 0; //you make a null AST if the tag is too high
-	if (tag == ASTn("imv")) return 0; //no making imvs this way.
-	uint64_t AST_size = get_full_size_of_AST(tag);
-	uint64_t* new_AST = new_object(AST_size);
-	for (uint64_t x = 0; x < AST_size; ++x)
-	{
-		if (x == 0)
-			new_AST[x] = tag;
-		else if (x == 1)
-			new_AST[x] = previous;
-		else
-		{
-			new_AST[x] = 0;
-		}
-	}
-	return new_AST;
+	return dynamic_to_AST(tag, previous, nullptr);
 }
 
 inline void print_uint64_t(uint64_t x) {print("printing ", x, '\n');}
@@ -320,11 +290,11 @@ inline std::array<uint64_t, 2> dynamic_subtype(Tptr type, uint64_t offset)
 }
 
 
-inline std::array < uint64_t, 2> load_imv_from_AST(uAST* p)
+inline uint64_t load_imv_from_AST(uAST* p)
 {
-	if (p == 0) return{{0}};
-	else if (p->tag != 0) return{{0}};
-	else return{{p->fields[0].num}};
+	if (p == 0) return 0;
+	else if (p->tag != 0) return 0;
+	else return p->fields[0].num;
 }
 
 

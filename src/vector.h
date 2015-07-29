@@ -3,7 +3,6 @@
 #include "memory.h"
 
 constexpr bool VECTOR_DEBUG = true;
-constexpr uint64_t vector_header_size = sizeof(svector) / sizeof(uint64_t);
 
 //vector containing a single object per element.
 struct svector
@@ -18,6 +17,8 @@ struct svector
 	//after this come the contents
 	//std::array<uint64_t, 0> contents; this causes segfaults with asan/ubsan. don't do it.
 };
+
+constexpr uint64_t vector_header_size = sizeof(svector) / sizeof(uint64_t);
 
 inline svector* new_vector(Tptr type)
 {
@@ -51,4 +52,9 @@ inline void pushback_int(svector*& s, uint64_t value)
 inline void pushback(svector** s, uint64_t value)
 {
 	pushback_int(*s, value);
+}
+
+inline uint64_t vector_size(svector* s)
+{
+	return s->size;
 }

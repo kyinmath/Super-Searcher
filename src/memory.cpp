@@ -137,7 +137,7 @@ void initialize_roots()
 		to_be_marked.push(std::make_pair((uint64_t*)root_AST, get_AST_full_type(root_AST->tag)));
 	}
 
-	//add in the thread ASTs
+	//add in the event-driven ASTs
 }
 
 
@@ -211,6 +211,9 @@ void start_GC()
 			total_memory_use += x.first;
 		}
 		print("total free after GC ", total_memory_use, '\n');
+
+		for (auto& x : living_objects)
+			print("living object after GC ", x.first, " size ", x.second, '\n');
 	}
 
 }
@@ -263,7 +266,7 @@ void mark_single_element(uint64_t* memory, Tptr t)
 		if (*memory != 0)
 		{
 			uint64_t* pointer_to_the_type_and_object = *(uint64_t**)memory;
-
+			check(*pointer_to_the_type_and_object != 0, "when making a dynamic object, only the base pointer may be 0, not the type inside");
 			//we don't want to create a concatenation. thus, we call marky_mark directly.
 			if (found_living_object(pointer_to_the_type_and_object, get_size(*pointer_to_the_type_and_object) + 1)) break;
 			marky_mark(pointer_to_the_type_and_object, u::type);

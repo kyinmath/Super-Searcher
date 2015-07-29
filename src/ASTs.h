@@ -112,6 +112,7 @@ constexpr AST_info AST_descriptor[] =
 	{"load_subobj", special_return, compile_without_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields.
 	a("dyn_subobj", T::type, compile_without_type_check, T::integer).add_pointer_fields(Typen("pointer") + 1), //if the proper type is a pointer/vector, we return the "pointer to something"/"vector of something". returns the type obtained. can take in either a dynamic pointer, a pointer to something, or a vector of something.
 	a("vector_push", T::null, compile_without_type_check, compile_without_type_check), //push an object.
+	a("vector_size", T::integer, compile_without_type_check),
 	{"typeof", T::type, compile_without_type_check}, //returns the type of an object. necessary to create new vectors.
 	{"system1", T::integer, T::integer}, //find a system value, using only one parameter. this is a read-only operation, with no effects.
 	{"system2", T::integer, T::integer, T::integer},
@@ -119,7 +120,7 @@ constexpr AST_info AST_descriptor[] =
 	{"agency2", T::null, T::integer, T::integer},
 	//we need a specific "overwrite function" AST, that can't be the usual store. because it might fail, and so we must return an error code.
 	a("load_tag", T::integer, compile_without_type_check), //takes AST or type.
-	{"load_imv_from_AST", T::dynamic_object, T::AST_pointer}, //makes a copy of the imv as well, since it's const.
+	{"load_imv_from_AST", T::dynamic_object, T::AST_pointer}, //todo: make it give a reference.
 	//a("do_after", T::special_return, compile_without_type_check).make_pointer_fields(2),
 	//{"return", T::special_return, T::compile_without_type_check}, have to check that the type matches the actual return type. call all dtors. we can take T::does_not_return, but that just disables the return.
 	//{"snapshot", T::dynamic_pointer, T::dynamic pointer}, //makes a deep copy. ought to return size as well, since size is a way to cheat, by growing larger.
@@ -190,13 +191,20 @@ inline uint64_t get_full_size_of_AST(uint64_t tag)
 #include "memory.h"
 inline uAST* new_AST(uint64_t tag, uAST* previous, llvm::ArrayRef<uAST*> fields)
 {
-	uint64_t total_field_size = get_size(get_AST_fields_type(tag));
-	check(total_field_size == get_size(get_AST_fields_type(tag)), "passed the wrong number of fields to new_AST");
-	uint64_t* new_home = allocate(total_field_size + 2);
-	new_home[0] = tag;
-	new_home[1] = (uint64_t)previous;
+	uint64_t total_field_size = get_full_size_of_AST(tag) - 2;
+	check(total_field_size == fields.size(), "passed the wrong number of fields to new_AST");
+	uAST* new_home = (uAST*)allocate(total_field_size + 2);
+	new_home->tag = tag;
+	new_home->preceding_BB_element = previous;
 	for (uint64_t x = 0; x < total_field_size; ++x)
-		new_home[x + 2] = (uint64_t)fields[x];
+		new_home->fields[x] = (uint64_t)fields[x];
+	if (tag == ASTn("imv"))
+	{
+		if (new_home->fields[0].num != 0)
+			if (*(uint64_t*)(new_home->fields[0].ptr) == 0)
+				error("what shit am I making now");
+	}
+	if (VERBOSE_GC) print("new AST ", new_home, '\n');
 	return (uAST*)new_home;
 }
 
@@ -211,5 +219,12 @@ inline uAST* copy_AST(uAST* t)
 	new_home[1] = (uint64_t)previous;
 	for (uint64_t x = 0; x < total_field_size; ++x)
 		new_home[x + 2] = t->fields[x].num;
+	if (tag == ASTn("imv"))
+	{
+		if (new_home[2] != 0)
+			if (*(uint64_t*)new_home[2] == 0)
+				error("what shit am I making now");
+	}
+	if (VERBOSE_GC) print("copy AST ", new_home, '\n');
 	return (uAST*)new_home;
 }

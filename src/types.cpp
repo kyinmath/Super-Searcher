@@ -88,7 +88,7 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 
 	
 	/*if fully immut + immut, the new reference can't change the object
-	if RVO, there's no old reference to interfere with changes
+	if RVO, there's no old reference to interfere with changes to the base object. but if it's a pointer, all bets are off.
 	thus, cheap pointers can convert to integers
 	*/
 	if (version == RVO)

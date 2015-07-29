@@ -40,7 +40,7 @@ class compiler_object
 	std::unordered_map<uAST*, Return_Info> objects;
 
 	//pair with clear_stack().
-	void new_object(uAST* target, Return_Info r)
+	void new_living_object(uAST* target, Return_Info r)
 	{
 		check((uint64_t)r.type != ASTn("pointer"), "what the fuck");
 		auto insert_result = objects.insert({target, r});

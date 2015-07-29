@@ -3,15 +3,12 @@ fuzztester is only for error checking. not for actual operation.
 
 [imv 100]iterations
 [imv 20]max_fuzztester_size
-[dynamify]vector_of_AST_pointers
+[nvec [typeof [convert_to_AST [zero]]]]vector_of_AST_pointers
+[nvec [typeof [convert_to_AST [zero]]]]fuzztester_roots
 [label]main_loop
-	[dynamify]fuzztester_roots
 	[urem [random] [system1 [zero]]]tag
 	[system2 [zero] tag]pointer_fields
-		uint64_t prev_AST = generate_exponential_dist() % fuzztester_roots.size(); //perhaps: prove that exponential_dist is desired.
-		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
-		//but does exponential falloff solve this problem in the way we want?
-
+	[urem [random] [vector_size [fuzztester_roots]]]prev_AST
 		std::vector<uAST*> fields;
 		uint64_t incrementor = 0;
 		for (; incrementor < pointer_fields; ++incrementor)

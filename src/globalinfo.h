@@ -47,6 +47,7 @@ extern bool TIMER;
 extern bool DONT_ADD_MODULE_TO_ORC;
 extern bool DELETE_MODULE_IMMEDIATELY;
 extern bool DEBUG_GC;
+extern bool VERBOSE_GC;
 extern bool OUTPUT_MODULE;
 constexpr bool HEURISTIC = true; //heuristically gives errors. for example, large objects are assumed to be bad.
 

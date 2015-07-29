@@ -142,10 +142,8 @@ uint64_t compiler_object::compile_AST(uAST* target)
 
 		fptr = (void*)(intptr_t)(ExprSymbol.getAddress());
 
-		if (DELETE_MODULE_IMMEDIATELY)
-			J.removeModule(H);
-		else
-			result_module = H;
+		if (DELETE_MODULE_IMMEDIATELY) J.removeModule(H);
+		else result_module = H;
 	}
 	else
 	{
@@ -270,7 +268,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			}
 
 			//whether or not you made a new location, the Value is nullptr, which signifies that it's a reference.
-			new_object(target, Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location));
+			new_living_object(target, Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location));
 			return Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location);
 		}
 		//we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for justification.
@@ -279,12 +277,12 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			check(stack_degree == 0, "stack degree 1 not allowed");
 			if (default_allocation)
 			{
-				new_object(target, Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location));
+				new_living_object(target, Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location));
 				return Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location);
 			}
 			else
 			{
-				new_object(target, Return_Info(IRgen_status::no_error, return_value, type, existing_hidden_location));
+				new_living_object(target, Return_Info(IRgen_status::no_error, return_value, type, existing_hidden_location));
 				return Return_Info(IRgen_status::no_error, return_value, type, existing_hidden_location);
 			}
 		}
@@ -564,7 +562,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		{
 			auto found_AST = objects.find(target->fields[0].ptr);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
-			if (found_AST->second.memory_location_primary == false) return_code(pointer_to_temporary, 0);
+			if (found_AST->second.place == nullptr) return_code(pointer_to_temporary, 0);
+			if (found_AST->second.hidden_reference == true) return_code(pointer_to_reference, 0);
 			Tptr new_pointer_type = new_type(Typen("pointer"), found_AST->second.type);
 
 			llvm::Value* final_result = builder->CreatePtrToInt(found_AST->second.place->allocation, llvm_i64(), s("flattening pointer"));
@@ -608,9 +607,16 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (type_check(RVO, field_results[0].type, u::dynamic_object) == type_check_result::perfect_fit)
 			{
 				llvm::Value* overall_dynamic_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
-				llvm::Value* overall_type = builder->CreateLoad(overall_dynamic_object, s("type of overall dynamic"));
+
+				//this block handles the case where the base of the dynamic pointer is 0.
+				llvm::Value* overall_type = create_if_value(
+					[&](){ return builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("special case 0 dynamic object")); },
+					[&](){ return builder->CreateLoad(overall_dynamic_object, s("type of overall dynamic")); },
+					[](){ return llvm_integer(0); }
+				);
+
 				llvm::Value* offset_from_pointer = builder->CreateAdd(offset, llvm_integer(1)); //skip over the type.
-				llvm::Value* correct_pointer = builder->CreateGEP(overall_dynamic_object, offset_from_pointer); //might not be inbounds.
+				correct_pointer = builder->CreateGEP(overall_dynamic_object, offset_from_pointer); //might not be inbounds.
 
 				auto dynamic_func = llvm_function(dynamic_subtype, double_int(), llvm_i64(), llvm_i64());
 				auto type_data = builder->CreateCall(dynamic_func, {overall_type, offset}, s("dynamic sub"));
@@ -620,6 +626,9 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			else
 			{
 				if (field_results[0].hidden_subtype == nullptr) return_code(lost_hidden_subtype, 0);
+
+				llvm::Value* overall_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
+
 				if (field_results[0].type == u::pointer_to_something)
 				{
 					auto dynamic_func = llvm_function(dynamic_subtype, double_int(), llvm_i64(), llvm_i64());
@@ -627,8 +636,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					single_type = builder->CreateExtractValue(type_data, {0}, s("type of subdynamic"));
 					switch_type = builder->CreateExtractValue(type_data, {1}, s("switch type"));
 
-					llvm::Value* overall_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
-					llvm::Value* correct_pointer = builder->CreateGEP(overall_object, offset); //might not be inbounds.
+					correct_pointer = builder->CreateGEP(overall_object, offset); //might not be inbounds.
 
 				}
 				else if (field_results[0].type == u::vector_of_something)
@@ -636,7 +644,6 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					single_type = field_results[0].hidden_subtype;
 					switch_type = builder->CreateCall(llvm_function(type_tag, llvm_i64(), llvm_i64()), field_results[0].hidden_subtype);
 
-					llvm::Value* overall_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 					llvm::Value* offset_from_pointer = builder->CreateAdd(offset, llvm_integer(vector_header_size)); //skip over the vector.
 					correct_pointer = builder->CreateGEP(overall_object, offset_from_pointer);
 				}
@@ -667,19 +674,19 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					{
 						loaded_object_type = Typen("pointer to something");
 						memory_allocation reference(correct_pointer);
-						new_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true, single_type));
+						new_living_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true, single_type));
 					}
-					if (x == Typen("vector")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
+					else if (x == Typen("vector")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
 					{
 						loaded_object_type = Typen("vector of something");
 						memory_allocation reference(correct_pointer);
-						new_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true, single_type));
+						new_living_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true, single_type));
 					}
 					else
 					{
 						loaded_object_type = (Tptr)x;
 						memory_allocation reference(correct_pointer);
-						new_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true));
+						new_living_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true));
 					}
 
 
@@ -696,6 +703,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("vector_push"):
 		{
+			//requires place, because pushing an element may change the location of the vector
 			if (field_results[0].place == nullptr) return_code(missing_reference, 0);
 			if (field_results[0].type.ver() != Typen("vector")) return_code(type_mismatch, 0);
 			if (type_check(RVO, field_results[1].type, field_results[0].type.field(0)) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
@@ -703,19 +711,21 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			builder->CreateCall(pusher, {field_results[0].place->allocation, field_results[1].IR});
 			finish(0);
 		}
+	case ASTn("vector_size"):
+		{
+			if (field_results[0].type.ver() != Typen("vector")) return_code(type_mismatch, 0);
+			llvm::Value* pusher = llvm_function(vector_size, llvm_i64(), llvm_i64());
+			finish(builder->CreateCall(pusher, {field_results[0].IR}));
+		}
 	case ASTn("dynamify"):
 		{
 			if (field_results[0].type == 0)
 				finish(llvm_integer(0));
 
-			uint64_t size_of_object_minus_type = get_size(field_results[0].type);
-			uint64_t size_of_object = size_of_object_minus_type + 1;
-			llvm::Value* allocator = llvm_function(allocate, llvm_i64()->getPointerTo(), llvm_i64());
-			llvm::Value* dynamic_object = builder->CreateCall(allocator, llvm_integer(size_of_object), s("dyn_allocate_memory"));
+			llvm::Value* dynamic_allocator = llvm_function(new_dynamic_obj, llvm_i64()->getPointerTo(), llvm_i64());
+			llvm::Value* dynamic_object = builder->CreateCall(dynamic_allocator, llvm_integer(field_results[0].type), s("dyn_allocate_memory"));
 
 			//store the returned type and value into the acquired address
-			auto integer_type_pointer = llvm_integer((uint64_t)field_results[0].type);
-			write_into_place(integer_type_pointer, dynamic_object);
 			llvm::Value* dynamic_actual_object_address = builder->CreateGEP(dynamic_object, llvm_integer(1));
 			write_into_place(field_results[0].IR, dynamic_actual_object_address);
 
@@ -803,7 +813,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("run_function"):
 		{
-			llvm::Value* runner = llvm_function(run_null_parameter_function, double_int(), llvm_i64());
+			llvm::Value* runner = llvm_function(run_null_parameter_function, llvm_i64(), llvm_i64());
 			llvm::Value* run_result = builder->CreateCall(runner, field_results[0].IR);
 
 			finish(run_result);
@@ -882,13 +892,17 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 						builder->SetInsertPoint(caseBB[x]);
 						if (x == 0)
 						{
-							llvm::Value* AST_offset = llvm_function(AST_subfield, llvm_i64(), llvm_i64(), llvm_i64());
+							llvm::Value* AST_offset = llvm_function(AST_subfield, llvm_i64()->getPointerTo(), llvm_i64(), llvm_i64());
 							location[x] = builder->CreateCall(AST_offset, {field_results[0].IR, field_results[1].IR});
+
+							//location[x]->getType()->print(*llvm_console);
 						}
 						else
 						{
 							location[x] = create_actual_alloca(1);
 							builder->CreateStore(llvm_integer(0), location[x]);
+
+							//location[x]->getType()->print(*llvm_console);
 						}
 						builder->CreateBr(MergeBB);
 						caseBB[x] = builder->GetInsertBlock();
