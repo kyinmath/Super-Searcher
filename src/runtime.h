@@ -181,11 +181,12 @@ inline uAST* no_vector_to_AST(uint64_t tag, uAST* previous)
 
 inline void print_uint64_t(uint64_t x) {print("printing ", x, '\n');}
 
+//returns pointer to the desired element. returns 0 on failure.
 inline uAST** AST_subfield(uAST* a, uint64_t offset)
 {
-	check(a != nullptr, "checking should be done inside the function, since this returns lvalues");
 	uint64_t size = AST_descriptor[a->tag].pointer_fields; //we're not using the total fields type, because if it's a imv, we don't grab it.
-	if (offset >= size) return &a->preceding_BB_element;
+	//todo: basic block version.
+	if (offset >= size) return 0;
 	else return &a->fields[offset].ptr;
 }
 

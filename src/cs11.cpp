@@ -705,43 +705,48 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 	case ASTn("load_subobj_ref"):
 		{
-			Tptr type_of_pointer = field_results[0].type;
-			if (type_of_pointer == 0) return_code(type_mismatch, 0);
-			switch (type_of_pointer.ver())
+			Tptr type_of_object(0);
+			llvm::Value* reference_p; //the reference that we get
+
+			switch (field_results[0].type.ver())
 			{
 			case Typen("vector"):
 				{
-					Tptr type_of_object = type_of_pointer.field(0);
-					auto reference_p = builder->CreateCall(llvm_function(reference_at, llvm_i64()->getPointerTo(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
-					IRemitter run_field_2 = [&]() -> llvm::Value*
-					{
-						Return_Info case_IR = generate_IR(target->fields[2].ptr, false);
-						if (case_IR.error_code) return 0;
-						else return llvm_integer(0); //a 0 constant, signifying a useless phi value.
-					};
-
-					//we can only do this because there's no "else" branch.
-					uint64_t starting_stack_position = object_stack.size();
-					memory_allocation reference(reference_p);
-					new_living_object(target, Return_Info(IRgen_status::no_error, &reference, type_of_object, true));
-					llvm::Value* error_value = create_if_value(
-						[&](){
-						auto reference_integer = builder->CreatePtrToInt(reference_p, llvm_i64());
-						return builder->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));
-					},
-						run_field_2,
-						[](){ return llvm_integer(0); }
-					);
-					if (error_value == 0) return_code(error_transfer_from_if, 0);
-					clear_stack(starting_stack_position);
-
-					finish(0);
+					type_of_object = field_results[0].type.field(0);
+					reference_p = builder->CreateCall(llvm_function(reference_at, llvm_i64()->getPointerTo(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
 				}
 			case Typen("AST pointer"):
-				//fallthrough for now. when we have basic blocks, we can consider retrying this.
+				{
+					type_of_object = u::AST_pointer;
+					reference_p = builder->CreateCall(llvm_function(AST_subfield, llvm_i64()->getPointerTo(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
+				}
 			default:
 				return_code(type_mismatch, 0);
 			}
+
+			IRemitter run_field_2 = [&]() -> llvm::Value*
+			{
+				Return_Info case_IR = generate_IR(target->fields[2].ptr, false);
+				if (case_IR.error_code) return 0;
+				else return llvm_integer(0); //a 0 constant, signifying a useless phi value.
+			};
+
+			//we can only do this because there's no "else" branch.
+			uint64_t starting_stack_position = object_stack.size();
+			memory_allocation reference(reference_p);
+			new_living_object(target, Return_Info(IRgen_status::no_error, &reference, type_of_object, true));
+			llvm::Value* error_value = create_if_value(
+				[&](){
+				auto reference_integer = builder->CreatePtrToInt(reference_p, llvm_i64());
+				return builder->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));
+			},
+				run_field_2,
+				[](){ return llvm_integer(0); }
+			);
+			if (error_value == 0) return_code(error_transfer_from_if, 0);
+			clear_stack(starting_stack_position);
+
+			finish(0);
 		}
 	case ASTn("vector_push"):
 		{
@@ -931,47 +936,6 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 						}
 					}
 					return_code(requires_constant, 1);
-				}
-			case Typen("AST pointer"):
-				{
-
-					llvm::Value* comparison = builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("AST zero check"));
-					llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
-
-					// it's necessary to insert blocks into the function so that we can avoid memleak on early return
-					llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
-
-					llvm::BasicBlock* caseBB[2];
-					llvm::Value* location[2];
-					for (uint64_t x : {0, 1})
-						caseBB[x] = llvm::BasicBlock::Create(*context, s("AST check case"), TheFunction);
-
-					builder->CreateCondBr(comparison, caseBB[0], caseBB[1]);
-					for (uint64_t x : {0, 1})
-					{
-						builder->SetInsertPoint(caseBB[x]);
-						if (x == 0)
-						{
-							llvm::Value* AST_offset = llvm_function(AST_subfield, llvm_i64()->getPointerTo(), llvm_i64(), llvm_i64());
-							location[x] = builder->CreateCall(AST_offset, {field_results[0].IR, field_results[1].IR});
-
-							//location[x]->getType()->print(*llvm_console);
-						}
-						else
-						{
-							location[x] = create_actual_alloca(1);
-							builder->CreateStore(llvm_integer(0), location[x]);
-
-							//location[x]->getType()->print(*llvm_console);
-						}
-						builder->CreateBr(MergeBB);
-						caseBB[x] = builder->GetInsertBlock();
-					}
-					
-					builder->SetInsertPoint(MergeBB);
-					llvm::Value* final_location = llvm_create_phi({location[0], location[1]}, {u::AST_pointer, u::AST_pointer}, {caseBB[0], caseBB[1]});
-					default_allocation = new_reference(final_location);
-					finish_special(builder->CreateLoad(final_location), u::AST_pointer);
 				}
 			case Typen("type pointer"):
 				{
