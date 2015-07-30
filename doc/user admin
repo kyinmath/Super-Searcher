@@ -1,0 +1,3 @@
+shared memory must be deallocated using ::remove.
+shared memory is in the address space of the creator, but does it belong to the creator?
+

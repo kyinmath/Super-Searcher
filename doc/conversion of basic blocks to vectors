@@ -1,0 +1,25 @@
+after: I need to change:
+AST get_type
+AST new_type, copy_type
+console reader
+anything that uses imv
+convert_to_AST, imv_AST. remember to adjust the field_results offsets
+deep_AST_copier
+
+and, load_subobj can't give references anymore as return values. that means chaining must happen downward through fields, instead of across through a basic block.
+	but this was a problem before as well. since the AST could be 0.
+	actually, we can continue to do this. if the get_element returns 0, we just place a 0 on the stack.
+	problem: this only works if the base element actually can be 0. for example, vector base pointers are never 0.
+problem: bootstrapping is going to be a lot harder.
+
+current problem: how do I read a vector of something? now I need to get its inside...
+	must I really keep it as a vector of something, checking each time I want to dereference?
+	or, might I be able to force its type? if I know its exact type, I can try to store it into an existing vector with known type. but if I don't know its exact type (for example, if its internal is a pointer), then I'm in the usual trouble.
+so we have, in the future, try_store().
+
+
+second problem: load_subobj should return a reference. but for vectors, that isn't always possible.
+
+
+note: basic block ASTs shouldn't be treated like vectors of ASTs? or maybe they should.
+	having them treated like vectors breaks the transparency that the ASTs are embedded.
