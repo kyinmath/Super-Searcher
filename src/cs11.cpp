@@ -201,8 +201,8 @@ currently, the finish() macro takes in the array itself, not the pointer-to-arra
 Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
+	//note: early escapes must still leave the IR builder in a valid state, so that create_if_Value can do its rubbish business.
 #define return_code(X, Y) do { print("error at ", target); error_location = target; error_field = Y; return Return_Info(IRgen_status::X, (llvm::Value*)nullptr, u::null); } while (0)
-	//if (stack_degree == 2) stack_degree = 0; //we're trying to diagnose the memory problems with label. this does nothing.
 
 	if (VERBOSE_DEBUG)
 	{
@@ -388,51 +388,27 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	case ASTn("udiv"):
 		{
 			llvm::Value* comparison = builder->CreateICmpNE(field_results[1].IR, llvm_integer(0), s("division by zero check"));
-			llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
-			llvm::BasicBlock *SuccessBB = llvm::BasicBlock::Create(*context, s("finiteness success"), TheFunction);
-			llvm::BasicBlock *ZeroBB = llvm::BasicBlock::Create(*context, s("finiteness failure"), TheFunction);
-			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
-			builder->CreateCondBr(comparison, SuccessBB, ZeroBB);
-
-			builder->SetInsertPoint(SuccessBB);
-			llvm::Value* division = builder->CreateUDiv(field_results[0].IR, field_results[1].IR);
-			builder->CreateBr(MergeBB);
-			SuccessBB = builder->GetInsertBlock();
-
-			builder->SetInsertPoint(ZeroBB);
-			llvm::Value* default_val = llvm_integer(0);
-			builder->CreateBr(MergeBB);
-			ZeroBB = builder->GetInsertBlock();
-
-			builder->SetInsertPoint(MergeBB);
-			finish(llvm_create_phi({division, default_val}, {u::integer, u::integer}, {SuccessBB, ZeroBB}));
+			llvm::Value* result = create_if_value(
+				comparison,
+				[&](){ return builder->CreateUDiv(field_results[0].IR, field_results[1].IR); },
+				[](){ return llvm_integer(0); }
+			);
+			finish(result);
 		}
-
-	case ASTn("urem"): //copied from divu. except that we have URem, and the default value is the value itself instead of zero. this is to preserve (x / k) * k + x % k = x, and to preserve mod agreeing with equivalence classes on Z.
+	case ASTn("urem"): //default value is the value itself instead of zero. this is to preserve (x / k) * k + x % k = x, and to preserve mod agreeing with equivalence classes on Z.
 		{
 			llvm::Value* comparison = builder->CreateICmpNE(field_results[1].IR, llvm_integer(0), s("division by zero check"));
-			llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
-			llvm::BasicBlock *SuccessBB = llvm::BasicBlock::Create(*context, s("finiteness success"), TheFunction);
-			llvm::BasicBlock *ZeroBB = llvm::BasicBlock::Create(*context, s("finiteness failure"), TheFunction);
-			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
-			builder->CreateCondBr(comparison, SuccessBB, ZeroBB);
-
-			builder->SetInsertPoint(SuccessBB);
-			llvm::Value* division = builder->CreateURem(field_results[0].IR, field_results[1].IR);
-			builder->CreateBr(MergeBB);
-			SuccessBB = builder->GetInsertBlock();
-
-			builder->SetInsertPoint(ZeroBB);
-			llvm::Value* default_val = field_results[0].IR;
-			builder->CreateBr(MergeBB);
-			ZeroBB = builder->GetInsertBlock();
-
-			builder->SetInsertPoint(MergeBB);
-			finish(llvm_create_phi({division, default_val}, {u::integer, u::integer}, {SuccessBB, ZeroBB}));
+			llvm::Value* result = create_if_value(
+				comparison,
+				[&](){ return builder->CreateURem(field_results[0].IR, field_results[1].IR); },
+				[&](){ return field_results[0].IR; }
+			);
+			finish(result);
 		}
 	case ASTn("if"): //it's vitally important that this can check pointers, so that we can tell if they're nullptr.
 		{
-			//later, I think we should also push the condition object onto the stack. for example, this is useful with llvm's "dyn_cast".
+			//condition object is automatically pushed onto the stack.
+
 			//since the fields are conditionally executed, the temporaries generated in each branch are not necessarily referenceable.
 			//therefore, we must clear the stack between each branch.
 			uint64_t if_stack_position = object_stack.size();
@@ -446,9 +422,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 			llvm::BasicBlock* caseBB[2];
 			Return_Info case_IR[2];
-			for (uint64_t x : {0, 1})
-				caseBB[x] = llvm::BasicBlock::Create(*context, s("ifcase"), TheFunction);
-
+			for (uint64_t x : {0, 1}) caseBB[x] = llvm::BasicBlock::Create(*context, s("ifcase"), TheFunction);
 			builder->CreateCondBr(comparison, caseBB[0], caseBB[1]);
 			
 			for (uint64_t x : {0, 1})
@@ -471,8 +445,70 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			}
 
 			builder->SetInsertPoint(MergeBB);
+			llvm::Value* endPN = llvm_create_phi({case_IR[0].IR, case_IR[1].IR}, {caseBB[0], caseBB[1]});
+			finish_special(endPN, result_type);
+
+
+
+			/* 
+			// problem is that even if we return an error in one branch, other branch is going to proceed creating the object.
+			// fundamentally, create_if_value doesn't have a good way to handle if its lambdas return errors.
+
+			error_in_check check_before_emit_phi = [&]() -> bool
+			{
+				result_type = case_IR[0].type; //first, we assume then_IR is the main type.
+				//RVO, because that's what defines the slot.
+				if (type_check(RVO, case_IR[1].type, case_IR[0].type) != type_check_result::perfect_fit)
+				{
+					result_type = case_IR[1].type; //if it didn't work, try seeing if else_IR can be the main type.
+					if (type_check(RVO, case_IR[0].type, case_IR[1].type) != type_check_result::perfect_fit)
+						return_code(type_mismatch, 2);
+				}
+			};
+
+			//problem with this is that create_if_value() doesn't handle type checking, and we must do type checking before we actually create the phi value. to do this, we'd have to pass in a lambda returning bool, if something has gone wrong
+
+			llvm::Value* comparison
+			llvm::Value* comparison = builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("if() condition"));
+
+			Return_Info case_IR[2];
+
+			IRemitter run_field_1 = [&]() -> llvm::Value*
+			{
+			case_IR[0] = generate_IR(target->fields[1].ptr, false); //note: the case field is shifted by 1, because there's a condition field.
+			if (case_IR[0].error_code) return 0;
+			else return case_IR[0].IR;
+			};
+
+			IRemitter run_field_2 = [&]() -> llvm::Value*
+			{
+			case_IR[1] = generate_IR(target->fields[2].ptr, false);
+			if (case_IR[1].error_code) return 0;
+			else return case_IR[1].IR;
+			};
+
+			llvm::Value* error_value = create_if_value(
+			comparison,
+			run_field_1,
+			run_field_2,
+			);
+			if (error_value == 0) return_code(error_transfer_from_if, 0);
+
+
+
+			Tptr result_type = case_IR[0].type; //first, we assume then_IR is the main type.
+			//RVO, because that's what defines the slot.
+			if (type_check(RVO, case_IR[1].type, case_IR[0].type) != type_check_result::perfect_fit)
+			{
+			result_type = case_IR[1].type; //if it didn't work, try seeing if else_IR can be the main type.
+			if (type_check(RVO, case_IR[0].type, case_IR[1].type) != type_check_result::perfect_fit)
+			return_code(type_mismatch, 2);
+			}
+
+			builder->SetInsertPoint(MergeBB);
 			llvm::Value* endPN = llvm_create_phi({case_IR[0].IR, case_IR[1].IR}, {case_IR[0].type, case_IR[1].type}, {caseBB[0], caseBB[1]});
 			finish_special(endPN, result_type);
+			*/
 		}
 	case ASTn("nvec"):
 
@@ -609,9 +645,10 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			{
 				llvm::Value* overall_dynamic_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 
+				auto comparison = builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("special case 0 dynamic object"));
 				//this block handles the case where the base of the dynamic pointer is 0.
 				llvm::Value* overall_type = create_if_value(
-					[&](){ return builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("special case 0 dynamic object")); },
+					comparison,
 					[&](){ return builder->CreateLoad(overall_dynamic_object, s("type of overall dynamic")); },
 					[](){ return llvm_integer(0); }
 				);
@@ -724,26 +761,22 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				return_code(type_mismatch, 0);
 			}
 
+			Return_Info case_IR;
 			IRemitter run_field_2 = [&]() -> llvm::Value*
 			{
-				Return_Info case_IR = generate_IR(target->fields[2].ptr, false);
-				if (case_IR.error_code) return 0;
-				else return llvm_integer(0); //a 0 constant, signifying a useless phi value.
+				case_IR = generate_IR(target->fields[2].ptr, false); //error checking is moved to after the comparison.
+				return nullptr; //signifying an unused phi value.
 			};
 
 			//we can only do this because there's no "else" branch.
 			uint64_t starting_stack_position = object_stack.size();
 			memory_allocation reference(reference_p);
 			new_living_object(target, Return_Info(IRgen_status::no_error, &reference, type_of_object, true));
-			llvm::Value* error_value = create_if_value(
-				[&](){
-				auto reference_integer = builder->CreatePtrToInt(reference_p, llvm_i64());
-				return builder->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));
-			},
-				run_field_2,
-				[](){ return llvm_integer(0); }
-			);
-			if (error_value == 0) return_code(error_transfer_from_if, 0);
+
+			auto reference_integer = builder->CreatePtrToInt(reference_p, llvm_i64());
+			llvm::Value* comparison = builder->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));
+			create_if_value(comparison, run_field_2, [](){ return nullptr; });
+			if (case_IR.error_code) return case_IR;
 			clear_stack(starting_stack_position);
 
 			finish(0);

@@ -70,6 +70,50 @@ class compiler_object
 		return &allocations.back();
 	}
 
+	using IRemitter = std::function<llvm::Value*()>;
+	//using error_in_check = std::function<bool()>; //returns 1 if it's time to get out
+
+	//if errors can occur, you must catch them separately. try having a local Return_Info.
+	//note: that means that even if an error occurs in the first branch, second branch will still run.
+	//thus, we mandate that erroring out of generate_IR() must still leave the IR builders in valid states.
+	//the size of all values that enter the phi must be 1. this is baked in when we call llvm_create_phi. I don't know how to get a size another way.
+	inline llvm::Value* create_if_value(llvm::Value* comparison, IRemitter true_case, IRemitter false_case)//, error_in_check should_I_bail = [](){return false;})
+	{
+		check(comparison != nullptr, "pass in a real comparison please");
+		uint64_t if_stack_position = object_stack.size();
+
+		//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
+
+		llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
+		llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
+		llvm::Value* iftype[2];
+		llvm::BasicBlock* dynshuffleBB[2];
+		for (uint64_t x : {0, 1}) dynshuffleBB[x] = llvm::BasicBlock::Create(*context, s(""), TheFunction);
+		builder->CreateCondBr(comparison, dynshuffleBB[0], dynshuffleBB[1]);
+		for (uint64_t x : {0, 1})
+		{
+			builder->SetInsertPoint(dynshuffleBB[x]);
+			if (x == 0)
+			{
+				iftype[x] = true_case();
+			}
+			else if (x == 1)
+			{
+				iftype[x] = false_case();
+			}
+			builder->CreateBr(MergeBB);
+			dynshuffleBB[x] = builder->GetInsertBlock();
+
+			//since the fields are conditionally executed, the temporaries generated in each branch are not necessarily referenceable.
+			//therefore, we must clear the stack between each branch.
+			clear_stack(if_stack_position);
+		}
+		builder->SetInsertPoint(MergeBB);
+		//if (should_I_bail()) return 0;
+		llvm::Value* result = llvm_create_phi({iftype[0], iftype[1]}, {dynshuffleBB[0], dynshuffleBB[1]});
+		return result;
+	}
+
 	Return_Info generate_IR(uAST* user_target, uint64_t stack_degree);
 	
 public:

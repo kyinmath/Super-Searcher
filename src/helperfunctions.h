@@ -94,26 +94,40 @@ template<typename... should_be_type_ptr, typename fptr> inline llvm::Value* llvm
 	return builder->CreateIntToPtr(function_address, function_pointer_type, s("convert address to function"));
 }
 
+inline uint64_t size_of_Value(llvm::Value* value)
+{
+	if (value == nullptr) return 0;
+	llvm::Type* type = value->getType();
+	if (llvm::isa<llvm::IntegerType>(type))
+		return 1;
+	else if (llvm::isa<llvm::PointerType>(type)) //necessary for create_if_value, even if not necessary for write_into_place.
+		return 1;
+	else if (auto array = llvm::dyn_cast<llvm::ArrayType>(type))
+		return array->getNumElements();
+	else if (auto aggregate = llvm::dyn_cast<llvm::StructType>(type))
+		return aggregate->getNumElements();
+	else error("what fucking size is the Type anyway");
+}
+
 //we already typechecked and received perfect_fit. then, they're the same size, unless one of them is T::does_not_return
-//thus, we check for T::nonexistent
+//thus, we check for size 0 objects, which are simply ignored. this function doesn't do any typechecking whatsoever. it only produces llvm::Values.
+//you must type check on your own to make sure everything fits.
 //note: if the size is 1, it might be either i64 or i64*. if size > 1, can take [] or {}.
 //the second parameter, types, is just to check for "does not return". otherwise, each type should be the correct size. the particular type doesn't matter, just its size, and whether it's "does not return"
-inline llvm::Value* llvm_create_phi(llvm::ArrayRef<llvm::Value*> values, llvm::ArrayRef<Tptr> types, llvm::ArrayRef<llvm::BasicBlock*> basic_blocks)
+inline llvm::Value* llvm_create_phi(llvm::ArrayRef<llvm::Value*> values, llvm::ArrayRef<llvm::BasicBlock*> basic_blocks)
 {
-	check(values.size() == types.size(), "wrong number of arguments");
 	check(values.size() == basic_blocks.size(), "wrong number of arguments");
 	check(values.size() >= 2, "why even bother making a phi");
 	uint64_t choices = values.size();
-	if (types[0] == 0) return nullptr;
 	uint64_t eventual_size;
 	llvm::Type* eventual_type; //because the phi may also take in an i64*
 	std::vector<std::pair<llvm::Value*, llvm::BasicBlock*>> legitimate_values; //ones that aren't T::does_not_return
 	for (uint64_t idx = 0; idx < choices; ++idx)
 	{
-		if (types[idx].ver() != Typen("does not return"))
+		if (size_of_Value(values[idx]) != 0)
 		{
 			legitimate_values.push_back({values[idx], basic_blocks[idx]});
-			eventual_size = get_size(types[idx]);
+			eventual_size = size_of_Value(values[idx]);
 			eventual_type = values[idx]->getType();
 		}
 	}
@@ -161,16 +175,9 @@ inline void write_into_place(value_collection data, llvm::Value*& target, bool s
 	uint64_t offset = 0;
 	for (auto& single_object : data.objects)
 	{
-		uint64_t size;
-		if (single_object == nullptr) continue;
-		llvm::Type* type_of_single = single_object->getType();
-		if (llvm::isa<llvm::IntegerType>(type_of_single))
-			size = 1;
-		else if (auto array = llvm::dyn_cast<llvm::ArrayType>(type_of_single))
-			size = array->getNumElements();
-		else if (auto aggregate = llvm::dyn_cast<llvm::StructType>(type_of_single))
-			size = aggregate->getNumElements();
-		else error("what fucking size is the Value anyway");
+		uint64_t size = size_of_Value(single_object);
+		if (size == 0) continue;
+
 		for (uint64_t subplace = 0; subplace < size; ++subplace)
 		{
 			llvm::Value* integer_transfer = (size > 1) ? builder->CreateExtractValue(single_object, subplace) : single_object;
@@ -357,38 +364,3 @@ private:
 		return target;
 	}
 };
-
-using IRemitter = std::function<llvm::Value*()>;
-
-//uses nullptr as the error object. if an error occurs, it will return nullptr.
-//the size of all values that enter the phi must be 1.
-inline llvm::Value* create_if_value(IRemitter condition, IRemitter true_case, IRemitter false_case)
-{
-	llvm::Value* comparison = condition();
-	if (comparison == nullptr) return nullptr;
-	llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
-	llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
-	llvm::Value* iftype[2];
-	llvm::BasicBlock* dynshuffleBB[2];
-	for (uint64_t x : {0, 1}) dynshuffleBB[x] = llvm::BasicBlock::Create(*context, s(""), TheFunction);
-	builder->CreateCondBr(comparison, dynshuffleBB[0], dynshuffleBB[1]);
-	for (uint64_t x : {0, 1})
-	{
-		builder->SetInsertPoint(dynshuffleBB[x]);
-		if (x == 0)
-		{
-			iftype[x] = true_case();
-			if (iftype[x] == nullptr) return nullptr;
-		}
-		else if (x == 1)
-		{
-			iftype[x] = false_case();
-			if (iftype[x] == nullptr) return nullptr;
-		}
-		builder->CreateBr(MergeBB);
-		dynshuffleBB[x] = builder->GetInsertBlock();
-	}
-	builder->SetInsertPoint(MergeBB);
-	llvm::Value* result = llvm_create_phi({iftype[0], iftype[1]}, {u::type, u::type}, {dynshuffleBB[0], dynshuffleBB[1]});
-	return result;
-}
