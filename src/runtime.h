@@ -139,24 +139,9 @@ inline dynobj* run_null_parameter_function(function* func)
 		return result;
 	}
 }
-/*
-//each parameter is a pointer
-inline std::array<uint64_t, 2> concatenate_dynamic(uint64_t first_type, uint64_t old_pointer, uint64_t second_type)
-{
-	uint64_t* pointer = (uint64_t*)old_pointer;
-	Tptr type[2] = {(Tptr)first_type, (Tptr)second_type};
-
-	uint64_t size[2];
-	for (int x : { 0, 1 }) size[x] = get_size((Tptr)type[x]);
-	if (size[0] + size[1] == 0) return {{0, 0}};
-	uint64_t* new_dynamic = allocate(size[0] + size[1]);
-	for (uint64_t idx = 0; idx < size[0]; ++idx) new_dynamic[idx] = pointer[idx];
-	return std::array<uint64_t, 2>{{(uint64_t)concatenate_types({type[0], type[1]}), (uint64_t)new_dynamic}};
-}*/
-
 #include "vector.h"
-//returns pointer-to-AST. if the vector_of_ASTs is nullptr (which only happens when the object passed in is null, use no_dynamic_to_AST), then it's assumed to be empty
-inline uAST* dynamic_to_AST(uint64_t tag, uAST* previous, svector* vector_of_ASTs)
+//returns pointer-to-AST. if the vector_of_ASTs is nullptr (which only happens when the object passed in is null, use no_vector_to_AST), then it's assumed to be empty
+inline uAST* vector_to_AST(uint64_t tag, uAST* previous, svector* vector_of_ASTs)
 {
 	if (tag >= ASTn("never reached")) return 0; //you make a null AST if the tag is too high
 	if (tag == ASTn("imv")) return 0; //no making imvs this way.
@@ -172,13 +157,26 @@ inline uAST* dynamic_to_AST(uint64_t tag, uAST* previous, svector* vector_of_AST
 			new_AST->fields[x].num = (*vector_of_ASTs)[x];
 		else new_AST->fields[x].num = 0;
 	}
-	print("making new AST ", new_AST, '\n');
+	if (VERBOSE_GC) print("making new AST ", new_AST, '\n');
 	return new_AST;
 }
 
-inline uAST* no_dynamic_to_AST(uint64_t tag, uAST* previous)
+inline uAST* new_imv_AST(uAST* previous, dynobj* dyn)
 {
-	return dynamic_to_AST(tag, previous, nullptr);
+	uint64_t tag = ASTn("imv");
+	uint64_t AST_size = get_full_size_of_AST(tag);
+	uAST* new_AST = (uAST*)new_object(AST_size);
+	new_AST->tag = tag;
+	new_AST->preceding_BB_element = previous;
+	new_AST->fields[0] = (uAST*)dyn;
+	if (VERBOSE_GC) print("making new AST ", new_AST, '\n');
+	return new_AST;
+}
+
+
+inline uAST* no_vector_to_AST(uint64_t tag, uAST* previous)
+{
+	return vector_to_AST(tag, previous, nullptr);
 }
 
 inline void print_uint64_t(uint64_t x) {print("printing ", x, '\n');}

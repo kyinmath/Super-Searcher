@@ -2,7 +2,7 @@
 #include "types.h"
 #include "memory.h"
 
-constexpr bool VECTOR_DEBUG = true;
+constexpr bool VECTOR_DEBUG = false;
 
 //vector containing a single object per element.
 struct svector
@@ -57,4 +57,12 @@ inline void pushback(svector** s, uint64_t value)
 inline uint64_t vector_size(svector* s)
 {
 	return s->size;
+}
+
+//returns either pointer to the element, or 0.
+inline uint64_t* reference_at(svector* s, uint64_t offset)
+{
+	if (offset < s->size)
+		return &(*s)[offset];
+	else return 0;
 }

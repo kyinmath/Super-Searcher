@@ -22,6 +22,7 @@ enum IRgen_status {
 	oversized_offset, //when offsetting a pointer, you gave an excessively large offset
 	requires_constant, //when offsetting a pointer, you gave something that wasn't a constant
 	vector_cant_take_large_objects, //vectors, for now, can only take 1-sized objects.
+	error_transfer_from_if, //our if function can't transfer error codes. they get lost. so we return this error instead.
 	lost_hidden_subtype, //when working with a pointer to something, you better have its true type lying around in runtime
 };
 
@@ -358,11 +359,13 @@ private:
 };
 
 using IRemitter = std::function<llvm::Value*()>;
-//typedef llvm::Value* (*IRemitter)();
 
+//uses nullptr as the error object. if an error occurs, it will return nullptr.
+//the size of all values that enter the phi must be 1.
 inline llvm::Value* create_if_value(IRemitter condition, IRemitter true_case, IRemitter false_case)
 {
 	llvm::Value* comparison = condition();
+	if (comparison == nullptr) return nullptr;
 	llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
 	llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
 	llvm::Value* iftype[2];
@@ -372,8 +375,16 @@ inline llvm::Value* create_if_value(IRemitter condition, IRemitter true_case, IR
 	for (uint64_t x : {0, 1})
 	{
 		builder->SetInsertPoint(dynshuffleBB[x]);
-		if (x == 0) iftype[x] = true_case();
-		else if (x == 1) iftype[x] = false_case();
+		if (x == 0)
+		{
+			iftype[x] = true_case();
+			if (iftype[x] == nullptr) return nullptr;
+		}
+		else if (x == 1)
+		{
+			iftype[x] = false_case();
+			if (iftype[x] == nullptr) return nullptr;
+		}
 		builder->CreateBr(MergeBB);
 		dynshuffleBB[x] = builder->GetInsertBlock();
 	}

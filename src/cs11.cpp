@@ -201,7 +201,7 @@ currently, the finish() macro takes in the array itself, not the pointer-to-arra
 Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
-#define return_code(X, Y) do { error_location = target; error_field = Y; return Return_Info(IRgen_status::X, (llvm::Value*)nullptr, u::null); } while (0)
+#define return_code(X, Y) do { print("error at ", target); error_location = target; error_field = Y; return Return_Info(IRgen_status::X, (llvm::Value*)nullptr, u::null); } while (0)
 	//if (stack_degree == 2) stack_degree = 0; //we're trying to diagnose the memory problems with label. this does nothing.
 
 	if (VERBOSE_DEBUG)
@@ -384,6 +384,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	case ASTn("subtract"): finish(builder->CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
 	case ASTn("multiply"): finish(builder->CreateMul(field_results[0].IR, field_results[1].IR, s("multiply")));
 	case ASTn("random"): finish(builder->CreateCall(llvm_function(generate_random, llvm_i64()), {}, s("random")));
+	case ASTn("lessu"): finish(builder->CreateZExt(builder->CreateICmpULT(field_results[0].IR, field_results[1].IR), llvm_i64()));
 	case ASTn("udiv"):
 		{
 			llvm::Value* comparison = builder->CreateICmpNE(field_results[1].IR, llvm_integer(0), s("division by zero check"));
@@ -701,6 +702,47 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			builder->SetInsertPoint(MergeBB);
 			finish(single_type);
 		}
+
+	case ASTn("load_subobj_ref"):
+		{
+			Tptr type_of_pointer = field_results[0].type;
+			if (type_of_pointer == 0) return_code(type_mismatch, 0);
+			switch (type_of_pointer.ver())
+			{
+			case Typen("vector"):
+				{
+					Tptr type_of_object = type_of_pointer.field(0);
+					auto reference_p = builder->CreateCall(llvm_function(reference_at, llvm_i64()->getPointerTo(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
+					IRemitter run_field_2 = [&]() -> llvm::Value*
+					{
+						Return_Info case_IR = generate_IR(target->fields[2].ptr, false);
+						if (case_IR.error_code) return 0;
+						else return llvm_integer(0); //a 0 constant, signifying a useless phi value.
+					};
+
+					//we can only do this because there's no "else" branch.
+					uint64_t starting_stack_position = object_stack.size();
+					memory_allocation reference(reference_p);
+					new_living_object(target, Return_Info(IRgen_status::no_error, &reference, type_of_object, true));
+					llvm::Value* error_value = create_if_value(
+						[&](){
+						auto reference_integer = builder->CreatePtrToInt(reference_p, llvm_i64());
+						return builder->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));
+					},
+						run_field_2,
+						[](){ return llvm_integer(0); }
+					);
+					if (error_value == 0) return_code(error_transfer_from_if, 0);
+					clear_stack(starting_stack_position);
+
+					finish(0);
+				}
+			case Typen("AST pointer"):
+				//fallthrough for now. when we have basic blocks, we can consider retrying this.
+			default:
+				return_code(type_mismatch, 0);
+			}
+		}
 	case ASTn("vector_push"):
 		{
 			//requires place, because pushing an element may change the location of the vector
@@ -779,7 +821,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			//this is necessary to solve the bootstrapping issue. can't get an AST without a vector of ASTs; can't get a vector of ASTs without an AST.
 			if (field_results[2].type == T::null)
 			{
-				llvm::Value* converter = llvm_function(no_dynamic_to_AST, llvm_i64(), llvm_i64(), llvm_i64());
+				llvm::Value* converter = llvm_function(no_vector_to_AST, llvm_i64(), llvm_i64(), llvm_i64());
 				std::vector<llvm::Value*> arguments{field_results[0].IR, previous_AST};
 				llvm::Value* AST_result = builder->CreateCall(converter, arguments, s("converter"));
 				finish(AST_result);
@@ -789,9 +831,27 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				return_code(type_mismatch, 2);
 			llvm::Value* hopeful_vector = field_results[2].IR;
 
-			llvm::Value* converter = llvm_function(dynamic_to_AST, llvm_i64(), llvm_i64(), llvm_i64(), llvm_i64());
+			llvm::Value* converter = llvm_function(vector_to_AST, llvm_i64(), llvm_i64(), llvm_i64(), llvm_i64());
 			std::vector<llvm::Value*> arguments{field_results[0].IR, previous_AST, hopeful_vector};
 			llvm::Value* AST_result = builder->CreateCall(converter, arguments, s("converter"));
+
+			finish(AST_result);
+		}
+	case ASTn("imv_AST"):
+		{
+
+			llvm::Value* previous_AST;
+			if (type_check(RVO, field_results[1].type, 0) == type_check_result::perfect_fit) //previous AST is nullptr.
+				previous_AST = llvm_integer(0);
+			else if (type_check(RVO, field_results[1].type, u::AST_pointer) == type_check_result::perfect_fit) //previous AST actually exists
+				previous_AST = field_results[1].IR;
+			else return_code(type_mismatch, 1);
+
+			llvm::Value* dynamic_object = field_results[1].IR;
+
+			llvm::Value* converter = llvm_function(new_imv_AST, llvm_i64(), llvm_i64(), llvm_i64());
+			std::vector<llvm::Value*> arguments{previous_AST, dynamic_object};
+			llvm::Value* AST_result = builder->CreateCall(converter, arguments, s("new imv"));
 
 			finish(AST_result);
 		}

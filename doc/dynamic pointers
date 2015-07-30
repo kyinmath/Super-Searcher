@@ -80,3 +80,7 @@ how are user snapshots going to work?
 	you'll need to do a huge copy.
 		maybe dynamic owning pointers? when you copy, you automatically make subcopies?
 		that sounds good. you encode what is owned and what isn't.
+
+note: it's virtually impossible right now to copy a dynamic object. because you have to get one by one, extract the types exactly, and then copy them over.
+	we have no way to manipulate unknown-type objects.
+from a theoretical standpoint, it's still possible to do things when you don't know the type. like move objects from dynamic object to dynamic object.

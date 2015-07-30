@@ -93,6 +93,7 @@ constexpr AST_info AST_descriptor[] =
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
 	{"random", T::integer},
 	a("if", special_return, T::integer).add_pointer_fields(2), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
+	{"lessu", T::integer, T::integer, T::integer}, //less than comparison
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
 	{"subtract", T::integer, T::integer, T::integer},
 	{"multiply", T::integer, T::integer, T::integer},
@@ -108,8 +109,10 @@ constexpr AST_info AST_descriptor[] =
 	a("goto", special_return).add_pointer_fields(3), //first field is label, second field is success, third field is failure
 	a("label", T::null).add_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
 	a("convert_to_AST", T::AST_pointer, T::integer, compile_without_type_check, compile_without_type_check), //returns 0 on failure, the null AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST. integer, then previous_BB, then a vector/nothing.
+	a("imv_AST", T::AST_pointer, compile_without_type_check, T::dynamic_object), //makes a new dynamic object
 	{"store", T::null, compile_without_type_check, compile_without_type_check}, //pointer, then value.
 	{"load_subobj", special_return, compile_without_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields.
+	a("load_subobj_ref", T::null, compile_without_type_check, T::integer).add_pointer_fields(1), //creates a reference and places it in the last field, instead of returning it. this is necessary if the loading can fail. used for ASTs, and for vectors.
 	a("dyn_subobj", T::type, compile_without_type_check, T::integer).add_pointer_fields(Typen("pointer") + 1), //if the proper type is a pointer/vector, we return the "pointer to something"/"vector of something". returns the type obtained. can take in either a dynamic pointer, a pointer to something, or a vector of something.
 	a("vector_push", T::null, compile_without_type_check, compile_without_type_check), //push an object.
 	a("vector_size", T::integer, compile_without_type_check),
@@ -127,7 +130,6 @@ constexpr AST_info AST_descriptor[] =
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
 	{ "divss", 3 }, warning: integer division by -1 must be considered. (1, 31) / -1 is segfault.
-	{ "less", 2 },
 	{ "lteq", 2 },
 	{ "less signed", 2 },
 	{ "lteq signed", 2 },
@@ -182,16 +184,23 @@ inline Tptr get_AST_full_type(uint64_t tag)
 	return concatenate_types({u::integer, u::AST_pointer, get_AST_fields_type(tag)});
 }
 
-inline uint64_t get_full_size_of_AST(uint64_t tag)
+
+inline uint64_t get_field_size_of_AST(uint64_t tag)
 {
-	if (tag == ASTn("imv")) return 3;
-	return AST_descriptor[tag].pointer_fields + 2;
+	if (tag == ASTn("imv")) return 1;
+	//todo: basic block AST.
+	return AST_descriptor[tag].pointer_fields;
 }
 
+
+inline uint64_t get_full_size_of_AST(uint64_t tag)
+{
+	return get_field_size_of_AST(tag) + 2;
+}
 #include "memory.h"
 inline uAST* new_AST(uint64_t tag, uAST* previous, llvm::ArrayRef<uAST*> fields)
 {
-	uint64_t total_field_size = get_full_size_of_AST(tag) - 2;
+	uint64_t total_field_size = get_field_size_of_AST(tag);
 	check(total_field_size == fields.size(), "passed the wrong number of fields to new_AST");
 	uAST* new_home = (uAST*)allocate(total_field_size + 2);
 	new_home->tag = tag;
@@ -227,4 +236,12 @@ inline uAST* copy_AST(uAST* t)
 	}
 	if (VERBOSE_GC) print("copy AST ", new_home, '\n');
 	return (uAST*)new_home;
+}
+
+inline uint64_t* AST_field(uAST* t, uint64_t offset)
+{
+	if (t == 0) return 0;
+	if (t->tag == ASTn("imv")) return 0;
+	if (offset < get_field_size_of_AST(t->tag)) return &t->fields[offset].num;
+	else return 0;
 }
