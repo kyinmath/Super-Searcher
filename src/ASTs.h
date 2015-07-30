@@ -48,16 +48,14 @@ struct AST_info
 
 	uint64_t fields_to_compile; //we may not always compile all pointers, such as with "copy".
 
-	uint64_t additional_special_fields = 0; //these fields come after the pointer fields. they are REAL types, not AST return types.
-	//for example, if you have a Tptr in the second field and a normal AST* in the first field, then this would be 1.
-	//then, in the argument list, you'd put a Tptr in the second parameter slot.
+	uint64_t additional_special_fields = 0; //these fields are REAL types, not AST return types.
 
 	//this reduces the number of pointer fields, because those are special fields instead.
-	constexpr AST_info make_special_fields(int x)
+	constexpr AST_info special_fields(int x)
 	{
 		AST_info new_copy(*this);
 		new_copy.additional_special_fields = x;
-		return new_copy.add_pointer_fields(-x);
+		return new_copy;
 	}
 
 	template<typename... Args> constexpr AST_info(const char a[], ctt r, Args... incoming_fields)
@@ -87,7 +85,7 @@ keep AST names to one word only, because our console input takes a single word f
 */
 constexpr AST_info AST_descriptor[] =
 {
-	a("imv", special_return, T::dynamic_object).make_special_fields(1), //immediate value, like "int x = 40". loaded value can be modified in-function, but any changes are temporary.
+	a("imv", special_return).special_fields(1), //immediate value, like "int x = 40". loaded value can be modified in-function, but any changes are temporary.
 	{"zero", T::integer}, //Peano axioms zero
 	{"decrement", T::integer, T::integer}, //Peano axioms increment operation.
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
@@ -170,11 +168,10 @@ inline Tptr get_AST_fields_type(uint64_t tag)
 	std::vector<Tptr> fields;
 	//check(tag != 0, "this is so that some functions like marky_mark() don't need special cases for null objects"); //this isn't necessary anymore, because no more null ASTs
 	check(tag < ASTn("never reached"), "get_AST_type is a sandboxed function, use the user facing version instead");
+	if (tag == ASTn("imv")) return u::dynamic_object;
 	uint64_t number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
 	for (uint64_t x = 0; x < number_of_AST_pointers; ++x)
 		fields.push_back(u::AST_pointer);
-	for (uint64_t x = 0; x < AST_descriptor[tag].additional_special_fields; ++x)
-		fields.push_back(get_unique_type(AST_descriptor[tag].parameter_types[number_of_AST_pointers + x].type, false));
 	return concatenate_types(fields);
 }
 
