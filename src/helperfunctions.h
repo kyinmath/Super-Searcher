@@ -274,6 +274,7 @@ inline llvm::Value* load_from_memory(llvm::Value* location, uint64_t size)
 //every time IR is generated, this holds the relevant return info.
 //if memory_location is active, hidden_reference may still be true or false. this affects whether you can get a pointer to it.
 //hidden_reference := no pointers allowed. hidden_reference => memory_location is active. 
+//note: #define finish_passthrough() in cs11.cpp depends on this structure. we'll need ot handle hidden_subtype later.
 struct Return_Info
 {
 	IRgen_status error_code;
@@ -345,19 +346,10 @@ private:
 		if (search_for_copy == copy_mapper.end())
 		{
 			target = copy_AST(user_target); //make a bit copy. the fields will still point to the old ASTs; that will be corrected after inserting into the map
-			//this relies on loads in x64 being atomic, which may not be wholly true.
 			copy_mapper.insert({user_target, target});
-
-			target->preceding_BB_element = internal_copy(target->preceding_BB_element);
-			if (target->tag == ASTn("imv"))
-			{
-				auto object = (dynobj*)target->fields[0].num;
-				if (object != nullptr)
-				{
-					target->fields[0].ptr = (uAST*)copy_dynamic((dynobj*)target->fields[0].ptr);
-				}
-			}
-			else for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
+			
+			//we don't need to handle "imv" or "basicblock", because copy_mapper handles them automatically.
+			for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
 				target->fields[x].ptr = internal_copy(target->fields[x].ptr);
 		}
 		else target = search_for_copy->second;

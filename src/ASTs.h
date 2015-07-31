@@ -87,6 +87,7 @@ keep AST names to one word only, because our console input takes a single word f
 constexpr AST_info AST_descriptor[] =
 {
 	a("imv", special_return).special_fields(1), //immediate value, like "int x = 40". loaded value can be modified in-function, but any changes are temporary.
+	a("basicblock", special_return).special_fields(1), //contains a svector* as the first field.
 	{"zero", T::integer}, //Peano axioms zero
 	{"decrement", T::integer, T::integer}, //Peano axioms increment operation.
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
@@ -123,6 +124,7 @@ constexpr AST_info AST_descriptor[] =
 	//we need a specific "overwrite function" AST, that can't be the usual store. because it might fail, and so we must return an error code.
 	a("load_tag", T::integer, compile_without_type_check), //takes AST or type.
 	{"load_imv_from_AST", T::dynamic_object, T::AST_pointer}, //todo: make it give a reference.
+	//load_vector_from_BB
 	//a("do_after", T::special_return, compile_without_type_check).make_pointer_fields(2),
 	//{"return", T::special_return, T::compile_without_type_check}, have to check that the type matches the actual return type. call all dtors. we can take T::does_not_return, but that just disables the return.
 	//{"snapshot", T::dynamic_pointer, T::dynamic pointer}, //makes a deep copy. ought to return size as well, since size is a way to cheat, by growing larger.
@@ -154,7 +156,6 @@ struct uAST
 {
 	//std::mutex lock;
 	uint64_t tag;
-	uAST* preceding_BB_element; //this object survives on the stack and can be referenced. it's the previous basic block element.
 	using iop = int_or_ptr<uAST>;
 	std::array<iop, max_fields_in_AST> fields;
 private:
@@ -170,6 +171,7 @@ inline Tptr get_AST_fields_type(uint64_t tag)
 	//check(tag != 0, "this is so that some functions like marky_mark() don't need special cases for null objects"); //this isn't necessary anymore, because no more null ASTs
 	check(tag < ASTn("never reached"), "get_AST_type is a sandboxed function, use the user facing version instead");
 	if (tag == ASTn("imv")) return u::dynamic_object;
+	if (tag == ASTn("basicblock")) return u::vector_of_ASTs;
 	uint64_t number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
 	for (uint64_t x = 0; x < number_of_AST_pointers; ++x)
 		fields.push_back(u::AST_pointer);
@@ -186,6 +188,7 @@ inline Tptr get_AST_full_type(uint64_t tag)
 inline uint64_t get_field_size_of_AST(uint64_t tag)
 {
 	if (tag == ASTn("imv")) return 1;
+	if (tag == ASTn("basicblock")) return 1;
 	//todo: basic block AST.
 	return AST_descriptor[tag].pointer_fields;
 }
@@ -193,44 +196,49 @@ inline uint64_t get_field_size_of_AST(uint64_t tag)
 
 inline uint64_t get_full_size_of_AST(uint64_t tag)
 {
-	return get_field_size_of_AST(tag) + 2;
+	return get_field_size_of_AST(tag) + 1;
 }
 #include "memory.h"
-inline uAST* new_AST(uint64_t tag, uAST* previous, llvm::ArrayRef<uAST*> fields)
+inline uAST* new_AST(uint64_t tag, llvm::ArrayRef<uAST*> fields)
 {
 	uint64_t total_field_size = get_field_size_of_AST(tag);
 	check(total_field_size == fields.size(), "passed the wrong number of fields to new_AST");
-	uAST* new_home = (uAST*)allocate(total_field_size + 2);
+	uAST* new_home = (uAST*)allocate(total_field_size + 1);
 	new_home->tag = tag;
-	new_home->preceding_BB_element = previous;
 	for (uint64_t x = 0; x < total_field_size; ++x)
 		new_home->fields[x] = (uint64_t)fields[x];
-	if (tag == ASTn("imv"))
+	if (tag == ASTn("basicblock"))
 	{
-		if (new_home->fields[0].num != 0)
-			if (*(uint64_t*)(new_home->fields[0].ptr) == 0)
-				error("what shit am I making now");
+		new_home->fields[0].ptr = (uAST*)new_vector(u::AST_pointer, fields);
 	}
 	if (VERBOSE_GC) print("new AST ", new_home, '\n');
 	return (uAST*)new_home;
 }
 
 void output_AST(uAST* target);
+//doesn't make a deep copy. however, for basic blocks, this will copy the interior, because otherwise there's zero point to copying an AST. same for imv.
+//copying imv and basicblock also makes the deep_AST_copier much nicer.
 inline uAST* copy_AST(uAST* t)
 {
 	uint64_t tag = t->tag;
-	uAST* previous = t->preceding_BB_element;
 	uint64_t total_field_size = get_size(get_AST_fields_type(tag));
-	uint64_t* new_home = allocate(total_field_size + 2);
-	new_home[0] = tag;
-	new_home[1] = (uint64_t)previous;
-	for (uint64_t x = 0; x < total_field_size; ++x)
-		new_home[x + 2] = t->fields[x].num;
+	uAST* new_home;
 	if (tag == ASTn("imv"))
 	{
-		if (new_home[2] != 0)
-			if (*(uint64_t*)new_home[2] == 0)
-				error("what shit am I making now");
+		auto k = (dynobj*)t->fields[0].ptr;
+		k = copy_dynamic(k);
+		new_home = new_AST(tag, (uAST*)k);
+	}
+	else if (tag == ASTn("basicblock"))
+	{
+		svector* k = (svector*)t->fields[0].ptr;
+		llvm::ArrayRef<uAST*> fields(*k);
+		new_home = new_AST(tag, fields);
+	}
+	else
+	{
+		llvm::ArrayRef<uAST*> fields(&t->fields[0].ptr, total_field_size);
+		uAST* new_home = new_AST(tag, fields);
 	}
 	if (VERBOSE_GC) print("copy AST ", new_home, '\n');
 	return (uAST*)new_home;
@@ -240,6 +248,13 @@ inline uint64_t* AST_field(uAST* t, uint64_t offset)
 {
 	if (t == 0) return 0;
 	if (t->tag == ASTn("imv")) return 0;
+	if (t->tag == ASTn("basicblock"))
+	{
+		auto k = (svector*)(t->fields[0].ptr);
+		if (offset < k->size)
+			return &(*k)[offset];
+		else return 0;
+	}
 	if (offset < get_field_size_of_AST(t->tag)) return &t->fields[offset].num;
 	else return 0;
 }

@@ -217,6 +217,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	//generate_IR is allowed to take nullptr. otherwise, we need an extra check beforehand. this extra check creates code duplication, which leads to typos when indices aren't changed.
 	if (target == nullptr) return Return_Info();
 
+	//we can't use a dtor to clear the stack, because that will run after the new object is created, killing it.
 	uint64_t final_stack_position = ~0ull;
 	
 	memory_allocation* default_allocation = nullptr;
@@ -299,6 +300,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 #define finish_special(X, type) do {return finish_internal(X, type); } while (0)
 
 #define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, get_unique_type(AST_descriptor[target->tag].return_object.type, false)); } while (0)
+#define finish_passthrough(X) do {default_allocation = X.place; return finish_internal(X.IR, X.type);} while(0)
 
 	//if this AST is already in the object list, return the previously-gotten value. this comes before the loop catcher.
 	auto looking_for_reference = objects.find(target);
@@ -326,13 +328,6 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	} temp_object(this, target);
 
 
-	//compile the previous elements in the basic block.
-	if (target->preceding_BB_element)
-	{
-		if (VERBOSE_DEBUG) print( "I'm previousing\n");
-		auto previous_elements = generate_IR(target->preceding_BB_element, 2);
-		if (previous_elements.error_code) return previous_elements;
-	}
 
 	//after compiling the previous elements in the basic block, we find the lifetime of this element
 	//this actually starts at 2, but that's fine.
@@ -377,6 +372,18 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	//we generate code for the AST, depending on its tag.
 	switch (target->tag)
 	{
+	case ASTn("basicblock"):
+		{
+			//compile basic block elements.
+			svector* k = (svector*)target->fields[0].ptr;
+			Return_Info final; //default value
+			for (uint64_t& AST : Vector_range(k))
+			{
+				final = generate_IR((uAST*)AST, 2);
+				if (final.error_code) return final;
+			}
+			return final;
+		}
 	case ASTn("zero"): finish(llvm_integer(0));
 	case ASTn("increment"): finish(builder->CreateAdd(field_results[0].IR, llvm_integer(1), s("increment")));
 	case ASTn("decrement"): finish(builder->CreateSub(field_results[0].IR, llvm_integer(1)));
@@ -591,9 +598,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			builder->SetInsertPoint(FailureBB);
 
 			Return_Info Failure_IR = generate_IR(target->fields[2].ptr, 0);
-			if (Failure_IR.error_code) return Failure_IR;
-
-			finish_special(Failure_IR.IR, Failure_IR.type);
+			finish_passthrough(Failure_IR); //whether it's a failure or not.
 		}
 	case ASTn("pointer"):
 		{

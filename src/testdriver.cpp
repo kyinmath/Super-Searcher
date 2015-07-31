@@ -17,7 +17,8 @@ llvm::raw_null_ostream llvm_null_stream;
 
 std::array<uint64_t, ASTn("never reached")> hitcount;
 std::vector<uint64_t> allowed_tags;
-extern std::deque< uAST*> fuzztester_roots; //for use in garbage collecting. each valid AST that the fuzztester has a reference to must be kept in here
+extern std::deque< function*> fuzztester_roots; //for use in garbage collecting. each valid AST that the fuzztester has a reference to must be kept in here
+//each of these is a basicblock AST.
 /**
 The fuzztester generates random ASTs and attempts to compile them. not all randomly-generated ASTs will be well-formed.
 
@@ -33,6 +34,7 @@ and, it can't produce [concatenate [int]a [load a]]. that requires speculative c
 void fuzztester(uint64_t iterations)
 {
 	uint64_t max_fuzztester_size = 1;
+	//std::vector<uAST*> loose_ASTs;
 	while (iterations)
 	{
 		--iterations; //this is here, instead of having "iterations--", so that integer-sanitizer doesn't complain
@@ -42,56 +44,58 @@ void fuzztester(uint64_t iterations)
 		if (LIMITED_FUZZ_CHOICES)
 			tag = allowed_tags[mersenne() % allowed_tags.size()];
 		uint64_t pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
-		uint64_t prev_AST = generate_exponential_dist() % fuzztester_roots.size(); //perhaps: prove that exponential_dist is desired.
+		uint64_t prev_number = generate_exponential_dist() % fuzztester_roots.size(); //perhaps: prove that exponential_dist is desired.
 		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
 		//but does exponential falloff solve this problem in the way we want?
 
-		std::vector<uAST*> fields;
-		uint64_t incrementor = 0;
-		for (; incrementor < pointer_fields; ++incrementor)
-			fields.push_back(fuzztester_roots.at(mersenne() % fuzztester_roots.size())); //get pointers to previous ASTs
-		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
+		function* previous_func = fuzztester_roots.at(prev_number);
+		uAST* previous = previous_func->the_AST; //assume it's a basic block?
+		uAST* test_AST;
+		if (tag == ASTn("basicblock")) //simply concatenate two previous basic blocks.
 		{
-			if (tag == ASTn("imv"))
-			{
-				fields.push_back((uAST*)new_object(u::integer.ver(), generate_exponential_dist())); //make a random integer
-			}
-			else error("fuzztester doesn't know how to make this special type, so I'm going to panic");
-		}
-		uAST* test_AST = new_AST(tag, fuzztester_roots.at(prev_AST), fields);
-		output_AST_console_version(test_AST);
-		fuzztester_roots.pop_back(); //delete the null we put on the back
-		finiteness = FINITENESS_LIMIT;
-		if (!FUZZTESTER_NO_COMPILE)
-		{
-			uint64_t result[3];
-			compile_returning_legitimate_object(result, (uint64_t)test_AST);
-			print("results of user compile are ", result[0], ' ', result[1] , ' ' , result[2] , '\n');
-			auto func = (function*)result[0];
-			if (result[1] == 0)
-			{
-				fuzztester_roots.push_back((uAST*)func->the_AST);
-				if (fuzztester_roots.size() > max_fuzztester_size)
-					fuzztester_roots.pop_front();
-
-
-				if (DONT_ADD_MODULE_TO_ORC || DELETE_MODULE_IMMEDIATELY)
-					continue;
-
-				dynobj* dynamic_result = run_null_parameter_function((function*)result[0]);
-				uint64_t size_of_return = dynamic_result ? get_size(dynamic_result->type) : 0;
-				if (size_of_return) output_array(&(*dynamic_result)[0], size_of_return);
-				//theoretically, this action is disallowed. these ASTs are pointing to already-immuted ASTs, which can't happen. however, it's safe as long as we isolate these ASTs from the user
-				++hitcount[tag];
-			}
+			test_AST = new_AST(tag, {previous, fuzztester_roots.at(generate_exponential_dist() % fuzztester_roots.size())->the_AST});
 		}
 		else
 		{
-			//don't bother compiling. just shove everything in there.
-			fuzztester_roots.push_back(test_AST);
+			if (tag == ASTn("imv"))
+			{
+				//make a random integer
+				test_AST = new_AST(tag, (uAST*)new_object(u::integer.ver(), generate_exponential_dist()));
+			}
+			else
+			{
+				std::vector<uAST*> fields;
+				for (uint64_t incrementor = 0; incrementor < pointer_fields; ++incrementor)
+					fields.push_back(fuzztester_roots.at(mersenne() % fuzztester_roots.size())->the_AST); //get pointers to previous ASTs
+				test_AST = new_AST(tag, fields);
+			}
+			test_AST = copy_AST(previous);
+			auto k = (svector*)test_AST->fields[0].ptr;
+			pushback_int(k, (uint64_t)test_AST);
+		}
+
+		output_AST_console_version(test_AST);
+		fuzztester_roots.pop_back(); //delete the null we put on the back
+		finiteness = FINITENESS_LIMIT;
+
+		uint64_t result[3];
+		compile_returning_legitimate_object(result, (uint64_t)test_AST);
+		print("results of user compile are ", result[0], ' ', result[1], ' ', result[2], '\n');
+		auto func = (function*)result[0];
+		if (result[1] == 0)
+		{
+			fuzztester_roots.push_back(func);
 			if (fuzztester_roots.size() > max_fuzztester_size)
 				fuzztester_roots.pop_front();
-			print(fuzztester_roots.size() - 1, "\n");
+
+
+			if (DONT_ADD_MODULE_TO_ORC || DELETE_MODULE_IMMEDIATELY)
+				continue;
+
+			dynobj* dynamic_result = run_null_parameter_function((function*)result[0]);
+			uint64_t size_of_return = dynamic_result ? get_size(dynamic_result->type) : 0;
+			if (size_of_return) output_array(&(*dynamic_result)[0], size_of_return);
+			//theoretically, this action is disallowed. these ASTs are pointing to already-immuted ASTs, which can't happen. however, it's safe as long as we isolate these ASTs from the user
 			++hitcount[tag];
 		}
 		//else delete test_AST;
@@ -165,7 +169,7 @@ class source_reader
 	}
 
 	//continued_string is in case we already read the first token. then, that's the first thing to start with.
-	uAST* read_single_AST(uAST* previous_AST, string continued_string = "")
+	uAST* read_single_AST(string continued_string = "")
 	{
 		string first = continued_string == "" ? get_token() : continued_string;
 		if (first != string(1, '[')) //it's a name reference.
@@ -185,8 +189,9 @@ class source_reader
 		uint64_t AST_type = ASTn(tag_str.c_str());
 
 		std::vector<uAST*> dummy_uASTs(get_size(get_AST_fields_type(AST_type)), nullptr);
-		uAST* new_type_location = new_AST(AST_type, previous_AST, dummy_uASTs); //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
-
+		uAST* new_type_location = new_AST(AST_type, dummy_uASTs); //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
+		//todo: this is a problem when making basic blocks
+		//also, we can't resolve gotos, because the target of the BB will move around.
 
 		if (READER_VERBOSE_DEBUG) print("AST tag was ", AST_type, "\n");
 		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
@@ -200,7 +205,7 @@ class source_reader
 			if (field_num < pointer_fields) //it's a pointer!
 			{
 				if (next_token == "{") new_type_location->fields[field_num] = create_single_basic_block(true);
-				else new_type_location->fields[field_num] = read_single_AST(nullptr, next_token);
+				else new_type_location->fields[field_num] = read_single_AST(next_token);
 				if (new_type_location->fields[field_num].ptr == delayed_binding_special_value)
 				{
 					goto_delay.insert(make_pair(&((uAST*)(new_type_location))->fields[field_num].ptr, delayed_binding_name));
@@ -247,26 +252,22 @@ class source_reader
 
 	uAST* create_single_basic_block(bool create_brace_at_end = false)
 	{
-		uAST* current_previous = nullptr;
+		uAST* BB_AST = new_AST(ASTn("basicblock"), {});
+		svector* k = (svector*)BB_AST->fields[0].ptr;
+		string last_char;
 		if (create_brace_at_end == false)
 		{
 			if (input.peek() == '\n') input.ignore(1);
-			for (string next_word = get_token(); next_word != ""; next_word = get_token())
-			{
-				current_previous = read_single_AST(current_previous, next_word);
-				check(current_previous != delayed_binding_special_value, "failed to resolve reference: " + next_word); //note that forward references in basic blocks are not allowed
-			}
-			return current_previous; //which is the very last.
+			last_char = "";
 		}
-		else
+		else last_char = "}";
+		for (string next_word = get_token(); next_word != last_char; next_word = get_token())
 		{
-			for (string next_word = get_token(); next_word != "}"; next_word = get_token())
-			{
-				current_previous = read_single_AST(current_previous, next_word);
-				check(current_previous != delayed_binding_special_value, "failed to resolve reference: " + next_word);
-			}
-			return current_previous; //which is the very last
+			uAST* single_AST = read_single_AST(next_word);
+			check(single_AST != delayed_binding_special_value, "failed to resolve reference: " + next_word); //note that forward references in basic blocks are not allowed
+			pushback(&k, (uint64_t)single_AST);
 		}
+		return BB_AST; //which is the very last.
 	}
 
 public:
@@ -446,7 +447,7 @@ int main(int argc, char* argv[])
 			runs = std::stoull(next_token);
 		}
 		else if (strcmp(argv[x], "oldoutput") == 0) OLD_AST_OUTPUT = true;
-		else if (strcmp(argv[x], "fuzznocompile") == 0) FUZZTESTER_NO_COMPILE = true;
+		//else if (strcmp(argv[x], "fuzznocompile") == 0) FUZZTESTER_NO_COMPILE = true;
 		else if (strcmp(argv[x], "noaddmodule") == 0) DONT_ADD_MODULE_TO_ORC = true;
 		else if (strcmp(argv[x], "deletemodule") == 0) DELETE_MODULE_IMMEDIATELY = true;
 		else if (strcmp(argv[x], "truefuzz") == 0)

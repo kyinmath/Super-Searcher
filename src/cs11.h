@@ -42,7 +42,7 @@ class compiler_object
 	//pair with clear_stack().
 	void new_living_object(uAST* target, Return_Info r)
 	{
-		check((uint64_t)r.type != ASTn("pointer"), "what the fuck");
+		check((uint64_t)r.type != ASTn("pointer"), "big mistake somewhere in Tptr optimization, pointer needs more fields");
 		auto insert_result = objects.insert({target, r});
 		if (!insert_result.second) //collision: AST is already there
 			return;

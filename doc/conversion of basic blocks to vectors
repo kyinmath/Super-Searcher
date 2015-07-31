@@ -1,10 +1,9 @@
 after: I need to change:
-AST get_type
-AST new_type, copy_type
 console reader
 anything that uses imv
 convert_to_AST, imv_AST. remember to adjust the field_results offsets
 deep_AST_copier
+debug functions
 
 and, load_subobj can't give references anymore as return values. that means chaining must happen downward through fields, instead of across through a basic block.
 	but this was a problem before as well. since the AST could be 0.

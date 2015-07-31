@@ -119,7 +119,7 @@ function* allocate_function()
 	error("OOM function");
 }
 
-std::deque< uAST*> fuzztester_roots;
+std::deque< funcction*> fuzztester_roots;
 type_htable_t type_hash_table; //a hash table of all the unique types. don't touch this unless you're the memory allocation
 //this is extern, because of static initialization fiasco. but we still want to use it at the end of GC, so it should be global. thus, the actual objects are at the bottom of the file.
 extern std::vector< Tptr > unique_type_roots;
@@ -131,10 +131,10 @@ void initialize_roots()
 	//for (auto& type : type_hash_table)
 	//	output_type(type);
 
-	for (auto& root_AST : fuzztester_roots)
+	for (auto& root_function : fuzztester_roots)
 	{
-		print("gc root AST at ", root_AST, '\n');
-		to_be_marked.push(std::make_pair((uint64_t*)root_AST, get_AST_full_type(root_AST->tag)));
+		print("gc root function at ", root_function, '\n');
+		mark_single_element((uint64_t*)root_function, Typen("function pointer"));
 	}
 
 	//add in the event-driven ASTs
