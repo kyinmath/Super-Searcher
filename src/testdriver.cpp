@@ -52,7 +52,7 @@ void fuzztester(uint64_t iterations)
 			fields.push_back(fuzztester_roots.at(mersenne() % fuzztester_roots.size())); //get pointers to previous ASTs
 		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
 		{
-			if (AST_descriptor[tag].parameter_types[incrementor].type == T::dynamic_object)
+			if (tag == ASTn("imv"))
 			{
 				fields.push_back((uAST*)new_object(u::integer.ver(), generate_exponential_dist())); //make a random integer
 			}

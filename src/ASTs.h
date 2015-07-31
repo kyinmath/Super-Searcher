@@ -6,7 +6,8 @@ enum special_type
 	normal, //the return type is correctly specified in the constexpr array. get it from there
 	missing_field, //the parameter field is entirely missing
 	compile_without_type_check, //the parameter type is not to be type checked using the default mechanism. however, does_not_return is still checked for.
-	special_return //indicates that a return type is to be handled differently
+	special_return, //indicates that a return type is to be handled differently
+	something_strange, //when the AST object is a special type, like imv, or a vector basic block.
 };
 
 /**

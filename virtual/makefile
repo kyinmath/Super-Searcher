@@ -5,13 +5,13 @@ LLVM_CONFIG_CXX_SUBSTITUTE := -I/usr/include  -fPIC -fvisibility-inlines-hidden 
 
 #Unity build far faster than normal build (11s vs 23s)
 
-
+#boost interprocess requires rtti, but llvm requires fno-rtti, or it'll give link errors looking for typeinfo...
 nosanitize: ../src/*
 	clang++ -g -Wall -fno-rtti -fno-exceptions $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
 
 #can't have fno-rtti with this
 admin: ../user_admin/*
-	clang++ -g -Wall -fno-exceptions $(ADMIN_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o admin -std=c++1z -O0
+	clang++ -g -Wall -fno-rtti -fno-exceptions $(ADMIN_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o admin -std=c++1z -O0
 
 all: ../src/*
 	clang++ -g -Wall -fno-rtti -fno-exceptions -fsanitize=undefined -fsanitize=address -fno-sanitize-recover=undefined $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
