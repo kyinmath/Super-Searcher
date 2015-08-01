@@ -8,3 +8,7 @@ OR: we can delete the module entirely? http://lists.cs.uiuc.edu/pipermail/llvmde
 
 Note: there are no explicit labels in the IR. Instead, labels are automatically generated and numbered after terminating instructions like return or goto, which must exist - there is no fall-through. Then, the Builder must be shuffled around to each basic block so that it can insert code in the correct place, then the blocks must be inserted into the function.
 also, even if the insertion point is null, creating branches to a label will insert predicates in that label. and null predicates cause problems.
+
+
+http://lists.cs.uiuc.edu/pipermail/llvmdev/2013-July/063928.html
+"since a switch instruction always requires a default block."

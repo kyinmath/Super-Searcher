@@ -1,5 +1,7 @@
 #pragma once
 #include "types.h"
+#include "vector.h"
+#include "dynamic.h"
 
 enum special_type
 {
@@ -108,8 +110,8 @@ constexpr AST_info AST_descriptor[] =
 	//{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, compile_without_type_check}, //concatenate the interiors of two dynamic pointers
 	a("goto", special_return).add_pointer_fields(3), //first field is label, second field is success, third field is failure
 	a("label", T::null).add_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
-	a("convert_to_AST", T::AST_pointer, T::integer, compile_without_type_check, compile_without_type_check), //returns 0 on failure, the null AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST. integer, then previous_BB, then a vector/nothing.
-	a("imv_AST", T::AST_pointer, compile_without_type_check, T::dynamic_object), //makes a new dynamic object
+	a("convert_to_AST", T::AST_pointer, T::integer, compile_without_type_check), //returns 0 on failure, the null AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST. integer, then a vector/nothing.
+	a("imv_AST", T::AST_pointer, T::dynamic_object), //makes a new dynamic object
 	{"store", T::null, compile_without_type_check, compile_without_type_check}, //pointer, then value.
 	{"load_subobj", special_return, compile_without_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields.
 	a("load_subobj_ref", T::null, compile_without_type_check, T::integer).add_pointer_fields(1), //creates a reference and places it in the last field, instead of returning it. this is necessary if the loading can fail. used for ASTs, and for vectors.
@@ -159,8 +161,8 @@ struct uAST
 	using iop = int_or_ptr<uAST>;
 	std::array<iop, max_fields_in_AST> fields;
 private:
-	template<typename... Args> constexpr uAST(const char name[], uAST* preceding = nullptr, Args... args)
-		: tag(ASTn(name)), preceding_BB_element(preceding), fields{{args...}} {}
+	template<typename... Args> constexpr uAST(const char name[], Args... args)
+		: tag(ASTn(name)), fields{{args...}} {}
 };
 
 #include "type_creator.h"
@@ -168,7 +170,6 @@ private:
 inline Tptr get_AST_fields_type(uint64_t tag)
 {
 	std::vector<Tptr> fields;
-	//check(tag != 0, "this is so that some functions like marky_mark() don't need special cases for null objects"); //this isn't necessary anymore, because no more null ASTs
 	check(tag < ASTn("never reached"), "get_AST_type is a sandboxed function, use the user facing version instead");
 	if (tag == ASTn("imv")) return u::dynamic_object;
 	if (tag == ASTn("basicblock")) return u::vector_of_ASTs;
@@ -181,7 +182,7 @@ inline Tptr get_AST_fields_type(uint64_t tag)
 
 inline Tptr get_AST_full_type(uint64_t tag)
 {
-	return concatenate_types({u::integer, u::AST_pointer, get_AST_fields_type(tag)});
+	return concatenate_types({u::integer, get_AST_fields_type(tag)});
 }
 
 
@@ -201,15 +202,19 @@ inline uint64_t get_full_size_of_AST(uint64_t tag)
 #include "memory.h"
 inline uAST* new_AST(uint64_t tag, llvm::ArrayRef<uAST*> fields)
 {
+	check(tag < ASTn("never reached"), "tag is huge");
 	uint64_t total_field_size = get_field_size_of_AST(tag);
-	check(total_field_size == fields.size(), "passed the wrong number of fields to new_AST");
 	uAST* new_home = (uAST*)allocate(total_field_size + 1);
 	new_home->tag = tag;
-	for (uint64_t x = 0; x < total_field_size; ++x)
-		new_home->fields[x] = (uint64_t)fields[x];
+	if (tag != ASTn("basicblock"))
+	{
+		check(total_field_size == fields.size(), "passed the wrong number of fields to new_AST");
+		for (uint64_t x = 0; x < total_field_size; ++x)
+			new_home->fields[x] = (uint64_t)fields[x];
+	}
 	if (tag == ASTn("basicblock"))
 	{
-		new_home->fields[0].ptr = (uAST*)new_vector(u::AST_pointer, fields);
+		new_home->fields[0].ptr = (uAST*)vector_build(u::AST_pointer, fields);
 	}
 	if (VERBOSE_GC) print("new AST ", new_home, '\n');
 	return (uAST*)new_home;
@@ -220,14 +225,15 @@ void output_AST(uAST* target);
 //copying imv and basicblock also makes the deep_AST_copier much nicer.
 inline uAST* copy_AST(uAST* t)
 {
+	if (t == nullptr) return 0;
 	uint64_t tag = t->tag;
+	check(tag < ASTn("never reached"), "tag is huge");
 	uint64_t total_field_size = get_size(get_AST_fields_type(tag));
 	uAST* new_home;
 	if (tag == ASTn("imv"))
 	{
 		auto k = (dynobj*)t->fields[0].ptr;
-		k = copy_dynamic(k);
-		new_home = new_AST(tag, (uAST*)k);
+		new_home = new_AST(tag, (uAST*)copy_dynamic(k));
 	}
 	else if (tag == ASTn("basicblock"))
 	{
@@ -238,7 +244,7 @@ inline uAST* copy_AST(uAST* t)
 	else
 	{
 		llvm::ArrayRef<uAST*> fields(&t->fields[0].ptr, total_field_size);
-		uAST* new_home = new_AST(tag, fields);
+		new_home = new_AST(tag, fields);
 	}
 	if (VERBOSE_GC) print("copy AST ", new_home, '\n');
 	return (uAST*)new_home;

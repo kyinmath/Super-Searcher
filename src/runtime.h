@@ -141,15 +141,21 @@ inline dynobj* run_null_parameter_function(function* func)
 }
 #include "vector.h"
 //returns pointer-to-AST. if the vector_of_ASTs is nullptr (which only happens when the object passed in is null, use no_vector_to_AST), then it's assumed to be empty
-inline uAST* vector_to_AST(uint64_t tag, uAST* previous, svector* vector_of_ASTs)
+inline uAST* vector_to_AST(uint64_t tag, svector* vector_of_ASTs)
 {
 	if (tag >= ASTn("never reached")) return 0; //you make a null AST if the tag is too high
 	if (tag == ASTn("imv")) return 0; //no making imvs this way.
+	if (tag == ASTn("basicblock"))
+	{
+		if (vector_of_ASTs == nullptr)
+			return new_AST(tag, {});
+		else return new_AST(tag, llvm::ArrayRef<uAST*>(*vector_of_ASTs));
+	}
+	uint64_t AST_field_size = get_field_size_of_AST(tag);
 	uint64_t AST_size = get_full_size_of_AST(tag);
-	uAST* new_AST = (uAST*)new_object(AST_size);
+	uAST* new_AST = (uAST*)new_object(AST_size); //we need to do this raw business, instead of using new_AST(), because we might have empty fields.
 	new_AST->tag = tag;
-	new_AST->preceding_BB_element = previous;
-	for (uint64_t x = 0; x < AST_size - 2; ++x)
+	for (uint64_t x = 0; x < AST_field_size; ++x)
 	{
 		if (vector_of_ASTs == nullptr)
 			new_AST->fields[x].num = 0;
@@ -167,16 +173,15 @@ inline uAST* new_imv_AST(uAST* previous, dynobj* dyn)
 	uint64_t AST_size = get_full_size_of_AST(tag);
 	uAST* new_AST = (uAST*)new_object(AST_size);
 	new_AST->tag = tag;
-	new_AST->preceding_BB_element = previous;
-	new_AST->fields[0] = (uAST*)dyn;
+	new_AST->fields[0].ptr = (uAST*)dyn;
 	if (VERBOSE_GC) print("making new AST ", new_AST, '\n');
 	return new_AST;
 }
 
 
-inline uAST* no_vector_to_AST(uint64_t tag, uAST* previous)
+inline uAST* no_vector_to_AST(uint64_t tag)
 {
-	return vector_to_AST(tag, previous, nullptr);
+	return vector_to_AST(tag, nullptr);
 }
 
 inline void print_uint64_t(uint64_t x) {print("printing ", x, '\n');}

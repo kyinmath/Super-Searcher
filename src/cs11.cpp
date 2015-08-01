@@ -306,7 +306,11 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	auto looking_for_reference = objects.find(target);
 	if (looking_for_reference != objects.end())
 	{
-		if (VERBOSE_DEBUG) print( "I'm copying\n");
+		if (VERBOSE_DEBUG)
+		{
+			print("I'm copying\n");
+			output_AST(target);
+		}
 		//we're not going to copy it/make a new location for it, even though this would let us have two versions. because of name collisions: there would be absolutely no way to refer to the newly created object.
 		//if you want a new object, use a dummy concatenate()
 		auto refreshed_load = looking_for_reference->second;
@@ -522,9 +526,11 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		if (auto k = llvm::dyn_cast<llvm::ConstantInt>(field_results[0].IR)) //we need the second field to be a constant.
 		{
 			Tptr type = k->getZExtValue();
+			print("nvec type is ", type, '\n');
 			if (type == 0) return_code(type_mismatch, 0);
 			if (type.ver() == 0) return_code(vector_cant_take_large_objects, 0);
 			else if (type.ver() > Typen("pointer")) return_code(type_mismatch, 0);
+			else if (get_size(type) != 1) return_code(type_mismatch, 0);
 			finish_special(builder->CreateCall(llvm_function(new_vector, llvm_i64(), llvm_i64()), field_results[0].IR), new_type(Typen("vector"), type));
 		}
 		return_code(requires_constant, 1);
@@ -696,7 +702,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			uint64_t starting_stack_position = object_stack.size();
 			llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
 
-			//pointer is the default switch case. we can get away with this because it's the only non-concatenate type that has more than one field.
+			//0 case is the default. I think this is because llvm switch statements require a default.
 			llvm::BasicBlock *failed_to_get = llvm::BasicBlock::Create(*context, "", TheFunction);
 
 			auto switch_on_type = builder->CreateSwitch(switch_type, failed_to_get, Typen("does not return") - 1, 0); //dependency on type
@@ -731,13 +737,11 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 						memory_allocation reference(correct_pointer);
 						new_living_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true));
 					}
-
-
-					Return_Info case_IR = generate_IR(target->fields[x + 2].ptr, false);
-					if (case_IR.error_code) return case_IR;
-
-					clear_stack(starting_stack_position);
 				}
+				Return_Info case_IR = generate_IR(target->fields[x + 2].ptr, false);
+				if (case_IR.error_code) return case_IR;
+
+				clear_stack(starting_stack_position);
 				builder->CreateBr(MergeBB);
 			}
 
@@ -854,47 +858,29 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("convert_to_AST"):
 		{
-			llvm::Value* previous_AST;
-			if (type_check(RVO, field_results[1].type, 0) == type_check_result::perfect_fit) //previous AST is nullptr.
-				previous_AST = llvm_integer(0);
-			else if (type_check(RVO, field_results[1].type, u::AST_pointer) == type_check_result::perfect_fit) //previous AST actually exists
-				previous_AST = field_results[1].IR;
-			else return_code(type_mismatch, 1);
-
 			//this is necessary to solve the bootstrapping issue. can't get an AST without a vector of ASTs; can't get a vector of ASTs without an AST.
-			if (field_results[2].type == T::null)
+			if (field_results[1].type == T::null)
 			{
-				llvm::Value* converter = llvm_function(no_vector_to_AST, llvm_i64(), llvm_i64(), llvm_i64());
-				std::vector<llvm::Value*> arguments{field_results[0].IR, previous_AST};
-				llvm::Value* AST_result = builder->CreateCall(converter, arguments, s("converter"));
+				llvm::Value* converter = llvm_function(no_vector_to_AST, llvm_i64(), llvm_i64());
+				llvm::Value* AST_result = builder->CreateCall(converter, field_results[0].IR, s("converter"));
 				finish(AST_result);
 			}
 
-			if (type_check(RVO, field_results[2].type, u::vector_of_ASTs) != type_check_result::perfect_fit) //previous AST is nullptr.
-				return_code(type_mismatch, 2);
-			llvm::Value* hopeful_vector = field_results[2].IR;
+			if (type_check(RVO, field_results[1].type, u::vector_of_ASTs) != type_check_result::perfect_fit) //previous AST is nullptr.
+				return_code(type_mismatch, 1);
+			llvm::Value* hopeful_vector = field_results[1].IR;
 
-			llvm::Value* converter = llvm_function(vector_to_AST, llvm_i64(), llvm_i64(), llvm_i64(), llvm_i64());
-			std::vector<llvm::Value*> arguments{field_results[0].IR, previous_AST, hopeful_vector};
+			llvm::Value* converter = llvm_function(vector_to_AST, llvm_i64(), llvm_i64(), llvm_i64());
+			std::vector<llvm::Value*> arguments{field_results[0].IR, hopeful_vector};
 			llvm::Value* AST_result = builder->CreateCall(converter, arguments, s("converter"));
 
 			finish(AST_result);
 		}
 	case ASTn("imv_AST"):
 		{
-
-			llvm::Value* previous_AST;
-			if (type_check(RVO, field_results[1].type, 0) == type_check_result::perfect_fit) //previous AST is nullptr.
-				previous_AST = llvm_integer(0);
-			else if (type_check(RVO, field_results[1].type, u::AST_pointer) == type_check_result::perfect_fit) //previous AST actually exists
-				previous_AST = field_results[1].IR;
-			else return_code(type_mismatch, 1);
-
-			llvm::Value* dynamic_object = field_results[1].IR;
-
-			llvm::Value* converter = llvm_function(new_imv_AST, llvm_i64(), llvm_i64(), llvm_i64());
-			std::vector<llvm::Value*> arguments{previous_AST, dynamic_object};
-			llvm::Value* AST_result = builder->CreateCall(converter, arguments, s("new imv"));
+			llvm::Value* dynamic_object = field_results[0].IR;
+			llvm::Value* converter = llvm_function(new_imv_AST, llvm_i64(), llvm_i64());
+			llvm::Value* AST_result = builder->CreateCall(converter, dynamic_object, s("new imv"));
 
 			finish(AST_result);
 		}

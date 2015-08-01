@@ -5,12 +5,11 @@
 
 struct dynobj
 {
-	Tptr type;
+	Tptr type; //future: move this to a function, so we can handle null objects. this would require using a dynptr though, since calling functions on null *this pointers is UB.
 	uint64_t& operator [](uint64_t i) 
 	{
 		return *((uint64_t*)(&type) + i + 1);
 	}
-
 	//std::array<uint64_t, 0> object; this doesn't work. causes an exception with asan.
 };
 

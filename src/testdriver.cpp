@@ -12,6 +12,7 @@ bool CONSOLE = false;
 bool OLD_AST_OUTPUT = false;
 bool OUTPUT_MODULE = true;
 bool FUZZTESTER_NO_COMPILE = false;
+bool READER_VERBOSE_DEBUG = true;
 uint64_t runs = ~0ull;
 llvm::raw_null_ostream llvm_null_stream;
 
@@ -49,29 +50,41 @@ void fuzztester(uint64_t iterations)
 		//but does exponential falloff solve this problem in the way we want?
 
 		function* previous_func = fuzztester_roots.at(prev_number);
-		uAST* previous = previous_func->the_AST; //assume it's a basic block?
+		uAST* previous = previous_func ? previous_func->the_AST : 0; //assume it's a basic block?
 		uAST* test_AST;
 		if (tag == ASTn("basicblock")) //simply concatenate two previous basic blocks.
 		{
-			test_AST = new_AST(tag, {previous, fuzztester_roots.at(generate_exponential_dist() % fuzztester_roots.size())->the_AST});
+			function* second_prev_func = fuzztester_roots.at(mersenne() % fuzztester_roots.size());
+			test_AST = new_AST(tag, {previous, second_prev_func ? second_prev_func->the_AST : 0});
 		}
 		else
 		{
+			uAST* new_random_AST;
 			if (tag == ASTn("imv"))
 			{
 				//make a random integer
-				test_AST = new_AST(tag, (uAST*)new_object(u::integer.ver(), generate_exponential_dist()));
+				new_random_AST = new_AST(tag, (uAST*)new_object(u::integer.ver(), generate_exponential_dist()));
 			}
 			else
 			{
 				std::vector<uAST*> fields;
 				for (uint64_t incrementor = 0; incrementor < pointer_fields; ++incrementor)
-					fields.push_back(fuzztester_roots.at(mersenne() % fuzztester_roots.size())->the_AST); //get pointers to previous ASTs
-				test_AST = new_AST(tag, fields);
+				{
+					function* second_prev_func = fuzztester_roots.at(mersenne() % fuzztester_roots.size());
+					fields.push_back(second_prev_func ? second_prev_func->the_AST : 0); //get pointers to previous ASTs
+				}
+				new_random_AST = new_AST(tag, fields);
 			}
-			test_AST = copy_AST(previous);
-			auto k = (svector*)test_AST->fields[0].ptr;
-			pushback_int(k, (uint64_t)test_AST);
+			if (previous)
+			{
+				test_AST = copy_AST(previous);
+				auto k = (svector*)test_AST->fields[0].ptr;
+				pushback_int(k, (uint64_t)new_random_AST);
+			}
+			else
+			{
+				test_AST = new_AST(ASTn("basicblock"), new_random_AST);
+			}
 		}
 
 		output_AST_console_version(test_AST);
@@ -112,7 +125,7 @@ void fuzztester(uint64_t iterations)
 }
 
 
-bool READER_VERBOSE_DEBUG = false;
+
 
 /*
 this will never, ever do anything useful. NDEBUG is manipulated like a bitch, I can't even set it by passing in -DNDEBUG to the compiler. don't bother using NDEBUG or assert() for anything.
@@ -131,9 +144,6 @@ using std::string; //this can't go inside source_reader for stupid C++ reasons
 class source_reader
 {
 	std::unordered_map<string, uAST*> ASTmap = {{"0", nullptr}}; //from name to location. starts with 0 = nullptr.
-	std::unordered_map<uAST**, string> goto_delay; //deferred binding of addresses, for goto. we can only see the labels at the end.
-	uAST* delayed_binding_special_value = (uAST*)1; //because of alignment, pointers to uAST must be multiples of 8
-	string delayed_binding_name; //a backdoor return value.
 	std::istream& input;
 
 	//grabs a token. characters like [, ], {, } count as tokens by themselves.
@@ -172,17 +182,33 @@ class source_reader
 	uAST* read_single_AST(string continued_string = "")
 	{
 		string first = continued_string == "" ? get_token() : continued_string;
-		if (first != string(1, '[')) //it's a name reference.
+
+		string thisASTname = "";
+
+		if (first != string(1, '[')) //it's a name reference or a new variable.
 		{
-			//print("first was ", first, '\n');
-			auto AST_search = ASTmap.find(first);
-			//check(AST_search != ASTmap.end(), string("variable name not found: ") + first);
-			if (AST_search == ASTmap.end())
+			//it's an AST name. variable declarations start with a _. they come before the AST, because goto needs to see previously created labels, and BBs relocate.
+			//we rely on short circuit evaluation to not access the 0th element of an empty string.
+			if ((first.size() > 0) && (first.at(0) == '_'))
 			{
-				delayed_binding_name = first;
-				return delayed_binding_special_value;
+				//print("first before ignore and get_token is ", first, "\n");
+				thisASTname = first.substr(1, string::npos);
+				//print("first is ", first, "\n");
+				//print("thisASTname is ", thisASTname, "\n");
+				if (!thisASTname.empty())
+				{
+					check(ASTmap.find(thisASTname) == ASTmap.end(), string("duplicated variable name: ") + thisASTname);
+				}
+				first = get_token(); //re-get the token, and now look for [, since we've processed the name.
+				check(first == string(1, '['), "should have gotten [ after a name");
 			}
-			return AST_search->second;
+			else
+			{
+				//print("first was ", first, '\n');
+				auto AST_search = ASTmap.find(first);
+				check(AST_search != ASTmap.end(), string("variable name not found: ") + first);
+				return AST_search->second;
+			}
 		}
 
 		string tag_str = get_token();
@@ -190,8 +216,8 @@ class source_reader
 
 		std::vector<uAST*> dummy_uASTs(get_size(get_AST_fields_type(AST_type)), nullptr);
 		uAST* new_type_location = new_AST(AST_type, dummy_uASTs); //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
-		//todo: this is a problem when making basic blocks
-		//also, we can't resolve gotos, because the target of the BB will move around.
+
+		if (thisASTname.compare("") != 0) ASTmap.insert(std::make_pair(thisASTname, new_type_location));
 
 		if (READER_VERBOSE_DEBUG) print("AST tag was ", AST_type, "\n");
 		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
@@ -199,21 +225,18 @@ class source_reader
 
 		//field_num is which field we're on
 		uint64_t field_num = 0;
-		for (string next_token = get_token(); next_token != "]"; next_token = get_token(), ++field_num)
+		string next_token = get_token();
+		for (; next_token != "]"; next_token = get_token(), ++field_num)
 		{
 			check(field_num < max_fields_in_AST, "more fields than possible");
 			if (field_num < pointer_fields) //it's a pointer!
 			{
 				if (next_token == "{") new_type_location->fields[field_num] = create_single_basic_block(true);
 				else new_type_location->fields[field_num] = read_single_AST(next_token);
-				if (new_type_location->fields[field_num].ptr == delayed_binding_special_value)
-				{
-					goto_delay.insert(make_pair(&((uAST*)(new_type_location))->fields[field_num].ptr, delayed_binding_name));
-				}
 			}
-			else //it's a static object, "imv". make an integer
+			else //it's a static object, "imv", or "basicblock". make an integer
 			{
-				if (AST_type == ASTn("imv") && field_num == 0)
+				if (AST_type == ASTn("imv"))
 				{
 					bool isNumber = true;
 					for (auto& k : next_token)
@@ -222,38 +245,33 @@ class source_reader
 					check(next_token.size(), "token is empty, probably a missing ]");
 					new_type_location->fields[field_num] = (uint64_t)new_object(u::integer, std::stoull(next_token));
 				}
+				else if (AST_type == ASTn("basicblock"))
+				{
+					svector* k = (svector*)new_type_location->fields[0].ptr;
+					if (next_token == "{") pushback_int(k, (uint64_t)create_single_basic_block(true));
+					else pushback_int(k, (uint64_t)read_single_AST(next_token));
+				}
 				else error("trying to write too many fields");
 			}
 		}
-		//check(next_token == "]", "failed to have ]");
+		check(next_token == "]", "failed to have ]");
 
 		if (READER_VERBOSE_DEBUG)
 			output_AST_console_version(new_type_location);
 
-		//get an AST name if any.
-		if (input.peek() != ' ' && input.peek() != '\n' && input.peek() != ']' && input.peek() != '[' && input.peek() != '{' && input.peek() != '}')
-		{
-			string thisASTname = get_token();
-			//seems that once we consume the last '\n', the cin stream starts blocking again.
-			if (!thisASTname.empty())
-			{
-				check(ASTmap.find(thisASTname) == ASTmap.end(), string("duplicated variable name: ") + thisASTname);
-				ASTmap.insert(std::make_pair(thisASTname, new_type_location));
-			}
-		}
 
 		if (READER_VERBOSE_DEBUG)
 		{
-			print("next char is", (char)input.peek(), input.peek());
-			print('\n');
+			print("next char is (", (char)input.peek(), input.peek(), ")\n");
 		}
+
 		return new_type_location;
 	}
 
 	uAST* create_single_basic_block(bool create_brace_at_end = false)
 	{
 		uAST* BB_AST = new_AST(ASTn("basicblock"), {});
-		svector* k = (svector*)BB_AST->fields[0].ptr;
+		svector*& k = (svector*&)BB_AST->fields[0].ptr;
 		string last_char;
 		if (create_brace_at_end == false)
 		{
@@ -264,8 +282,7 @@ class source_reader
 		for (string next_word = get_token(); next_word != last_char; next_word = get_token())
 		{
 			uAST* single_AST = read_single_AST(next_word);
-			check(single_AST != delayed_binding_special_value, "failed to resolve reference: " + next_word); //note that forward references in basic blocks are not allowed
-			pushback(&k, (uint64_t)single_AST);
+			pushback_int(k, (uint64_t)single_AST);
 		}
 		return BB_AST; //which is the very last.
 	}
@@ -275,13 +292,12 @@ public:
 	uAST* read()
 	{
 		uAST* end = create_single_basic_block();
-
-		//resolve all the forward references from goto()
-		for (auto& x : goto_delay)
+		if (READER_VERBOSE_DEBUG)
 		{
-			auto AST_search = ASTmap.find(x.second);
-			check(AST_search != ASTmap.end(), string("variable name not found: ") + x.second);
-			*(x.first) = AST_search->second;
+			print("final read AST is ");
+			output_AST_console_version(end);
+			output_AST_and_previous(end);
+			print('\n');
 		}
 		return end;
 	}
@@ -356,28 +372,30 @@ void test_suite()
 	compile_verify_string("[zero]", u::integer, 0);
 	compile_verify_string("[imv 1]", u::integer, 1);
 	compile_string("[concatenate [imv 100] [imv 200]]");
+	compile_verify_string("_a[imv 100] [imv 200]", u::integer, 200);
+	compile_verify_string("_a[imv 100] [imv 200] [imv 300]", u::integer, 300);
 
 	//random value. then check that (x / k) * k + x % k == x
-	compile_verify_string("[system1 [imv 2]]a [subtract [add [multiply [udiv a [imv 4]] [imv 4]] [urem a [imv 4]]] a]", u::integer, 0);
+	compile_verify_string("_a[system1 [imv 2]] [subtract [add [multiply [udiv a [imv 4]] [imv 4]] [urem a [imv 4]]] a]", u::integer, 0);
 	//looping until finiteness ends, increasing a value. tests storing values
-	compile_verify_string("[imv 0]b [label]a [store b [increment b]] [goto a] [concatenate b]", u::integer, FINITENESS_LIMIT);
+	compile_verify_string("_b[imv 0] _a[label] [store b [increment b]] [goto a] [concatenate b]", u::integer, FINITENESS_LIMIT);
 
 	//vector creation and pushback
-	compile_string("[nvec [typeof [zero]]]vec [vector_push vec [imv 40]] [concatenate vec]");
+	compile_string("_vec[nvec [typeof [zero]]] [vector_push vec [imv 40]] [concatenate vec]");
 
 	//loading from dynamic objects. a single-object dynamic object, pointing to an int.
-	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [imv 40]]dyn [imv 0] [label] [store ret subobj] [store empty subobj]]subobj [concatenate ret]", u::integer, 40);
-	//try to load the next object. it should return nothing.
-	compile_verify_string("[dynamify]empty [imv 0]ret [imv 40]a [dyn_subobj [dynamify [imv 40]]dyn [imv 0] [label] [store ret subobj] [store empty subobj]]subobj [concatenate empty]", u::dynamic_object, 0);
+	compile_verify_string("_empty[dynamify] _ret[imv 0] _a[imv 40] _subobj[dyn_subobj _dyn[dynamify [imv 40]] [imv 0] [label] [store ret subobj] [store empty subobj]] [concatenate ret]", u::integer, 40);
+	//try to load the next object. it should go through the failure branch.
+	compile_verify_string("_empty[dynamify] _ret[imv 0] _a[imv 40] _subobj[dyn_subobj _dyn[dynamify [imv 40]] [imv 1] [store ret [imv 4]] [store ret subobj] [store empty subobj]] [concatenate ret]", u::integer, 4);
 
 	//todo: implement the "pointer to something", then test it here.
 
 	//again, try to load from dynamic objects. this time, a concatenation of two objects. load the int from the concatenation, then write it.
-	compile_verify_string("[dynamify]empty [imv 0]ret [dyn_subobj [dynamify [concatenate [imv 40]in [pointer ret]]]dyn [imv 0] [label] [store ret subobj]]subobj [concatenate ret]", u::integer, 40);
+	compile_verify_string("_empty[dynamify] _ret[imv 0] _subobj[dyn_subobj _dyn[dynamify [concatenate _in[imv 40] [pointer ret]]] [imv 0] [label] [store ret subobj]] [concatenate ret]", u::integer, 40);
 	//load the pointer from the concatenation
 	//compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [dyn_subobj [dynamify [concatenate [imv 40]in [imv 40]]]dyn [imv 1] [label] [store ret subobj]]subobj [concatenate empty]", u::dynamic_object);
 	//load the dynamic object from the concatenation
-	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [dyn_subobj [dynamify [concatenate [imv 40]in [dynamify [zero]]]]dyn [imv 1] [label] [store ret subobj] [store empty subobj]]subobj [concatenate empty]", u::dynamic_object);
+	compile_verify_string_nonzero_value("_empty[dynamify] _ret[imv 0] _subobj[dyn_subobj [dynamify [concatenate _in[imv 40] _dyn[dynamify [zero]]]] [imv 1] [label] [store ret subobj] [store empty subobj]] [concatenate empty]", u::dynamic_object);
 	/*
 	//again, try to load from dynamic objects. this time, a concatenation of two objects. load the int from the concatenation, then write it.
 	compile_verify_string("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [pointer ret]]a [dyn_subobj [dynamify [imv 40]]dyn [imv 0] [store ret subobj] [label] [label] [label] [label] [store empty subobj]]subobj [concatenate ret]", u::integer, 40);
@@ -387,22 +405,22 @@ void test_suite()
 	compile_verify_string_nonzero_value("[dynamify]empty [imv 0]ret [concatenate [imv 40]in [dynamify [imv 40]]]a [dyn_subobj [dynamify [imv 40]]dyn [imv 1] [store ret subobj] [store empty subobj]]subobj [concatenate empty]", u::dynamic_object);*/
 
 	//loading a subobject from a concatenation, as well as copying across fields of a concatenation
-	compile_verify_string("[concatenate [imv 20]a [increment a]]co [load_subobj [pointer co] [imv 1]]", u::integer, 20 + 1);
+	compile_verify_string("_co[concatenate _s[imv 20] [increment s]] [load_subobj [pointer co] [imv 1]]", u::integer, 20 + 1);
 
 	//goto forward. should skip the second store, and produce 20.
-	compile_verify_string("[imv 0]b [label {[store b [imv 20]] [goto a] [store b [imv 40]]}]a [concatenate b]", u::integer, 20);
+	compile_verify_string("_b[imv 0] _a[label {[store b [imv 20]] [goto a] [store b [imv 40]]}] [concatenate b]", u::integer, 20);
 
 	//basic testing of if statement
-	compile_verify_string("[zero]k [imv 1]b [if k k b]", u::integer, 1);
+	compile_verify_string("_k[zero] _b[imv 1] [if k k b]", u::integer, 1);
 
 	//clear old unused stack allocas
-	compile_string("[label {[imv 40]a [label]}] [label {a [label]}]");
+	compile_string("[label {_a[imv 40] [label]}] [label {a [label]}]");
 	//[imv 40]a is preserved across both fields of the concatenate, but it is copied
-	compile_string("[concatenate {[imv 40]a [label]} {a [label]}]");
+	compile_string("[concatenate {_a[imv 40] [label]} {a [label]}]");
 	//can't get a pointer to ant, which has stack_degree == 2
-	cannot_compile_string("[concatenate [imv 40]ant [pointer ant]]");
+	cannot_compile_string("[concatenate _ant[imv 40] [pointer ant]]");
 	//can't get a reference to ant either.
-	cannot_compile_string("[concatenate [imv 40]ant [store ant [imv 40]]]");
+	cannot_compile_string("[concatenate _ant[imv 40] [store ant [imv 40]]]");
 
 
 	//compile_string("[run_function [compile [convert_to_AST [system1 [imv 2]] [label] {[imv 0]v [dynamify [pointer v]]}]]]");

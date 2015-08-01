@@ -77,7 +77,7 @@ change the T::Types, if you create a Type that takes more subfields, because the
 */
 constexpr Type_info Type_descriptor[] =
 {
-	{"con_vec", minus_one, minus_one}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types. is 0, because this is a very special case, and we'll be comparing this against 0 all the time.
+	{"con_vec", minus_one, minus_one}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types. is 0, because this is a very special case, and we'll be comparing this against 0 all the time. currently, initialization of gc roots, and marky_mark(), both depend on the number of pointer fields being non-zero.
 	{"integer", 0, 1}, //64-bit integer
 	{"dynamic object", 0, 1}, //in the pointed-to object, the first field is type, second field object. if the type is null, the base pointer is null. because: no matter what, you'll have to eventually check anyway. we might as well check before dereferencing. the cost is that dyn_subobj needs an extra branch in IR. if we had base pointer always non-null, then we'd return a dummy special value for 0 dynamic objects.
 	{"AST pointer", 0, 1}, //can be nullptr. the actual object has tag, then previous, then some fields.
@@ -177,6 +177,7 @@ inline uint64_t total_valid_fields(const Tptr t)
 inline Tptr new_nonunique_type(uint64_t tag, llvm::ArrayRef<Tptr> fields)
 {
 	uint64_t total_field_size = (tag == Typen("con_vec")) ? (uint64_t)fields[0] + 1 : Type_descriptor[tag].pointer_fields;
+	if (tag == Typen("con_vec")) check(total_field_size >= 3, "no making small con_vecs allowed");
 	if (total_field_size == 0) return (Tptr)tag;
 	uint64_t* new_home = allocate(total_field_size + 1);
 	new_home[0] = tag;
@@ -186,6 +187,8 @@ inline Tptr new_nonunique_type(uint64_t tag, llvm::ArrayRef<Tptr> fields)
 }
 
 Tptr get_unique_type(Tptr model, bool can_reuse_parameter);
+
+//warning: takes fields directly. so concatenate should worry.
 inline Tptr new_type(uint64_t tag, llvm::ArrayRef<Tptr> fields)
 {
 	Tptr new_tptr = new_nonunique_type(tag, fields);
@@ -290,13 +293,14 @@ enum class type_check_result
 	perfect_fit
 };
 
-//includes the tag in the result type.
+//includes the tag in the result type. this is currently wrong.
 inline Tptr get_Type_full_type(Tptr t)
 {
 	std::vector<Tptr> fields{u::integer}; //the tag
 	if (t.ver() != Typen("con_vec"))
 	{
 		uint64_t number_of_pointers = Type_descriptor[t.ver()].pointer_fields;
+		check(number_of_pointers > 0, "no getting full types of optimized types");
 		for (uint64_t x = 0; x < number_of_pointers; ++x) fields.push_back(u::type);
 		return concatenate_types(fields);
 	}
