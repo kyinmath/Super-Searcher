@@ -2,7 +2,7 @@
 main() handles the commandline arguments. if console input is requested, it will handle input too. however, it won't parse the input.
 fuzztester() generates random, possibly malformed ASTs.
 for console input, read_single_AST() parses a single AST and its field's ASTs, then creates a tree of ASTs out of it.
-	then, create_single_basic_block() parses a list of ASTs, then chains them in a linked list using AST.preceding_BB_element
+	then, create_single_basic_block() parses a list of ASTs, and chains them into a basic block.
 
 Things which compile and run ASTs:
 compiler_object holds state for a compilation. you make a new compiler_state for each compilation, and call compile_AST() on the last AST in your function. compile_AST automatically wraps the AST in a function and runs it; the last AST is assumed to hold the return object.
@@ -185,8 +185,6 @@ we need it to be an array always, because GEP must have a valid type. we can't a
 
 Steps of generate_IR:
 check if generate_IR will be in an infinite loop, by using loop_catcher to store the previously seen ASTs.
-run generate_IR on the previous AST in the basic block, if such an AST exists.
-	after this previous AST is generated, we can figure out where the current AST lives on the stack. this uses incrementor_for_lifetime.
 generate_IR is run on fields of the AST. it knows how many fields are needed by using fields_to_compile from AST_descriptor[] 
 then, the main IR generation is done using a switch-case on a tag.
 the return value is created using the finish() macros. these automatically pull in any miscellaneous necessary information, such as stack lifetimes, and bundles them into a Return_Info. furthermore, if the return value needs to be stored in a stack location, finish() does this automatically using the move_to_stack lambda.
@@ -221,9 +219,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	uint64_t final_stack_position = ~0ull;
 	
 	memory_allocation* default_allocation = nullptr;
-	//this will point to the back of the deque. because if you're in a previous_BB element, it'll die too fast. and if you're passing through a reference, such as using goto's fail branch, it'll die too fast. so we need to put it in the deque, so it'll last longer.
+	//this will point to the back of the deque. because the values created on the stack last a lot longer than the functions creating those values. and if you're passing through a reference, such as using goto's fail branch, it'll die too fast. so we need to put it in the deque, so it'll last longer.
 	//it needs to be wrapped in a memory_allocation because it might experience a turn_full(), which will invalidate all pointers except for one. so we need to keep the pointer to the location in one place, which is the memory_location.
-	//flipping the previous_BB element won't actually help, because then we'll have problems with return object passthrough. you'll have to shuttle the return object from the top to the bottom.
 
 	//generated IR of the fields of the AST
 	std::vector<Return_Info> field_results; //we don't actually need the return code, but we leave it anyway.
@@ -244,7 +241,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			print("\nand the llvm type is ");
 			return_value->getType()->print(*llvm_console);
 			print("\nand the internal type is ");
-			output_type_and_previous(type);
+			pftype(type);
 			print('\n');
 		}
 		else if (VERBOSE_DEBUG) print("finish() in generate_IR, null value\n");
@@ -333,7 +330,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 
 
-	//after compiling the previous elements in the basic block, we find the lifetime of this element
+	//find the lifetime of this element
 	//this actually starts at 2, but that's fine.
 	final_stack_position = object_stack.size();
 
@@ -349,9 +346,9 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		if (VERBOSE_DEBUG)
 		{
 			print("type checking. result type is \n");
-			output_type_and_previous(result.type);
+			pftype(result.type);
 			print("desired type is \n");
-			output_type_and_previous(AST_descriptor[target->tag].parameter_types[x].type);
+			pftype(AST_descriptor[target->tag].parameter_types[x].type);
 		}
 
 		if (get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false) == u::does_not_return)
@@ -866,7 +863,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				finish(AST_result);
 			}
 
-			if (type_check(RVO, field_results[1].type, u::vector_of_ASTs) != type_check_result::perfect_fit) //previous AST is nullptr.
+			if (type_check(RVO, field_results[1].type, u::vector_of_ASTs) != type_check_result::perfect_fit)
 				return_code(type_mismatch, 1);
 			llvm::Value* hopeful_vector = field_results[1].IR;
 
@@ -878,11 +875,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("imv_AST"):
 		{
-			llvm::Value* dynamic_object = field_results[0].IR;
 			llvm::Value* converter = llvm_function(new_imv_AST, llvm_i64(), llvm_i64());
-			llvm::Value* AST_result = builder->CreateCall(converter, dynamic_object, s("new imv"));
-
-			finish(AST_result);
+			finish(builder->CreateCall(converter, field_results[0].IR, s("new imv")));
 		}
 	case ASTn("load_tag"):
 		{

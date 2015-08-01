@@ -1,7 +1,4 @@
 after: I need to change:
-console reader
-anything that uses imv
-debug functions
 
 and, load_subobj can't give references anymore as return values. that means chaining must happen downward through fields, instead of across through a basic block.
 	but this was a problem before as well. since the AST could be 0.
@@ -20,3 +17,8 @@ second problem: load_subobj should return a reference. but for vectors, that isn
 
 note: basic block ASTs shouldn't be treated like vectors of ASTs? or maybe they should.
 	having them treated like vectors breaks the transparency that the ASTs are embedded.
+
+
+
+basic block AST: you can load_subobj_ref transparently.
+but in general, you should load the vector from the interior. because otherwise, there's no way to push_back() the contents of the vector, since you don't know that the AST's tag will be ASTn("basicblock").

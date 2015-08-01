@@ -29,8 +29,7 @@ inline dynobj* copy_dynamic(dynobj* dyn)
 	Tptr type = dyn->type;
 	uint64_t size = get_size(type);
 	check(size != 0, "dynamic pointer can't have null type; only base pointer can be null");
-	dynobj* mem_slot = (dynobj*)allocate(size + 1);
-	mem_slot->type = dyn->type;
+	dynobj* mem_slot = new_dynamic_obj(type);
 	for (uint64_t ind = 0; ind < size; ++ind)
 		(*mem_slot)[ind] = (*dyn)[ind];
 	return mem_slot;

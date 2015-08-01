@@ -234,19 +234,30 @@ bool found_living_object(uint64_t* memory, uint64_t size)
 	return 0;
 }
 
+
 void new_mark_element(uint64_t* memory, Tptr t)
 {
 	check(t != 0, "marking a null type");
 	//to_be_marked.push({memory, t});
+
+	if (found_living_object(memory, get_size(t))) return;
 	marky_mark(memory, t); //this is better for debugging. we get a stack trace instead of flattening the stack.
 }
 
-//if you call marky_mark, make sure to remember to call found_living_object as well.
+//if you call marky_mark, make sure to remember to call found_living_object as well. but mainly, consider using new_mark_element instead.
 void marky_mark(uint64_t* memory, Tptr t)
 {
 	check(t != 0, "marking a null type");
-	print("marking memory ", memory, " with value ", *memory, '\n');
-	output_type(t);
+	if (VERBOSE_GC)
+	{
+		print("marking memory ", memory, " ");
+		output_type(t);
+	}
+	if (t.ver() == u::type) //handle the special type optimization
+	{
+		if (Type_descriptor[((Tptr&)*memory).ver()].pointer_fields == 0)
+			return;
+	}
 	if (t.ver() == Typen("con_vec"))
 	{
 		//print("marking convec\n");
@@ -263,10 +274,13 @@ void marky_mark(uint64_t* memory, Tptr t)
 //memory points to the single object.
 void mark_single_element(uint64_t& memory, Tptr t)
 {
-	if (VERBOSE_GC) print("marking single ", &memory, '\n');
+	if (VERBOSE_GC)
+	{
+		print("marking single ", &memory, ' ');
+		output_type(t);
+	}
 	if (memory) print(""); //trying to force a memory access
-	output_type(t);
-	//check(&memory != nullptr, "passed 0 memory pointer to mark_single");
+	//check(&memory != nullptr, "passed 0 memory pointer to mark_single"); //UB for references.
 	check(t != 0, "passed 0 type pointer to mark_single");
 	switch (t.ver())
 	{
@@ -296,8 +310,8 @@ void mark_single_element(uint64_t& memory, Tptr t)
 			uint64_t* int_pointer_to_vector = (uint64_t*)pointer_to_the_vector;
 			if (found_living_object(int_pointer_to_vector, pointer_to_the_vector->reserved_size)) break;
 			marky_mark(int_pointer_to_vector, u::type);
-			for (uint64_t iter = 0; iter < pointer_to_the_vector->size; ++iter)
-				marky_mark(int_pointer_to_vector + sizeof(svector) / sizeof(uint64_t) + iter, *int_pointer_to_vector);
+			for (auto& x : Vector_range(pointer_to_the_vector))
+				marky_mark(&x, pointer_to_the_vector->type);
 		}
 		break;
 	case Typen("AST pointer"):
@@ -323,9 +337,12 @@ void mark_single_element(uint64_t& memory, Tptr t)
 	case Typen("function pointer"):
 		uint64_t number = (function*)memory - function_pool;
 		sweep_function_pool_flags[number / 64] |= (1ull << (number % 64));
+
+		//no need to call found_living_object() here, because mark_single will call it appropriately for the AST, and the function is already marked
 		mark_single_element(*(uint64_t*)memory, u::AST_pointer);
-		mark_single_element(*((uint64_t*)memory+1), u::type);
+		mark_single_element(*((uint64_t*)memory + 1), u::type);
 		//future: maybe the parameter
+
 		break;
 	}
 }

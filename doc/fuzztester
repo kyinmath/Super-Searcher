@@ -1,5 +1,11 @@
 fuzztester is only for error checking. not for actual operation.
+so, when building, we randomly choose load_subobj_refs. then each time we succeed, we store the offset and the AST, by pushing both onto vectors.
+	then, we know what can be referenced, by looking at previous ASTs and having smaller-sized offsets. any of those are valid to be referenced.
+after we've chosen a spot (which will be either for insertion, deletion, or concatenation), we then construct the new AST. (or lift an old AST).
 
+1. we'll have basic block ASTs.
+2. every time we make a new loose AST, we'll want to add it to a basic block AST.
+	thus, we first select a basica block AST, and then append to it. then, we get the last element, and then try adding terms.
 
 [imv 100]iterations
 [imv 20]max_fuzztester_size

@@ -39,7 +39,7 @@ void fuzztester(uint64_t iterations)
 	while (iterations)
 	{
 		--iterations; //this is here, instead of having "iterations--", so that integer-sanitizer doesn't complain
-		fuzztester_roots.push_back(nullptr); //we this is so that we always have something to find, when we're looking for previous_ASTs
+		fuzztester_roots.push_back(nullptr); //we this is so that we always have something to find, when we're looking for previous ASTs
 		//create a random AST
 		uint64_t tag = mersenne() % ASTn("never reached");
 		if (LIMITED_FUZZ_CHOICES)
@@ -296,7 +296,7 @@ public:
 		{
 			print("final read AST is ");
 			output_AST_console_version(end);
-			output_AST_and_previous(end);
+			pfAST(end);
 			print('\n');
 		}
 		return end;
@@ -535,7 +535,7 @@ int main(int argc, char* argv[])
 				std::cin.get();
 				continue;
 			}
-			output_AST_and_previous(end);
+			pfAST(end);
 			finiteness = FINITENESS_LIMIT;
 			uint64_t compile_result[3];
 			compile_returning_legitimate_object(compile_result, (uint64_t)end);

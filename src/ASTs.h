@@ -153,7 +153,6 @@ constexpr uint64_t ASTn(const char name[])
 { return get_enum_from_name<const AST_info, AST_descriptor>(name); }
 
 //there's zero point in having "well-formed" ASTs.
-//warning: the previous_BB element has dependencies from lots of things, especially get_AST_fields, and the size functions.
 struct uAST
 {
 	//std::mutex lock;
@@ -204,7 +203,8 @@ inline uAST* new_AST(uint64_t tag, llvm::ArrayRef<uAST*> fields)
 {
 	check(tag < ASTn("never reached"), "tag is huge");
 	uint64_t total_field_size = get_field_size_of_AST(tag);
-	uAST* new_home = (uAST*)allocate(total_field_size + 1);
+	uint64_t total_full_size = get_full_size_of_AST(tag);
+	uAST* new_home = (uAST*)allocate(total_full_size);
 	new_home->tag = tag;
 	if (tag != ASTn("basicblock"))
 	{
@@ -246,7 +246,7 @@ inline uAST* copy_AST(uAST* t)
 		llvm::ArrayRef<uAST*> fields(&t->fields[0].ptr, total_field_size);
 		new_home = new_AST(tag, fields);
 	}
-	if (VERBOSE_GC) print("copy AST ", new_home, '\n');
+	if (VERBOSE_GC) print("copy AST from ", t, " to ", new_home, '\n');
 	return (uAST*)new_home;
 }
 

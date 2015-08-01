@@ -1,7 +1,7 @@
 /*
-output_AST_and_previous() shows an AST and everything it depends on.
+pfAST() shows an AST and everything it depends on.
 output_AST_console_version() is a superior AST printer.
-output_Type_and_previous() is similar.
+pftype() is similar.
 Module->print(*llvm_console, nullptr) prints the generated llvm code.
 */
 #pragma once
@@ -53,7 +53,7 @@ inline void output_type(const Tptr target)
 }
 
 //for debugging. outputs a Type and everything it points to, recursively.
-inline void output_type_and_previous(Tptr target)
+inline void pftype(Tptr target)
 {
 	if (target == 0)
 	{
@@ -62,7 +62,7 @@ inline void output_type_and_previous(Tptr target)
 	}
 	output_type(target);
 	for (auto& x : Type_pointer_range(target))
-		output_type_and_previous(x);
+		pftype(x);
 }
 
 
@@ -75,14 +75,14 @@ inline void output_AST(uAST* target)
 		print("null AST\n");
 		return;
 	}
-	print("AST ", AST_descriptor[target->tag].name, "(", target->tag, "), addr ", target, ", ");
+	print("AST ", AST_descriptor[target->tag].name, "(", target->tag, ") raw ", target, ", ");
 	print("fields ", target->fields[0].ptr, ' ', target->fields[1].ptr, ' ', target->fields[2].ptr, ' ', target->fields[3].ptr, '\n');
 #endif
 }
 
 #include <set>
 //for debugging. outputs an AST and everything it can see, recursively.
-inline void output_AST_and_previous(uAST* target)
+inline void pfAST(uAST* target)
 {
 #ifndef NO_CONSOLE
 	if (target == nullptr)
@@ -104,14 +104,14 @@ inline void output_AST_and_previous(uAST* target)
 	if (target->tag == ASTn("basicblock"))
 	{
 		for (auto& x : Vector_range((svector*)target->fields[0].ptr))
-			output_AST_and_previous((uAST*)x);
+			pfAST((uAST*)x);
 	}
 	else
 	{
 		uint64_t number_of_further_ASTs = AST_descriptor[target->tag].pointer_fields;
 		for (uint64_t x = 0; x < number_of_further_ASTs; ++x)
 			if (target->fields[x].ptr != nullptr)
-				output_AST_and_previous(target->fields[x].ptr);
+				pfAST(target->fields[x].ptr);
 	}
 #endif
 }
@@ -139,7 +139,7 @@ struct output_AST_struct
 	void determine_references(uAST* target)
 	{
 		//print("determining references for ", target, '\n');
-		//output_AST_and_previous(target);
+		//pfAST(target);
 		if (AST_list.find(target) != AST_list.end()) //already seen
 		{
 			if (reference_necessary.find(target) == reference_necessary.end()) //reference not yet added

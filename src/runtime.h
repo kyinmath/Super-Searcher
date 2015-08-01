@@ -167,7 +167,7 @@ inline uAST* vector_to_AST(uint64_t tag, svector* vector_of_ASTs)
 	return new_AST;
 }
 
-inline uAST* new_imv_AST(uAST* previous, dynobj* dyn)
+inline uAST* new_imv_AST(dynobj* dyn)
 {
 	uint64_t tag = ASTn("imv");
 	uint64_t AST_size = get_full_size_of_AST(tag);
