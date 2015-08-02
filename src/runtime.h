@@ -171,6 +171,7 @@ inline uAST* new_imv_AST(dynobj* dyn)
 {
 	uint64_t tag = ASTn("imv");
 	uint64_t AST_size = get_full_size_of_AST(tag);
+	check(AST_size == 2, "wrong size");
 	uAST* new_AST = (uAST*)new_object(AST_size);
 	new_AST->tag = tag;
 	new_AST->fields[0].ptr = (uAST*)dyn;

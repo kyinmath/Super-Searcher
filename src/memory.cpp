@@ -308,7 +308,7 @@ void mark_single_element(uint64_t& memory, Tptr t)
 			//we don't want to make a huge concatenation for the type. thus, we force the issue by marking things directly, instead of adding onto the stack. I'm worried that this might cause stack overflows, but hopefully, it won't skip over the guard page.
 			svector* pointer_to_the_vector = (svector*)memory;
 			uint64_t* int_pointer_to_vector = (uint64_t*)pointer_to_the_vector;
-			if (found_living_object(int_pointer_to_vector, pointer_to_the_vector->reserved_size)) break;
+			if (found_living_object(int_pointer_to_vector, vector_header_size + pointer_to_the_vector->reserved_size)) break;
 			marky_mark(int_pointer_to_vector, u::type);
 			for (auto& x : Vector_range(pointer_to_the_vector))
 				marky_mark(&x, pointer_to_the_vector->type);
