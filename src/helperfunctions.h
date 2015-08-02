@@ -86,9 +86,9 @@ inline llvm::AllocaInst* create_actual_alloca(uint64_t size) {
 //only handles functions whose return type is an integer, or void. no arrays allowed.
 //the function is stated to return an i64() if it returns anything.
 //parameters are all forced to i64().
-template<typename... llvm_type, typename return_type, typename... parameters, typename fptr> inline llvm::Value* llvm_small_return_func(return_type (*function)(parameters...))
+template<typename return_type, typename... parameters> inline llvm::Value* llvm_small_return_func(return_type (*function)(parameters...))
 {
-	bool return_is_void = std::is_same<retun_type, void>::value;
+	bool return_is_void = std::is_same<return_type, void>::value;
 	std::vector<llvm::Type*> argument_type(sizeof...(parameters), llvm_i64());
 	llvm::FunctionType* function_type = llvm::FunctionType::get(return_is_void ? llvm_void() : llvm_i64(), argument_type, false);
 	llvm::PointerType* function_pointer_type = function_type->getPointerTo();

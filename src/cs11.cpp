@@ -391,7 +391,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	case ASTn("add"): finish(builder->CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
 	case ASTn("subtract"): finish(builder->CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
 	case ASTn("multiply"): finish(builder->CreateMul(field_results[0].IR, field_results[1].IR, s("multiply")));
-	case ASTn("random"): finish(builder->CreateCall(llvm_function(generate_random, llvm_i64()), {}, s("random")));
+	case ASTn("random"): finish(builder->CreateCall(llvm_small_return_func(generate_random), {}, s("random")));
 	case ASTn("lessu"): finish(builder->CreateZExt(builder->CreateICmpULT(field_results[0].IR, field_results[1].IR), llvm_i64()));
 	case ASTn("udiv"):
 		{
@@ -528,7 +528,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (type.ver() == 0) return_code(vector_cant_take_large_objects, 0);
 			else if (type.ver() > Typen("pointer")) return_code(type_mismatch, 0);
 			else if (get_size(type) != 1) return_code(type_mismatch, 0);
-			finish_special(builder->CreateCall(llvm_function(new_vector, llvm_i64()), {}), new_type(Typen("vector"), type));
+			finish_special(builder->CreateCall(llvm_small_return_func(new_vector), {}), new_type(Typen("vector"), type));
 		}
 		return_code(requires_constant, 1);
 
@@ -685,7 +685,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				else if (field_results[0].type == u::vector_of_something)
 				{
 					single_type = field_results[0].hidden_subtype;
-					switch_type = builder->CreateCall(llvm_function(type_tag, llvm_i64(), llvm_i64()), field_results[0].hidden_subtype);
+					switch_type = builder->CreateCall(llvm_small_return_func(type_tag), field_results[0].hidden_subtype);
 
 					llvm::Value* offset_from_pointer = builder->CreateAdd(offset, llvm_integer(vector_header_size)); //skip over the vector.
 					correct_pointer = builder->CreateGEP(overall_object, offset_from_pointer);
@@ -793,7 +793,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	case ASTn("vector_size"):
 		{
 			if (field_results[0].type.ver() != Typen("vector")) return_code(type_mismatch, 0);
-			llvm::Value* pusher = llvm_function(vector_size, llvm_i64(), llvm_i64());
+			llvm::Value* pusher = llvm_small_return_func(vector_size);
 			finish(builder->CreateCall(pusher, field_results[0].IR));
 		}
 	case ASTn("dynamify"):
@@ -850,7 +850,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			//this helps the bootstrapping issue. can't get an AST without a vector of ASTs; can't get a vector of ASTs without an AST.
 			if (field_results[1].type == T::null)
 			{
-				llvm::Value* converter = llvm_function(no_vector_to_AST, llvm_i64(), llvm_i64());
+				llvm::Value* converter = llvm_small_return_func(no_vector_to_AST);
 				llvm::Value* AST_result = builder->CreateCall(converter, field_results[0].IR, s("converter"));
 				finish(AST_result);
 			}
@@ -859,7 +859,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				return_code(type_mismatch, 1);
 			llvm::Value* hopeful_vector = field_results[1].IR;
 
-			llvm::Value* converter = llvm_function(vector_to_AST, llvm_i64(), llvm_i64(), llvm_i64());
+			llvm::Value* converter = llvm_small_return_func(vector_to_AST);
 			std::vector<llvm::Value*> arguments{field_results[0].IR, hopeful_vector};
 			llvm::Value* AST_result = builder->CreateCall(converter, arguments, s("converter"));
 
@@ -867,7 +867,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("imv_AST"):
 		{
-			llvm::Value* converter = llvm_function(new_imv_AST, llvm_i64(), llvm_i64());
+			llvm::Value* converter = llvm_small_return_func(new_imv_AST);
 			finish(builder->CreateCall(converter, field_results[0].IR, s("new imv")));
 		}
 	case ASTn("load_tag"):
@@ -876,19 +876,19 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (type_of_pointer == 0) return_code(type_mismatch, 0);
 			switch (type_of_pointer.ver())
 			{
-			case Typen("type pointer"): finish(builder->CreateCall(llvm_function(type_tag, llvm_i64(), llvm_i64()), field_results[0].IR));
-			case Typen("AST pointer"): finish(builder->CreateCall(llvm_function(AST_tag, llvm_i64(), llvm_i64()), field_results[0].IR));
+			case Typen("type pointer"): finish(builder->CreateCall(llvm_small_return_func(type_tag), field_results[0].IR));
+			case Typen("AST pointer"): finish(builder->CreateCall(llvm_small_return_func(AST_tag), field_results[0].IR));
 			default: return_code(type_mismatch, 0);
 			}
 		}
 	case ASTn("load_imv_from_AST"):
 		{
-			auto loader = llvm_function(load_imv_from_AST, llvm_i64(), llvm_i64()); //todo: we should load a reference.
+			auto loader = llvm_small_return_func(load_imv_from_AST); //todo: we should load a reference.
 			finish(builder->CreateCall(loader, field_results[0].IR));
 		}
 	case ASTn("run_function"):
 		{
-			llvm::Value* runner = llvm_function(run_null_parameter_function, llvm_i64(), llvm_i64());
+			llvm::Value* runner = llvm_small_return_func(run_null_parameter_function);
 			llvm::Value* run_result = builder->CreateCall(runner, field_results[0].IR);
 
 			finish(run_result);
@@ -949,7 +949,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				}
 			case Typen("type pointer"):
 				{
-					llvm::Value* type_offset = llvm_function(type_subfield, llvm_i64(), llvm_i64(), llvm_i64());
+					llvm::Value* type_offset = llvm_small_return_func(type_subfield);
 					llvm::Value* result_type = builder->CreateCall(type_offset, {field_results[0].IR, field_results[1].IR});
 					finish_special(result_type, u::type);
 				}
@@ -957,8 +957,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				if (auto k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
 				{
 					uint64_t offset = k->getZExtValue();
-					if (offset == 0) finish_special(builder->CreateCall(llvm_function(AST_from_function, llvm_i64(), llvm_i64()), field_results[0].IR), u::AST_pointer);
-					else if (offset == 1) finish_special(builder->CreateCall(llvm_function(type_from_function, llvm_i64(), llvm_i64()), field_results[0].IR), u::type);
+					if (offset == 0) finish_special(builder->CreateCall(llvm_small_return_func(AST_from_function), field_results[0].IR), u::AST_pointer);
+					else if (offset == 1) finish_special(builder->CreateCall(llvm_small_return_func(type_from_function), field_results[0].IR), u::type);
 					else return_code(oversized_offset, 1);
 				}
 				return_code(requires_constant, 1);
@@ -972,27 +972,27 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("system1"):
 		{
-			llvm::CallInst* systemquery = builder->CreateCall(llvm_function(system1, llvm_i64(), llvm_i64()), field_results[0].IR);
+			llvm::CallInst* systemquery = builder->CreateCall(llvm_small_return_func(system1), field_results[0].IR);
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::ReadOnly);
 			finish(systemquery);
 		}
 	case ASTn("system2"):
 		{
-			llvm::CallInst* systemquery = builder->CreateCall(llvm_function(system2, llvm_i64(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
+			llvm::CallInst* systemquery = builder->CreateCall(llvm_small_return_func(system2), {field_results[0].IR, field_results[1].IR});
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::ReadOnly);
 			finish(systemquery);
 		}
 	case ASTn("agency1"):
 		{
-			llvm::CallInst* systemquery = builder->CreateCall(llvm_function(agency1, llvm_void(), llvm_i64()), field_results[0].IR);
+			llvm::CallInst* systemquery = builder->CreateCall(llvm_small_return_func(agency1), field_results[0].IR);
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
 			finish(systemquery);
 		}
 	case ASTn("agency2"):
 		{
-			llvm::CallInst* systemquery = builder->CreateCall(llvm_function(agency2, llvm_void(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
+			llvm::CallInst* systemquery = builder->CreateCall(llvm_small_return_func(agency2), {field_results[0].IR, field_results[1].IR});
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
 			finish(systemquery);
 		}
