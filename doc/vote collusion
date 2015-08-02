@@ -1,0 +1,17 @@
+
+is it reasonable to expose scores?
+	that is, communication might lead to party systms (like in Congress, open votes led to open corruption)
+the plus side is that it's possible to correct out-of-control voters. well, is it really? will the user have any real ability to detect poor voting? no, I think it's impossible.
+	well, it's possible to detect when a user goes haywire. but subtle changes are not possible. in subjective, multi-faceted organizations, it's really not possible.
+is it possible to prevent collusion? to a significant degree, the answer is yes. because it's hard for a user to prove his cooperation in a collusion scheme.
+
+discarded:
+Vote submission, User#, weighted vector of all users. given out AFTER the vote ends. automatically normalized, sum to 2^32.
+	starting user: punish any coalitions.
+	randomly identify as coalitions those groups that favor their own members to a much greater degree than the general population. since this is averaged over time, we should keep track over time, to prevent swinging votes.
+	so, after voting: randomly choose a few subsets of the population (probabilistically). then rate their self-benefits relative to the rest of the group, and make a score.
+		if it's high, then test again by testing the removal of a single user, and test the addition of a single user. then, remember the highest colluders.
+		more collusion = more punishment.
+	winner replaces the loser.
+	then, inside their heads, each user docks winner's score by some amount.
+		will this automatically lead to collusion? for example, if we have two parties, each sees the other colluding.

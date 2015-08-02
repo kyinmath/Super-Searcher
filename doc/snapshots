@@ -1,0 +1,21 @@
+snapshot absolutely should use the existing GC mechanism. otherwise there will be tons of bugs.
+
+snapshotting:
+start with a set of base objects. (we have a set of base objects, because we'll use this to copy users as well).
+then, run the GC. except each time we find an object using found_living_object, we copy it over to a new allocation.
+	then, we keep a map from old locations to new locations.
+mark_single(), whenever it finds a pointer, searches the map for the old location, and then changes it to the new location.
+	if it fails to find the old location in the map, it errors. this is because mark_single() should recursively mark its targets before it tries to search the map.
+
+note: we have to handle functions in a special way.
+and, we must add types to a unique type map whenever we see them. or, if we're snapshotting from a user to himself, we can just avoid copying the types, since they're immutable.
+
+
+serialization and unserialization:
+	can't grab fptrs.
+	thus, we have to reconstruct the Tptr hash table. and we must recompile every function.
+snapshotting:
+	copy and recompile fptrs.
+	don't copy types or do anything with them.
+GC:
+	no relocations necessary. only need a set, not a map.

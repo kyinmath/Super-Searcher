@@ -1,0 +1,1 @@
+destructors. if you create a function, and nobody sees it, you might as well delete it, instead of leaving it around.
