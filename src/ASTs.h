@@ -158,6 +158,7 @@ struct uAST
 	//std::mutex lock;
 	uint64_t tag;
 	std::array<uAST*, max_fields_in_AST> fields;
+	svector*& BBvec() { return (svector*&)fields[0]; }
 private:
 	template<typename... Args> constexpr uAST(const char name[], Args... args)
 		: tag(ASTn(name)), fields{{args...}} {}
@@ -264,7 +265,7 @@ inline uAST** AST_field(uAST* t, uint64_t offset)
 	else return 0;
 }
 
-//for pointers only. is smart enough to handle basic blocks.
+//for AST pointers only. is smart enough to handle basic blocks.
 struct AST_range
 {
 	uAST* t;

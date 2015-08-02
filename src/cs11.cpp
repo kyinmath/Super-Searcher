@@ -200,7 +200,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
 	//note: early escapes must still leave the IR builder in a valid state, so that create_if_Value can do its rubbish business.
-#define return_code(X, Y) do { print("error at ", target); error_location = target; error_field = Y; return Return_Info(IRgen_status::X, (llvm::Value*)nullptr, u::null); } while (0)
+#define return_code(X, Y) do { print("error at ", target, '\n'); error_location = target; error_field = Y; return Return_Info(IRgen_status::X, (llvm::Value*)nullptr, u::null); } while (0)
 
 	if (VERBOSE_DEBUG)
 	{

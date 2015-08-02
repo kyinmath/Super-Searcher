@@ -133,19 +133,18 @@ struct output_AST_struct
 		}
 		else AST_list.insert(target);
 
-		if (target->tag == ASTn("basicblock"))
-		{
-			auto xvec = (svector*)target->fields[0];
-			for (auto& x : Vector_range(xvec))
-				determine_references((uAST*)x);
-		}
-		else for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x) determine_references(target->fields[x]);
+		for (auto& x : AST_range(target))
+			determine_references(x);
 	}
 
 	//the purpose of "braces_allowed" is to decide whether to output {} or not. if it's false, you're at the top level, and no braces are permitted 
 	void output_output(uAST* target, bool braces_allowed)
 	{
 #ifndef NO_CONSOLE
+		
+		//we need to know if we printed a _name, in case we are emitting a basic block, because it might try to output its target directly, or maybe just a 0.
+		//because if we did print a _name, we better emit the BB errata as well.
+		bool printed_reference = false;
 		if (AST_list.find(target) != AST_list.end())
 		{
 			print(target);
@@ -154,30 +153,35 @@ struct output_AST_struct
 		else
 		{
 			AST_list.insert(target);
-			if (reference_necessary.find(target) != reference_necessary.end()) print('_', target);
+			if (reference_necessary.find(target) != reference_necessary.end())
+			{
+				print('_', target);
+				printed_reference = true;
+			}
 		}
 
 		if (target->tag == ASTn("basicblock"))
 		{
-			svector* xvec = (svector*)target->fields[0];
+			auto& xvec = target->BBvec();
+			if ((printed_reference || xvec->size > 1) && braces_allowed) //we print it no matter what, in case 
+				print("{");
 			if (xvec->size == 0)
 			{
 				print("0");
 				return;
 			}
-			if (xvec->size > 1 && braces_allowed)
-				print("{");
-			bool first = true;
-			for (auto& x : Vector_range(xvec))
+			else
 			{
-				if (first == false) print(" ");
-				first = false;
-				output_output((uAST*)x, true);
+				bool first = true;
+				for (auto& x : Vector_range(xvec))
+				{
+					if (first == false) print(" ");
+					first = false;
+					output_output((uAST*)x, true);
+				}
 			}
-			if (xvec->size > 1 && braces_allowed)
+			if ((printed_reference || xvec->size > 1) && braces_allowed)
 				print("}");
-			if (xvec->size == 0)
-				print("0");
 		}
 		else
 		{
