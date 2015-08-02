@@ -157,8 +157,7 @@ struct uAST
 {
 	//std::mutex lock;
 	uint64_t tag;
-	using iop = int_or_ptr<uAST>;
-	std::array<iop, max_fields_in_AST> fields;
+	std::array<uAST*, max_fields_in_AST> fields;
 private:
 	template<typename... Args> constexpr uAST(const char name[], Args... args)
 		: tag(ASTn(name)), fields{{args...}} {}
@@ -210,11 +209,11 @@ inline uAST* new_AST(uint64_t tag, llvm::ArrayRef<uAST*> fields)
 	{
 		check(field_size == fields.size(), "passed the wrong number of fields to new_AST");
 		for (uint64_t x = 0; x < field_size; ++x)
-			new_home->fields[x] = (uint64_t)fields[x];
+			new_home->fields[x] = (uAST*)fields[x];
 	}
 	if (tag == ASTn("basicblock"))
 	{
-		new_home->fields[0].ptr = (uAST*)vector_build(fields);
+		new_home->fields[0] = (uAST*)vector_build(fields);
 	}
 	if (VERBOSE_GC) print("new AST ", new_home, '\n');
 	return (uAST*)new_home;
@@ -232,36 +231,36 @@ inline uAST* copy_AST(uAST* t)
 	uAST* new_home;
 	if (tag == ASTn("imv"))
 	{
-		auto k = (dynobj*)t->fields[0].ptr;
+		auto k = (dynobj*)t->fields[0];
 		new_home = new_AST(tag, (uAST*)copy_dynamic(k));
 	}
 	else if (tag == ASTn("basicblock"))
 	{
-		svector* k = (svector*)t->fields[0].ptr;
+		svector* k = (svector*)t->fields[0];
 		llvm::ArrayRef<uAST*> fields(*k);
 		new_home = new_AST(tag, fields);
 	}
 	else
 	{
-		llvm::ArrayRef<uAST*> fields(&t->fields[0].ptr, total_field_size);
+		llvm::ArrayRef<uAST*> fields(&t->fields[0], total_field_size);
 		new_home = new_AST(tag, fields);
 	}
 	if (VERBOSE_GC) print("copy AST from ", t, " to ", new_home, '\n');
 	return (uAST*)new_home;
 }
 
-inline uint64_t* AST_field(uAST* t, uint64_t offset)
+inline uAST** AST_field(uAST* t, uint64_t offset)
 {
 	if (t == 0) return 0;
 	if (t->tag == ASTn("imv")) return 0;
 	if (t->tag == ASTn("basicblock"))
 	{
-		auto k = (svector*)(t->fields[0].ptr);
+		auto k = (svector*)(t->fields[0]);
 		if (offset < k->size)
-			return &(*k)[offset];
+			return (uAST**)&(*k)[offset];
 		else return 0;
 	}
-	if (offset < get_field_size_of_AST(t->tag)) return &t->fields[offset].num;
+	if (offset < get_field_size_of_AST(t->tag)) return &(t->fields[offset]);
 	else return 0;
 }
 
@@ -274,19 +273,19 @@ struct AST_range
 		if (t == 0) return 0;
 		if (t->tag == ASTn("basicblock"))
 		{
-			svector* vec = (svector*)t->fields[0].ptr;
+			svector* vec = (svector*)t->fields[0];
 			return (uAST**)Vector_range(vec).begin();
 		}
-		else return &t->fields[0].ptr;
+		else return &t->fields[0];
 	}
 	uAST** end() {
 		if (t == 0) return 0;
 		if (t->tag == ASTn("basicblock"))
 		{
-			svector* vec = (svector*)t->fields[0].ptr;
+			svector* vec = (svector*)t->fields[0];
 			return (uAST**)Vector_range(vec).end();
 		}
-		else return &t->fields[AST_descriptor[t->tag].pointer_fields].ptr;
+		else return &t->fields[AST_descriptor[t->tag].pointer_fields];
 	}
 };
 

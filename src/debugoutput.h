@@ -88,15 +88,15 @@ inline void pfAST(uAST* target)
 	output_AST(target);
 	if (target->tag == ASTn("basicblock"))
 	{
-		for (auto& x : Vector_range((svector*)target->fields[0].ptr))
+		for (auto& x : Vector_range((svector*)target->fields[0]))
 			pfAST((uAST*)x);
 	}
 	else
 	{
 		uint64_t number_of_further_ASTs = AST_descriptor[target->tag].pointer_fields;
 		for (uint64_t x = 0; x < number_of_further_ASTs; ++x)
-			if (target->fields[x].ptr != nullptr)
-				pfAST(target->fields[x].ptr);
+			if (target->fields[x] != nullptr)
+				pfAST(target->fields[x]);
 	}
 #endif
 }
@@ -135,11 +135,11 @@ struct output_AST_struct
 
 		if (target->tag == ASTn("basicblock"))
 		{
-			auto xvec = (svector*)target->fields[0].ptr;
+			auto xvec = (svector*)target->fields[0];
 			for (auto& x : Vector_range(xvec))
 				determine_references((uAST*)x);
 		}
-		else for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x) determine_references(target->fields[x].ptr);
+		else for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x) determine_references(target->fields[x]);
 	}
 
 	//the purpose of "braces_allowed" is to decide whether to output {} or not. if it's false, you're at the top level, and no braces are permitted 
@@ -159,7 +159,7 @@ struct output_AST_struct
 
 		if (target->tag == ASTn("basicblock"))
 		{
-			svector* xvec = (svector*)target->fields[0].ptr;
+			svector* xvec = (svector*)target->fields[0];
 			if (xvec->size == 0)
 			{
 				print("0");
@@ -186,12 +186,12 @@ struct output_AST_struct
 			for (; x < AST_descriptor[target->tag].pointer_fields; ++x)
 			{
 				print(' ');
-				output_output(target->fields[x].ptr, true);
+				output_output(target->fields[x], true);
 			}
 
 			//any additional fields that aren't pointers
 			for (; x < get_field_size_of_AST(target->tag); ++x)
-				print(' ', target->fields[x].num);
+				print(' ', target->fields[x]);
 			print(']');
 		}
 

@@ -337,9 +337,9 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	for (uint64_t x = 0; x < AST_descriptor[target->tag].fields_to_compile; ++x)
 	{
 		Return_Info result; //default constructed for null object
-		if (target->fields[x].ptr)
+		if (target->fields[x])
 		{
-			result = generate_IR(target->fields[x].ptr, false);
+			result = generate_IR(target->fields[x], false);
 			if (result.error_code) return result;
 		}
 
@@ -376,7 +376,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	case ASTn("basicblock"):
 		{
 			//compile basic block elements.
-			svector* k = (svector*)target->fields[0].ptr;
+			svector* k = (svector*)target->fields[0];
 			Return_Info final; //default value
 			for (uint64_t& AST : Vector_range(k))
 			{
@@ -436,7 +436,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			for (uint64_t x : {0, 1})
 			{
 				builder->SetInsertPoint(caseBB[x]);
-				case_IR[x] = generate_IR(target->fields[x + 1].ptr, 0);
+				case_IR[x] = generate_IR(target->fields[x + 1], 0);
 				if (case_IR[x].error_code) return case_IR[x];
 				clear_stack(if_stack_position);
 				builder->CreateBr(MergeBB);
@@ -483,14 +483,14 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 			IRemitter run_field_1 = [&]() -> llvm::Value*
 			{
-			case_IR[0] = generate_IR(target->fields[1].ptr, false); //note: the case field is shifted by 1, because there's a condition field.
+			case_IR[0] = generate_IR(target->fields[1], false); //note: the case field is shifted by 1, because there's a condition field.
 			if (case_IR[0].error_code) return 0;
 			else return case_IR[0].IR;
 			};
 
 			IRemitter run_field_2 = [&]() -> llvm::Value*
 			{
-			case_IR[1] = generate_IR(target->fields[2].ptr, false);
+			case_IR[1] = generate_IR(target->fields[2], false);
 			if (case_IR[1].error_code) return 0;
 			else return case_IR[1].IR;
 			};
@@ -541,7 +541,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			auto label_insertion = labels.insert(std::make_pair(target, label_info(label, final_stack_position, true)));
 			if (label_insertion.second == false) return_code(label_duplication, 0);
 
-			Return_Info scoped = generate_IR(target->fields[0].ptr, 0);
+			Return_Info scoped = generate_IR(target->fields[0], 0);
 			if (scoped.error_code) return scoped;
 
 			//this expires the label, so that goto knows that the label is behind. with finiteness, this means the label isn't guaranteed.
@@ -554,7 +554,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 	case ASTn("goto"):
 		{
-			auto labelsearch = labels.find(target->fields[0].ptr);
+			auto labelsearch = labels.find(target->fields[0]);
 			if (labelsearch == labels.end()) return_code(missing_label, 0);
 			auto info = labelsearch->second;
 
@@ -593,26 +593,26 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			llvm::Value* finiteness_minus_one = builder->CreateSub(current_finiteness, llvm_integer(1));
 			builder->CreateStore(finiteness_minus_one, finiteness_pointer);
 
-			Return_Info Success_IR = generate_IR(target->fields[1].ptr, 0);
+			Return_Info Success_IR = generate_IR(target->fields[1], 0);
 			if (Success_IR.error_code) return Success_IR;
 
 			emit_dtors(info.stack_size);
 			builder->CreateBr(labelsearch->second.block);
 			builder->SetInsertPoint(FailureBB);
 
-			Return_Info Failure_IR = generate_IR(target->fields[2].ptr, 0);
+			Return_Info Failure_IR = generate_IR(target->fields[2], 0);
 			finish_passthrough(Failure_IR); //whether it's a failure or not.
 		}
 	case ASTn("pointer"):
 		{
-			auto found_AST = objects.find(target->fields[0].ptr);
+			auto found_AST = objects.find(target->fields[0]);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			if (found_AST->second.place == nullptr) return_code(pointer_to_temporary, 0);
 			if (found_AST->second.hidden_reference == true) return_code(pointer_to_reference, 0);
 			Tptr new_pointer_type = new_type(Typen("pointer"), found_AST->second.type);
 
 			llvm::Value* final_result = builder->CreatePtrToInt(found_AST->second.place->allocation, llvm_i64(), s("flattening pointer"));
-			objects.find(target->fields[0].ptr)->second.place->turn_full();
+			objects.find(target->fields[0])->second.place->turn_full();
 			finish_special(final_result, new_pointer_type);
 		}
 	case ASTn("concatenate"):
@@ -735,7 +735,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 						new_living_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true));
 					}
 				}
-				Return_Info case_IR = generate_IR(target->fields[x + 2].ptr, false);
+				Return_Info case_IR = generate_IR(target->fields[x + 2], false);
 				if (case_IR.error_code) return case_IR;
 
 				clear_stack(starting_stack_position);
@@ -770,7 +770,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			Return_Info case_IR;
 			IRemitter run_field_2 = [&]() -> llvm::Value*
 			{
-				case_IR = generate_IR(target->fields[2].ptr, false); //error checking is moved to after the comparison.
+				case_IR = generate_IR(target->fields[2], false); //error checking is moved to after the comparison.
 				return nullptr; //signifying an unused phi value.
 			};
 
@@ -902,7 +902,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("imv"): //bakes in the value into the compiled function. changes by the function are temporary.
 		{
-			uint64_t* dynamic_object = (uint64_t*)target->fields[0].ptr;
+			uint64_t* dynamic_object = (uint64_t*)target->fields[0];
 			if (dynamic_object == nullptr)
 				finish_special(0, 0);
 			Tptr type_of_object = *(Tptr*)dynamic_object;

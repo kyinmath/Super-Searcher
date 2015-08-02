@@ -158,10 +158,10 @@ inline uAST* vector_to_AST(uint64_t tag, svector* vector_of_ASTs)
 	for (uint64_t x = 0; x < AST_field_size; ++x)
 	{
 		if (vector_of_ASTs == nullptr)
-			new_AST->fields[x].num = 0;
+			new_AST->fields[x] = 0;
 		else if (vector_of_ASTs->size > x)
-			new_AST->fields[x].num = (*vector_of_ASTs)[x];
-		else new_AST->fields[x].num = 0;
+			new_AST->fields[x] = (uAST*)((*vector_of_ASTs)[x]);
+		else new_AST->fields[x] = 0;
 	}
 	if (VERBOSE_GC) print("making new AST ", new_AST, '\n');
 	return new_AST;
@@ -188,13 +188,13 @@ inline uAST** AST_subfield(uAST* a, uint64_t offset)
 	if (a == nullptr) return 0;
 	if (a->tag == ASTn("basicblock"))
 	{
-		return (uAST**)reference_at((svector*)a->fields[0].ptr, offset);
+		return (uAST**)reference_at((svector*)a->fields[0], offset);
 	}
 	else
 	{
 		uint64_t size = AST_descriptor[a->tag].pointer_fields; //we're not using the total fields type, because if it's a imv, we don't grab it.
 		if (offset >= size) return 0;
-		else return &a->fields[offset].ptr;
+		else return &a->fields[offset];
 	}
 }
 
@@ -301,7 +301,7 @@ inline uint64_t load_imv_from_AST(uAST* p)
 {
 	if (p == 0) return 0;
 	else if (p->tag != 0) return 0;
-	else return p->fields[0].num;
+	else return (uint64_t)(p->fields[0]);
 }
 
 

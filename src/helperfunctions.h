@@ -350,7 +350,7 @@ private:
 			
 			//we don't need to handle "imv" or "basicblock", because copy_mapper handles them automatically.
 			for (uint64_t x = 0; x < AST_descriptor[target->tag].pointer_fields; ++x)
-				target->fields[x].ptr = internal_copy(target->fields[x].ptr);
+				target->fields[x] = internal_copy(target->fields[x]);
 		}
 		else target = search_for_copy->second;
 		return target;

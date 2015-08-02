@@ -7,14 +7,14 @@ LLVM_CONFIG_CXX_SUBSTITUTE := -I/usr/include  -fPIC -fvisibility-inlines-hidden 
 
 #boost interprocess requires rtti, but llvm requires fno-rtti, or it'll give link errors looking for typeinfo...
 nosanitize: ../src/*
-	clang++ -g -Wall -fno-rtti -fno-exceptions $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
+	clang++ -g -Wall -fno-rtti -fno-exceptions $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=4 -O0
 
 #can't have fno-rtti with this
 admin: ../user_admin/*
 	clang++ -g -Wall -fno-rtti -fno-exceptions $(ADMIN_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o admin -std=c++1z -O0
 
 sanitize: ../src/*
-	clang++ -g -Wall -fno-rtti -fno-exceptions -fsanitize=undefined -fsanitize=address -fno-sanitize-recover=undefined $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
+	clang++ -g -Wall -fno-rtti -fno-exceptions -fsanitize=undefined -fsanitize=address -fno-sanitize-recover=undefined $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=4 -O0
 	rm -If core
 
 unity: ../src/*
@@ -30,7 +30,7 @@ fast: ../src/*
 	mkdir build
 	cp ../src/* build
 	awk 'FNR==1{print ""}1' ../src/*.cpp > build/unity.cpp
-	clang++ -g -Wall -fno-rtti -fno-exceptions build/unity.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O3
+	clang++ -g -Wall -fno-rtti -fno-exceptions build/unity.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=4 -O3
 	rm -If core
 
 #absolutely no debug symbols or anything like that allowed.
@@ -39,22 +39,22 @@ secure: ../src/*
 	mkdir build
 	cp ../src/* build
 	awk 'FNR==1{print ""}1' ../src/*.cpp > build/unity.cpp
-	clang++ -Wall -Wl,-s -fno-rtti -fno-exceptions build/unity.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O3 -DNDEBUG -DNO_CONSOLE -DNOCHECK
+	clang++ -Wall -Wl,-s -fno-rtti -fno-exceptions build/unity.cpp `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=4 -O3 -DNDEBUG -DNO_CONSOLE -DNOCHECK
 	strip -R .comment -R .note toy
 	rm -If core
 
 check: ../src/*
-	clang++ -g -Wall -fsanitize=integer -fsanitize=dataflow -fsanitize=safe-stack -fno-rtti -fno-exceptions $(LLVM_CONFIG_CXX_SUBSTITUTE) $(CPP_FILES) `llvm-config  --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
+	clang++ -g -Wall -fsanitize=integer -fsanitize=dataflow -fsanitize=safe-stack -fno-rtti -fno-exceptions $(LLVM_CONFIG_CXX_SUBSTITUTE) $(CPP_FILES) `llvm-config  --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=4 -O0
 	rm -If core
 
 #If you want MemorySanitizer to work properly and not produce any false positives, you must ensure that all the code in your program and in libraries it uses is instrumented (i.e. built with -fsanitize=memory). In particular, you would need to link against MSan-instrumented C++ standard library. We recommend to use libc++ for that purpose. That is, don't worry about errors here for now.
 checkmem: ../src/*
-	clang++ -g -Wall -fsanitize=memory -fno-rtti -fno-exceptions $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
+	clang++ -g -Wall -fsanitize=memory -fno-rtti -fno-exceptions $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=4 -O0
 	rm -If core
 
 
 checkcfi: ../src/*
-	clang++ -g -Wall -fsanitize=cfi -flto -fno-rtti -fno-exceptions $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
+	clang++ -g -Wall -fsanitize=cfi -flto -fno-rtti -fno-exceptions $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=4 -O0
 	rm -If core
 
 gccfast: ../src/*

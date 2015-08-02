@@ -77,7 +77,7 @@ void fuzztester(uint64_t iterations)
 			if (previous)
 			{
 				test_AST = copy_AST(previous);
-				auto k = (svector*)test_AST->fields[0].ptr;
+				auto k = (svector*)test_AST->fields[0];
 				pushback_int(k, (uint64_t)new_random_AST);
 			}
 			else
@@ -239,11 +239,11 @@ class source_reader
 						isNumber = isNumber && isdigit(k);
 					check(isNumber, string("tried to input non-number ") + next_token);
 					check(next_token.size(), "token is empty, probably a missing ]");
-					new_type_location->fields[field_num] = (uint64_t)new_object_value(u::integer, std::stoull(next_token));
+					new_type_location->fields[field_num] = (uAST*)new_object_value(u::integer, std::stoull(next_token));
 				}
 				else if (AST_type == ASTn("basicblock"))
 				{
-					svector* k = (svector*)new_type_location->fields[0].ptr;
+					svector* k = (svector*)new_type_location->fields[0];
 					if (next_token == "{") pushback_int(k, (uint64_t)create_single_basic_block(true));
 					else pushback_int(k, (uint64_t)read_single_AST(next_token));
 				}
@@ -268,7 +268,7 @@ class source_reader
 	uAST* create_single_basic_block(bool create_brace_at_end = false)
 	{
 		uAST* BB_AST = new_AST(ASTn("basicblock"), {});
-		svector*& k = (svector*&)BB_AST->fields[0].ptr;
+		svector*& k = (svector*&)BB_AST->fields[0];
 		string last_char;
 		if (create_brace_at_end == false)
 		{
