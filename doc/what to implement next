@@ -1,16 +1,10 @@
-idea: since dynamic objects are necessarily full, we can force the type to be stored next to the object, instead of next to the pointer.
-	this ensures that all objects are 1 uint64_t size, which leads to efficient offsetting
-remove special_fields from the AST_descriptor
 move the fuzzer into AST format
 	getting types of ASTs
 		which requires being able to look at types.
 	how to figure out the internals of dynamic objects? since we don't have function parameters, we'll need to use global pointers to pass data.
 test coverage. we need to know that all ASTs are run. for example, load_tag doesn't have any coverage. neither does dyn_subobj for unknown pointers and unknown vectors.
+serialization
 snapshots? judgment MUST iterate very quickly. for example, when swinging a tennis racquet, you readjust after every shot.
-
-suppose we have a compiled function. it points to an AST. when the function dies, should we really unimmut the old ASTs? is that at all useful?
-	yeah, it's vital. we don't want to create new copies all the time. and we use compilation as error_checking, so we compile a function many times as we create it.
-
 
 
 I think: we have a special "concatenation" type, which is an array. the benefit is the random access: to look at parts of the type, you don't need to repetitively re-get pointers, which would kill finiteness.

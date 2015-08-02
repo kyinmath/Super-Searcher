@@ -5,7 +5,7 @@ after we've chosen a spot (which will be either for insertion, deletion, or conc
 
 1. we'll have basic block ASTs.
 2. every time we make a new loose AST, we'll want to add it to a basic block AST.
-	thus, we first select a basica block AST, and then append to it. then, we get the last element, and then try adding terms.
+	thus, we first select a basic block AST, and then append to it. then, we get the last element, and then try adding terms.
 
 [imv 100]iterations
 [imv 20]max_fuzztester_size

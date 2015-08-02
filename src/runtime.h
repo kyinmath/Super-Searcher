@@ -36,7 +36,7 @@ inline void compile_returning_legitimate_object(uint64_t* memory_location, uint6
 	}
 	else
 	{
-		function* new_location = new(allocate_function()) function(deep_AST_copier(target).result, a.return_type, a.parameter_type, a.fptr, c, a.result_module, std::move(a.new_context));
+		function* new_location = new(allocate_function()) function(deep_AST_copier(target).result, a.return_type, a.parameter_type, a.fptr, a.result_module, std::move(a.new_context));
 		if (VERBOSE_GC)
 		{
 			print(*new_location);

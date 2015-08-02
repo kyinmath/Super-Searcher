@@ -39,16 +39,7 @@ private:
 inline void output_type(const Tptr target)
 {
 #ifndef NO_CONSOLE
-	if (target == 0)
-	{
-		print("null type\n");
-		return;
-	}
-	print("type ", Type_descriptor[target.ver()].name, "(", target.ver(), ") at ", (uint64_t*)target.val, ", ");
-	print("fields");
-	for (auto& x : Type_pointer_range(target))
-		print(' ', x);
-	print('\n');
+	print(target, '\n');
 #endif
 }
 

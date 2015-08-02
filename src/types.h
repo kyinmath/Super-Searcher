@@ -147,6 +147,8 @@ public:
 	constexpr Tptr(uint64_t t) : val(t) {}
 };
 
+
+
 #define max_fields_in_AST 40u
 //should accomodate the largest possible AST. necessary for AST_descriptor[]
 
@@ -312,6 +314,15 @@ inline Tptr get_Type_full_type(Tptr t)
 	}
 }
 
+//prints just the immediate type, doesn't look further.
+inline std::ostream& operator<< (std::ostream& o, const Tptr t)
+{
+	if (t == 0) return o << "null type\n";
+	o << "t " << Type_descriptor[t.ver()].name << "(" << t.ver() << ") at " << (uint64_t*)t.val << ", ";
+	if (Type_descriptor[t.ver()].pointer_fields != 0) o << "fields";
+	for (auto& x : Type_pointer_range(t)) o << ' ' << x;
+	return o;
+}
 
 void debugtypecheck(Tptr test);
 type_check_result type_check(type_status version, Tptr existing_reference, Tptr new_reference);

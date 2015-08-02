@@ -8,6 +8,7 @@
 #include "function.h"
 
 
+//found_living_object and found_function depend on these pools being contiguous
 constexpr const uint64_t pool_size = 100000ull;
 constexpr const uint64_t function_pool_size = 2000ull * 64;
 constexpr const uint64_t initial_special_value = 21212121ull;
@@ -170,27 +171,11 @@ void start_GC()
 		for (auto& x : living_objects)
 			print("living object ", x.first, " size ", x.second, '\n');
 	}
-	//print("outputting unique types\n");
-	//for (Tptr const & unique_type : type_hash_table) //clear the hash table of excess elements
-	//	output_type(unique_type);
-	//print("done outputting unique types\n");
-	/*
-	//this doesn't work, since the erasure invalidates the iterator completely.
-	for (Tptr const & unique_type : type_hash_table) //clear the hash table of excess elements
-	{
-		print("checking unique type ", unique_type, '\n');
-		if (living_objects.find((uint64_t*)unique_type) == living_objects.end())
-		{
-			print("erasing it\n");
-			uint64_t erased = type_hash_table.erase(unique_type);
-			check(erased == 1, "erased wrong number of elements");
-		}
 
-	}*/
+	//can't use range-based for loops, since the erasure invalidates the iterator completely.
 	for (auto it = type_hash_table.begin(); it != type_hash_table.end();)
 	{
-		if (living_objects.find((uint64_t*)it->val) == living_objects.end())
-			it = type_hash_table.erase(it);
+		if (living_objects.find((uint64_t*)it->val) == living_objects.end()) it = type_hash_table.erase(it);
 		else ++it;
 	}
 
@@ -207,8 +192,7 @@ void start_GC()
 		}
 		print("total free after GC ", total_memory_use, '\n');
 
-		for (auto& x : living_objects)
-			print("living object after GC ", x.first, " size ", x.second, '\n');
+		for (auto& x : living_objects) print("living object after GC ", x.first, " size ", x.second, '\n');
 	}
 
 }
@@ -219,18 +203,30 @@ bool found_living_object(uint64_t* memory, uint64_t size)
 	check(size != 0, "no null types in GC allowed");
 	check(memory != 0, "no null pointers in GC allowed");
 	if (HEURISTIC) check(size < 1000000, "object seems large?");
+	if (DEBUG_GC)
+	{
+		check(memory >= big_memory_pool, "memory out of bounds");
+		check(memory + size <= big_memory_pool + pool_size, "memory out of bounds");
+	}
 	if (living_objects.find(memory) != living_objects.end()) return 1; //it's already there. nothing needs to be done, if we assume that full pointers point to the entire object. todo.
 	if (SUPER_VERBOSE_GC)
 	{
 		print("found ", memory, " v");
 		for (uint64_t x = 0; x < size; ++x)
-		{
 			print(" ", std::hex, memory[x]);
-		}
 		print('\n');
 	}
 	living_objects.insert({memory, size});
 	return 0;
+}
+
+bool found_function(function* func)
+{
+	uint64_t number = func - function_pool;
+	if (sweep_function_pool_flags[number / 64] & (1ull << (number % 64))) //bitwise
+		return true;
+	sweep_function_pool_flags[number / 64] |= (1ull << (number % 64));
+	return false;
 }
 
 
@@ -335,10 +331,8 @@ void mark_single_element(uint64_t& memory, Tptr t)
 		break;
 	case Typen("function pointer"):
 		function* func = (function*)memory;
-		uint64_t number = (function*)memory - function_pool;
-		sweep_function_pool_flags[number / 64] |= (1ull << (number % 64));
+		if (found_function(func)) break;
 
-		//no need to call found_living_object() here, because mark_single will call it appropriately for the AST, and the function is already marked
 		mark_single_element((uint64_t&)(func->the_AST), u::AST_pointer);
 		mark_single_element((uint64_t&)(func->return_type), u::type);
 		//future: maybe the parameter

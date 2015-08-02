@@ -1,3 +1,25 @@
-shared memory must be deallocated using ::remove.
+shared memory must be deallocated.
 shared memory is in the address space of the creator, but does it belong to the creator?
 
+everybody gets his own admin communication.
+voting start doesn't decay. although this can lead to unexpected votes in the middle of something, it can also be good in preventing repeated re-votes.
+	for now, it's painful to require everyone to remember to start the vote. let's just require 1/3 of the users to want to start for the vote to actually start.
+
+user must keep track of all the other users. this must be done as part of the starting user.
+	a vector full of information. vector of vector of ints.
+
+admin sends possible signals. these are:
+Vote start, User#.
+Vote end, Winning user, Vector of user scores. (copy the vector to user memory)
+YOU are the winner. pack up and make a copy of yourself!
+User death (automatic vote start). User #.
+Competition. how? must pass in some information...
+Country competition. how?
+
+shared memory is divided into two halves. the local admin simply increments a counter, allocating as he goes along. the user follows along with an internal pointer.
+	when the admin tries to move from one half to the other, he checks if the user is done with that half. to do this, admin sets the "used" flag on a half whenever allocating from it. then, user clears the "used" flag when user's internal event checking is done with it.
+if the admin tries to move from one half to the other and it's still in use, then the user is deadlocked and the admin kills the user.
+	
+
+Admin: if only one user left, copy him to all remaining slots.
+if no users left, call a country competition.
