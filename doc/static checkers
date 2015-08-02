@@ -25,3 +25,15 @@ use the sanitizers!
 	harmless, it's a library bug: http://lists.cs.uiuc.edu/pipermail/cfe-dev/2013-January/027401.html
 		runtime error: load of value 4294967221, which is not a valid value for type 'std::_Ios_Fmtflags'
 	memorysanitizer also has shared library problems.
+
+
+
+
+make fast
+valgrind --tool=callgrind ./toy benchmark
+kcachegrind
+
+If you don't want to install kcachegrind, instead replace 63376 with the appropriate number, and run
+callgrind_annotate callgrind.out.63376 >profile
+The results will be in the file "profile".
+Note: the "prof" tool doesn't work on VMware, so that's why I use callgrind.

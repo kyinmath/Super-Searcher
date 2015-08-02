@@ -3,22 +3,8 @@ move the fuzzer into AST format
 		which requires being able to look at types.
 	how to figure out the internals of dynamic objects? since we don't have function parameters, we'll need to use global pointers to pass data.
 test coverage. we need to know that all ASTs are run. for example, load_tag doesn't have any coverage. neither does dyn_subobj for unknown pointers and unknown vectors.
-serialization
-snapshots? judgment MUST iterate very quickly. for example, when swinging a tennis racquet, you readjust after every shot.
+serialization/snapshots. judgment MUST iterate very quickly. for example, when swinging a tennis racquet, you readjust after every shot.
 
-
-I think: we have a special "concatenation" type, which is an array. the benefit is the random access: to look at parts of the type, you don't need to repetitively re-get pointers, which would kill finiteness.
-	but storing pointers is the same as storing numbers.
-	however, having these funny types is bad for constexpr.
-
-maybe: we can use our dynamic types as vector? then we have some kind of speedup for long repetitive types. make sure to consider periodicity as well: ABAB, not just AAAA.
-	and what's more, we state that dynamic types don't have to necessarily reallocate. so the old reference may be still relevant, and it may not. user's job to do the appropriate locking.
-	the concatenation type being a vector really helps here.
-however, what about other full dynamic pointers, that point to the same object? if you're re-writing in place, they no longer point to the entire object, only part of it.
-	actually, I think it's ok, since we made it atomic.
-	well, dynamic pointers inside ASTs might be in trouble maybe.
-	the GC lock ensures multiple things can't be trying to change the type simultaneously.
-this system means we can't delete elements from the end of a vector...except we can, vaguely, by truncating the type. then some garbage collection would be necessary, unless the memory region has only a single pointer to it.
 
 we must always consider bootstrap issues. for example, how to make a function that returns compiled functions with fixed type?
 	if there's no guaranteed mechanism, then such a function would need a static object to substitute. and it's unlikely the judgment function is able to construct these dynamic objects on the fly.

@@ -1,0 +1,9 @@
+
+maybe: we can use our dynamic types as vector? then we have some kind of speedup for long repetitive types. make sure to consider periodicity as well: ABAB, not just AAAA.
+	and what's more, we state that dynamic types don't have to necessarily reallocate. so the old reference may be still relevant, and it may not. user's job to do the appropriate locking.
+	the concatenation type being a vector really helps here.
+however, what about other full dynamic pointers, that point to the same object? if you're re-writing in place, they no longer point to the entire object, only part of it.
+	actually, I think it's ok, since we made it atomic.
+	well, dynamic pointers inside ASTs might be in trouble maybe.
+	the GC lock ensures multiple things can't be trying to change the type simultaneously.
+this system means we can't delete elements from the end of a vector...except we can, vaguely, by truncating the type. then some garbage collection would be necessary, unless the memory region has only a single pointer to it.

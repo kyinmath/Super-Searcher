@@ -584,9 +584,6 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			llvm::BasicBlock *FailureBB = llvm::BasicBlock::Create(*context, s("finiteness failure"), TheFunction);
 			builder->CreateCondBr(comparison, SuccessBB, FailureBB);
 
-			//start inserting code in the "then" block
-			//this actually sets the insert point to be the end of the "Then" basic block. we're relying on the block being empty.
-			//if there are already commands inside the "Then" basic block, we would be in trouble
 			builder->SetInsertPoint(SuccessBB);
 
 			//decrease finiteness. this comes before emission of the success branch.

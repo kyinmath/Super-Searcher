@@ -24,7 +24,7 @@ uint64_t* sweep_function_pool_flags; //we need this to be able to run finalizers
 
 //if we did want to multi-thread, we'd eventually want a lock on these things.
 std::multimap<uint64_t, uint64_t*> free_memory = {{pool_size, big_memory_pool}}; //first value = size of slot. second value = address
-std::map<uint64_t*, uint64_t> living_objects; //first value = address of user-seen memory. second slot = size of user-seen memory. ignores headers.
+std::map<uint64_t*, uint64_t> living_objects; //first value = address of user-seen memory. second slot = size of user-seen memory. ignores headers. must be ordered to find new memory.
 uint64_t first_possible_empty_function_block; //where to start looking for an empty function block.
 std::stack < std::pair<uint64_t*, Tptr>> to_be_marked; //stack of things to be marked. this is good because it lets us avoid recursion.
 
@@ -321,12 +321,8 @@ void mark_single_element(uint64_t& memory, Tptr t)
 		if (memory != 0)
 		{
 			Tptr the_type = (Tptr)memory;
-			//get_unique_type(the_type, true); //put it in the type hash table.
 			if (Type_descriptor[the_type.ver()].pointer_fields != 0)
-			{
-				Tptr type_of_type = get_Type_full_type(the_type);
-				new_mark_element((uint64_t*)memory, type_of_type);
-			}
+				new_mark_element((uint64_t*)memory, get_Type_full_type(the_type));
 		}
 		break;
 	case Typen("function pointer"):

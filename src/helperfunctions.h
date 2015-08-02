@@ -98,14 +98,10 @@ inline uint64_t size_of_Value(llvm::Value* value)
 {
 	if (value == nullptr) return 0;
 	llvm::Type* type = value->getType();
-	if (llvm::isa<llvm::IntegerType>(type))
-		return 1;
-	else if (llvm::isa<llvm::PointerType>(type)) //necessary for create_if_value, even if not necessary for write_into_place.
-		return 1;
-	else if (auto array = llvm::dyn_cast<llvm::ArrayType>(type))
-		return array->getNumElements();
-	else if (auto aggregate = llvm::dyn_cast<llvm::StructType>(type))
-		return aggregate->getNumElements();
+	if (llvm::isa<llvm::IntegerType>(type)) return 1;
+	else if (llvm::isa<llvm::PointerType>(type)) return 1; //necessary for create_if_value, even if not necessary for write_into_place.
+	else if (auto array = llvm::dyn_cast<llvm::ArrayType>(type)) return array->getNumElements();
+	else if (auto aggregate = llvm::dyn_cast<llvm::StructType>(type)) return aggregate->getNumElements();
 	else error("what fucking size is the Type anyway");
 }
 
@@ -325,8 +321,7 @@ inline uint64_t* copy_object(uint64_t total_size, uint64_t* pointer)
 {
 	check(total_size != 0, "copying 0 size object");
 	uint64_t* new_memory = allocate(total_size);
-	for (uint64_t x = 0; x < total_size; ++x)
-		new_memory[x] = pointer[x];
+	for (uint64_t x = 0; x < total_size; ++x) new_memory[x] = pointer[x];
 	return new_memory;
 }
 #include "dynamic.h"

@@ -12,10 +12,24 @@ and, we must add types to a unique type map whenever we see them. or, if we're s
 
 
 serialization and unserialization:
-	can't grab fptrs.
-	thus, we have to reconstruct the Tptr hash table. and we must recompile every function.
+	grab ASTs from functions. then recompile at time of unserialization.
+	reconstruct the Tptr hash table at time of unserialization.
 snapshotting:
-	copy and recompile fptrs.
+	copy functions. then recompile.
 	don't copy types or do anything with them.
 GC:
 	no relocations necessary. only need a set, not a map.
+
+the difference is what to do on finding a pointer to:
+1. normal object
+	GC: put in set.
+	snapshot: map, relocate (copy).
+	serialize: map, relocate (copy), but as offset from base of memory allocation
+2. function
+	GC: mark specially.
+	snapshot: map, relocate in special place (copy), remember all functions for later recompilation.
+	serialize: relocate just the AST in a vector and store the number, recompile every function, recreate the return AST.
+3. Tptr
+	GC: put in set.
+	snapshot: do nothing.
+	serialize: map, relocate (copy). on unserialization, put in hash table.
