@@ -12,6 +12,7 @@ admin sends possible signals. these are:
 Vote start, User#.
 Vote end, Winning user, Vector of user scores. (copy the vector to user memory)
 YOU are the winner. pack up and make a copy of yourself!
+COUNTRY is the winner. pack up and make a copy of yourself!
 User death (automatic vote start). User #.
 Competition. how? must pass in some information...
 Country competition. how?

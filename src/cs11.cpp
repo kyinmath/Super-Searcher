@@ -696,7 +696,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			uint64_t starting_stack_position = object_stack.size();
 			llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
 
-			//0 case is the default. I think this is because llvm switch statements require a default.
+			//0 case is the default. llvm switch statements require a default.
 			llvm::BasicBlock *failed_to_get = llvm::BasicBlock::Create(*context, "", TheFunction);
 
 			auto switch_on_type = builder->CreateSwitch(switch_type, failed_to_get, Typen("does not return") - 1, 0); //dependency on type
@@ -710,26 +710,23 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					switch_on_type->addCase(llvm_integer(x), caseBB);
 				}
 				else builder->SetInsertPoint(failed_to_get);
-				if (x != 0) //if it's 0, don't bother doing any of this stuff, because the type is empty.
+				if (x != 0) //if it's 0, don't put a reference on the stack, because the type is empty.
 				{
 					Tptr loaded_object_type = 0;
 					if (x == Typen("pointer")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
 					{
 						loaded_object_type = Typen("pointer to something");
-						memory_allocation reference(correct_pointer);
-						new_living_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true, single_type));
+						new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(correct_pointer), loaded_object_type, true, single_type));
 					}
 					else if (x == Typen("vector")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
 					{
 						loaded_object_type = Typen("vector of something");
-						memory_allocation reference(correct_pointer);
-						new_living_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true, single_type));
+						new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(correct_pointer), loaded_object_type, true, single_type));
 					}
 					else
 					{
 						loaded_object_type = (Tptr)x;
-						memory_allocation reference(correct_pointer);
-						new_living_object(target, Return_Info(IRgen_status::no_error, &reference, loaded_object_type, true));
+						new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(correct_pointer), loaded_object_type, true));
 					}
 				}
 				Return_Info case_IR = generate_IR(target->fields[x + 2], false);
@@ -771,10 +768,9 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				return nullptr; //signifying an unused phi value.
 			};
 
-			//we can only do this because there's no "else" branch.
+			//we can use create_if while simultaneously making a new referenceable object, because there's no "else" branch.
 			uint64_t starting_stack_position = object_stack.size();
-			memory_allocation reference(reference_p);
-			new_living_object(target, Return_Info(IRgen_status::no_error, &reference, type_of_object, true));
+			new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(reference_p), type_of_object, true));
 
 			auto reference_integer = builder->CreatePtrToInt(reference_p, llvm_i64());
 			llvm::Value* comparison = builder->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));
@@ -798,7 +794,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		{
 			if (field_results[0].type.ver() != Typen("vector")) return_code(type_mismatch, 0);
 			llvm::Value* pusher = llvm_function(vector_size, llvm_i64(), llvm_i64());
-			finish(builder->CreateCall(pusher, {field_results[0].IR}));
+			finish(builder->CreateCall(pusher, field_results[0].IR));
 		}
 	case ASTn("dynamify"):
 		{
@@ -851,7 +847,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("convert_to_AST"):
 		{
-			//this is necessary to solve the bootstrapping issue. can't get an AST without a vector of ASTs; can't get a vector of ASTs without an AST.
+			//this helps the bootstrapping issue. can't get an AST without a vector of ASTs; can't get a vector of ASTs without an AST.
 			if (field_results[1].type == T::null)
 			{
 				llvm::Value* converter = llvm_function(no_vector_to_AST, llvm_i64(), llvm_i64());

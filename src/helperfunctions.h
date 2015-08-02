@@ -82,10 +82,22 @@ inline llvm::AllocaInst* create_actual_alloca(uint64_t size) {
 	return TmpB.CreateAlloca(llvm_i64(), llvm_integer(size));
 }
 
-
+#include <type_traits>
+//only handles functions whose return type is an integer, or void. no arrays allowed.
+//the function is stated to return an i64() if it returns anything.
+//parameters are all forced to i64().
+template<typename... llvm_type, typename return_type, typename... parameters, typename fptr> inline llvm::Value* llvm_small_return_func(return_type (*function)(parameters...))
+{
+	bool return_is_void = std::is_same<retun_type, void>::value;
+	std::vector<llvm::Type*> argument_type(sizeof...(parameters), llvm_i64());
+	llvm::FunctionType* function_type = llvm::FunctionType::get(return_is_void ? llvm_void() : llvm_i64(), argument_type, false);
+	llvm::PointerType* function_pointer_type = function_type->getPointerTo();
+	llvm::Constant *function_address = llvm_integer((uint64_t)function);
+	return builder->CreateIntToPtr(function_address, function_pointer_type, s("convert address to function"));
+}
 
 //return type is not a llvm::Function*, because it's a pointer to a function.
-template<typename... should_be_type_ptr, typename fptr> inline llvm::Value* llvm_function(fptr* function, llvm::Type* return_type, should_be_type_ptr... argument_types)
+template<typename... llvm_type, typename fptr> inline llvm::Value* llvm_function(fptr* function, llvm::Type* return_type, llvm_type... argument_types)
 {
 	std::vector<llvm::Type*> argument_type{argument_types...};
 	llvm::FunctionType* function_type = llvm::FunctionType::get(return_type, argument_type, false);
@@ -270,7 +282,7 @@ inline llvm::Value* load_from_memory(llvm::Value* location, uint64_t size)
 //every time IR is generated, this holds the relevant return info.
 //if memory_location is active, hidden_reference may still be true or false. this affects whether you can get a pointer to it.
 //hidden_reference := no pointers allowed. hidden_reference => memory_location is active. 
-//note: #define finish_passthrough() in cs11.cpp depends on this structure. we'll need ot handle hidden_subtype later.
+//note: #define finish_passthrough() in cs11.cpp depends on this structure. we'll need to handle hidden_subtype later.
 struct Return_Info
 {
 	IRgen_status error_code;
@@ -287,7 +299,7 @@ struct Return_Info
 	//if this is false, the allocation isn't something we own. that is, geting a pointer to it is disallowed.
 	bool hidden_reference; //this is used for store(). set by load() load_subobj(), dyn_subobj(), stack_degree == 2. it's true if you are disallowed from getting a pointer.
 
-	//this is for "vector of something" and "pointer to something".
+	//this is for "vector of something" and "pointer to something". this won't say "pointer to X", it'll say "X".
 	llvm::Value* hidden_subtype;
 
 	Return_Info(IRgen_status err, llvm::Value* b, Tptr t, bool h = false, llvm::Value* hid_type = nullptr)

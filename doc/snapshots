@@ -33,3 +33,5 @@ the difference is what to do on finding a pointer to:
 	GC: put in set.
 	snapshot: do nothing.
 	serialize: map, relocate (copy). on unserialization, put in hash table.
+
+problem: when unserializing, we have to create the new types. however, we can't get unique types, or any other types.

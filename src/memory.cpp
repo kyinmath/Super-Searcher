@@ -31,13 +31,13 @@ std::stack < std::pair<uint64_t*, Tptr>> to_be_marked; //stack of things to be m
 void new_mark_element(uint64_t* memory, Tptr t);
 bool found_living_object(uint64_t* memory, uint64_t size); //adds the object onto the list of living objects.
 void marky_mark(uint64_t* memory, Tptr t); //marks any further objects found in a possibly-concatenated object. you must add it to the list of living objects separately; marky_mark doesn't do that. the reason is that some things like dynamic objects want to use marky_mark, but want to add a different object to the living_objects stack. they don't want to create a whole new concatenation.
-void mark_single_element(uint64_t& memory, Tptr t);
+void mark_single_element(uint64_t& memory, Tptr t); //note that mark_single takes a reference instead of a pointer. this was to get rid of the horrible *(vector**) casts which I didn't understand. however, this means that marky_mark and mark_single are different in their arguments. marky_mark() takes a pointer so it can handle Tptr.
 void initialize_roots();
 void sweepy_sweep();
 
 uint64_t* allocate(uint64_t size)
 {
-	if (size == 0) return 0; //we place this here so that the type creation functions, create() and copy() don't need to worry. maybe later, we should change this.
+	check(size != 0, "allocating 0 elements means nothing");
 	uint64_t true_size = size;
 	auto k = free_memory.lower_bound(true_size);
 	if (k == free_memory.end())
