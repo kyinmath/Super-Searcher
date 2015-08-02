@@ -76,7 +76,7 @@ change the T::Types, if you create a Type that takes more subfields, because the
 */
 constexpr Type_info Type_descriptor[] =
 {
-	{"con_vec", minus_one, minus_one}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types. is 0, because this is a very special case, and we'll be comparing this against 0 all the time. currently, initialization of gc roots, and marky_mark(), both depend on the number of pointer fields being non-zero.
+	{"con_vec", minus_one, minus_one}, //concatenate a vector of types. the first field is the size of the array, so there are (fields[0] + 1) total fields. requires at least two types. is 0, because this is a very special case, and we'll be comparing this against 0 all the time. currently, initialization of gc roots, and marky_mark(), both depend on the number of pointer fields being non-zero. also, type pointer range checks for null type as 0.
 	{"integer", 0, 1}, //64-bit integer
 	{"dynamic object", 0, 1}, //in the pointed-to object, the first field is type, second field object. if the type is null, the base pointer is null. because: no matter what, you'll have to eventually check anyway. we might as well check before dereferencing. the cost is that dyn_subobj needs an extra branch in IR. if we had base pointer always non-null, then we'd return a dummy special value for 0 dynamic objects.
 	{"AST pointer", 0, 1}, //can be nullptr. the actual object has tag, then previous, then some fields.
@@ -152,16 +152,18 @@ public:
 #define max_fields_in_AST 40u
 //should accomodate the largest possible AST. necessary for AST_descriptor[]
 
-//only gets the pointers. misses the concatenate
+//only gets the pointers. misses the concatenate integer.
 struct Type_pointer_range
 {
 	Tptr t;
 	Type_pointer_range(Tptr t_) : t(t_) {}
 	Tptr* begin() {
+		if (t == 0) return 0;
 		if (Type_descriptor[t.ver()].pointer_fields == 0) return 0;
 		return (t.ver() == Typen("con_vec")) ? &(t.field(1)) : &(t.field(0));
 	}
 	Tptr* end() {
+		if (t == 0) return 0;
 		if (Type_descriptor[t.ver()].pointer_fields == 0) return 0;
 		return (t.ver() == Typen("con_vec")) ? &(t.field(1)) + (uint64_t)t.field(0) : &(t.field(Type_descriptor[t.ver()].pointer_fields));
 	}
@@ -320,6 +322,7 @@ inline std::ostream& operator<< (std::ostream& o, const Tptr t)
 	if (t == 0) return o << "null type\n";
 	o << "t " << Type_descriptor[t.ver()].name << "(" << t.ver() << ") at " << (uint64_t*)t.val << ", ";
 	if (Type_descriptor[t.ver()].pointer_fields != 0) o << "fields";
+	else o << "no fields";
 	for (auto& x : Type_pointer_range(t)) o << ' ' << x;
 	return o;
 }

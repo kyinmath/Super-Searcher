@@ -8,8 +8,8 @@
 constexpr bool OUTPUT_ASSEMBLY = false; //problem: if this is turned on, ubsan complains about the print function I think. maybe the flags are bad?
 struct function
 {
-	uAST* the_AST; //note that our mark algorithm relies on the exact integer offset of this object being 0
-	Tptr return_type; //mark algorithm relies on this exact offset as well.
+	uAST* the_AST;
+	Tptr return_type;
 	Tptr parameter_type = 0; //if nonzero, change the mark algorithm
 	void* fptr; //the function pointer
 	KaleidoscopeJIT::ModuleHandleT result_module;

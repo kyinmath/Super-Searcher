@@ -264,3 +264,50 @@ inline uint64_t* AST_field(uAST* t, uint64_t offset)
 	if (offset < get_field_size_of_AST(t->tag)) return &t->fields[offset].num;
 	else return 0;
 }
+
+//for pointers only. is smart enough to handle basic blocks.
+struct AST_range
+{
+	uAST* t;
+	AST_range(uAST* t_) : t(t_) {}
+	uAST** begin() {
+		if (t == 0) return 0;
+		if (t->tag == ASTn("basicblock"))
+		{
+			svector* vec = (svector*)t->fields[0].ptr;
+			return (uAST**)Vector_range(vec).begin();
+		}
+		else return &t->fields[0].ptr;
+	}
+	uAST** end() {
+		if (t == 0) return 0;
+		if (t->tag == ASTn("basicblock"))
+		{
+			svector* vec = (svector*)t->fields[0].ptr;
+			return (uAST**)Vector_range(vec).end();
+		}
+		else return &t->fields[AST_descriptor[t->tag].pointer_fields].ptr;
+	}
+};
+
+struct ou
+{
+	uAST* a;
+	ou(uAST* t) : a(t) {}
+};
+//prints just the immediate AST, doesn't.a look further. takes pointers instead of objects, because pointer might be 0.
+//but, we can't overload it... so we're boned basically. thus, for now, we overload it with struct ou.
+inline std::ostream& operator<< (std::ostream& o, ou t)
+{
+	if (t.a == 0) return o << "null AST\n";
+	o << "AST " << AST_descriptor[t.a->tag].name << "(" << t.a->tag << ") at " << t.a << ", ";
+	bool have_printed_field = false;
+	for (uAST*& k : AST_range(t.a))
+	{
+		if (!have_printed_field) o << "fields ";
+		have_printed_field = true;
+		o << k;
+	}
+	if (!have_printed_field) o << "no fields";
+	return o;
+}

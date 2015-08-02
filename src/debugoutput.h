@@ -61,13 +61,7 @@ inline void pftype(Tptr target)
 inline void output_AST(uAST* target)
 {
 #ifndef NO_CONSOLE
-	if (target == nullptr)
-	{
-		print("null AST\n");
-		return;
-	}
-	print("AST ", AST_descriptor[target->tag].name, "(", target->tag, ") raw ", target, ", ");
-	print("fields ", target->fields[0].ptr, ' ', target->fields[1].ptr, ' ', target->fields[2].ptr, ' ', target->fields[3].ptr, '\n');
+	print(ou(target), '\n');
 #endif
 }
 
