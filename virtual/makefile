@@ -13,7 +13,7 @@ nosanitize: ../src/*
 admin: ../user_admin/*
 	clang++ -g -Wall -fno-rtti -fno-exceptions $(ADMIN_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o admin -std=c++1z -O0
 
-all: ../src/*
+sanitize: ../src/*
 	clang++ -g -Wall -fno-rtti -fno-exceptions -fsanitize=undefined -fsanitize=address -fno-sanitize-recover=undefined $(CPP_FILES) `llvm-config --cxxflags --ldflags --system-libs --libs core orcjit native` -o toy -std=c++1z -ferror-limit=2 -O0
 	rm -If core
 

@@ -19,3 +19,9 @@ viva64
 iwyu doesn't work: I added <thread> and no change.
 sudo apt-get install iwyu
 make -k CXX=/usr/bin/iwyu
+
+
+use the sanitizers!
+	harmless, it's a library bug: http://lists.cs.uiuc.edu/pipermail/cfe-dev/2013-January/027401.html
+		runtime error: load of value 4294967221, which is not a valid value for type 'std::_Ios_Fmtflags'
+	memorysanitizer also has shared library problems.

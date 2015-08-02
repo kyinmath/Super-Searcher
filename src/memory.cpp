@@ -16,7 +16,8 @@ bool DEBUG_GC = false;
 #else
 bool DEBUG_GC = true; //do some checking to make sure the GC is tracking free memory accurately. slow. mainly: whenever GCing or creating, it sets memory locations to special values.
 #endif
-bool VERBOSE_GC = true;
+bool VERBOSE_GC = false;
+bool SUPER_VERBOSE_GC = false; //some additional, extremely noisy output. print every single living value at GC time.
 
 constexpr const uint64_t pool_size = 100000ull;
 constexpr const uint64_t function_pool_size = 2000ull * 64;
@@ -230,6 +231,15 @@ bool found_living_object(uint64_t* memory, uint64_t size)
 	check(memory != 0, "no null pointers in GC allowed");
 	if (HEURISTIC) check(size < 1000000, "object seems large?");
 	if (living_objects.find(memory) != living_objects.end()) return 1; //it's already there. nothing needs to be done, if we assume that full pointers point to the entire object. todo.
+	if (SUPER_VERBOSE_GC)
+	{
+		print("found ", memory, " v");
+		for (uint64_t x = 0; x < size; ++x)
+		{
+			print(" ", std::hex, memory[x]);
+		}
+		print('\n');
+	}
 	living_objects.insert({memory, size});
 	return 0;
 }
@@ -294,10 +304,11 @@ void mark_single_element(uint64_t& memory, Tptr t)
 	case Typen("dynamic object"):
 		if (memory != 0)
 		{
+			dynobj* dynamic_obj = (dynobj*)memory;
 			uint64_t* pointer_to_the_type_and_object = (uint64_t*)memory;
-			check(*pointer_to_the_type_and_object != 0, "when making a dynamic object, only the base pointer may be 0, not the type inside");
+			check(dynamic_obj->type != 0, "when making a dynamic object, only the base pointer may be 0, not the type inside");
 			//we don't want to create a concatenation. thus, we call marky_mark directly.
-			if (found_living_object(pointer_to_the_type_and_object, get_size(*pointer_to_the_type_and_object) + 1)) break;
+			if (found_living_object(pointer_to_the_type_and_object, get_size(dynamic_obj->type) + 1)) break;
 			marky_mark(pointer_to_the_type_and_object, u::type);
 			marky_mark(pointer_to_the_type_and_object + 1, *pointer_to_the_type_and_object);
 		}
@@ -306,12 +317,12 @@ void mark_single_element(uint64_t& memory, Tptr t)
 	case Typen("vector"):
 		{
 			//we don't want to make a huge concatenation for the type. thus, we force the issue by marking things directly, instead of adding onto the stack. I'm worried that this might cause stack overflows, but hopefully, it won't skip over the guard page.
-			svector* pointer_to_the_vector = (svector*)memory;
-			uint64_t* int_pointer_to_vector = (uint64_t*)pointer_to_the_vector;
-			if (found_living_object(int_pointer_to_vector, vector_header_size + pointer_to_the_vector->reserved_size)) break;
+			svector* the_vector = (svector*)memory;
+			uint64_t* int_pointer_to_vector = (uint64_t*)the_vector;
+			if (found_living_object(int_pointer_to_vector, vector_header_size + the_vector->reserved_size)) break;
 			marky_mark(int_pointer_to_vector, u::type);
-			for (auto& x : Vector_range(pointer_to_the_vector))
-				marky_mark(&x, pointer_to_the_vector->type);
+			for (auto& x : Vector_range(the_vector))
+				marky_mark(&x, t.field(0)); //if we change t.field(0) to pointer_to_the_vector->type, it is a bug. that means the vector type is wrong.
 		}
 		break;
 	case Typen("AST pointer"):
@@ -335,12 +346,13 @@ void mark_single_element(uint64_t& memory, Tptr t)
 		}
 		break;
 	case Typen("function pointer"):
+		function* func = (function*)memory;
 		uint64_t number = (function*)memory - function_pool;
 		sweep_function_pool_flags[number / 64] |= (1ull << (number % 64));
 
 		//no need to call found_living_object() here, because mark_single will call it appropriately for the AST, and the function is already marked
-		mark_single_element(*(uint64_t*)memory, u::AST_pointer);
-		mark_single_element(*((uint64_t*)memory + 1), u::type);
+		mark_single_element((uint64_t&)(func->the_AST), u::AST_pointer);
+		mark_single_element((uint64_t&)(func->return_type), u::type);
 		//future: maybe the parameter
 
 		break;

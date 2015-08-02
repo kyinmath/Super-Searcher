@@ -75,7 +75,7 @@ inline dynobj* run_null_parameter_function(function* func)
 	if (size_of_return == 1)
 	{
 		uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
-		return (dynobj*)new_object((uint64_t)return_type, FP());
+		return (dynobj*)new_object_value((uint64_t)return_type, FP());
 	}
 	else if (size_of_return == 0)
 	{
@@ -153,7 +153,7 @@ inline uAST* vector_to_AST(uint64_t tag, svector* vector_of_ASTs)
 	}
 	uint64_t AST_field_size = get_field_size_of_AST(tag);
 	uint64_t AST_size = get_full_size_of_AST(tag);
-	uAST* new_AST = (uAST*)new_object(AST_size); //we need to do this raw business, instead of using new_AST(), because we might have empty fields.
+	uAST* new_AST = (uAST*)allocate(AST_size); //we need to do this raw business, instead of using new_AST(), because we might have empty fields.
 	new_AST->tag = tag;
 	for (uint64_t x = 0; x < AST_field_size; ++x)
 	{
@@ -169,13 +169,8 @@ inline uAST* vector_to_AST(uint64_t tag, svector* vector_of_ASTs)
 
 inline uAST* new_imv_AST(dynobj* dyn)
 {
-	uint64_t tag = ASTn("imv");
-	uint64_t AST_size = get_full_size_of_AST(tag);
-	check(AST_size == 2, "wrong size");
-	uAST* new_AST = (uAST*)new_object(AST_size);
-	new_AST->tag = tag;
-	new_AST->fields[0].ptr = (uAST*)dyn;
-	if (VERBOSE_GC) print("making new AST ", new_AST, '\n');
+	uAST* new_AST = (uAST*)new_object_value(ASTn("imv"), dyn);
+	if (VERBOSE_GC) print("making new imv AST ", new_AST, '\n');
 	return new_AST;
 }
 
@@ -185,15 +180,22 @@ inline uAST* no_vector_to_AST(uint64_t tag)
 	return vector_to_AST(tag, nullptr);
 }
 
-inline void print_uint64_t(uint64_t x) {print("printing ", x, '\n');}
+inline void print_uint64_t(uint64_t x) {print("printing ", std::hex, x, '\n');}
 
 //returns pointer to the desired element. returns 0 on failure.
 inline uAST** AST_subfield(uAST* a, uint64_t offset)
 {
-	uint64_t size = AST_descriptor[a->tag].pointer_fields; //we're not using the total fields type, because if it's a imv, we don't grab it.
-	//todo: basic block version.
-	if (offset >= size) return 0;
-	else return &a->fields[offset].ptr;
+	if (a == nullptr) return 0;
+	if (a->tag == ASTn("basicblock"))
+	{
+		return (uAST**)reference_at((svector*)a->fields[0].ptr, offset);
+	}
+	else
+	{
+		uint64_t size = AST_descriptor[a->tag].pointer_fields; //we're not using the total fields type, because if it's a imv, we don't grab it.
+		if (offset >= size) return 0;
+		else return &a->fields[offset].ptr;
+	}
 }
 
 inline uint64_t type_subfield(Tptr a, uint64_t offset)

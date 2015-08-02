@@ -815,7 +815,6 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			llvm::Value* dynamic_actual_object_address = builder->CreateGEP(dynamic_object, llvm_integer(1));
 			write_into_place(field_results[0].IR, dynamic_actual_object_address);
 
-
 			llvm::Value* dynamic_address = builder->CreatePtrToInt(dynamic_object, llvm_i64());
 
 			finish(dynamic_address);

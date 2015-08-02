@@ -12,7 +12,7 @@ bool CONSOLE = false;
 bool OLD_AST_OUTPUT = false;
 bool OUTPUT_MODULE = true;
 bool FUZZTESTER_NO_COMPILE = false;
-bool READER_VERBOSE_DEBUG = true;
+bool READER_VERBOSE_DEBUG = false;
 uint64_t runs = ~0ull;
 llvm::raw_null_ostream llvm_null_stream;
 
@@ -44,7 +44,6 @@ void fuzztester(uint64_t iterations)
 		uint64_t tag = mersenne() % ASTn("never reached");
 		if (LIMITED_FUZZ_CHOICES)
 			tag = allowed_tags[mersenne() % allowed_tags.size()];
-		uint64_t pointer_fields = AST_descriptor[tag].pointer_fields; //how many fields will be AST pointers. they will come at the beginning
 		uint64_t prev_number = generate_exponential_dist() % fuzztester_roots.size(); //perhaps: prove that exponential_dist is desired.
 		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
 		//but does exponential falloff solve this problem in the way we want?
@@ -63,12 +62,12 @@ void fuzztester(uint64_t iterations)
 			if (tag == ASTn("imv"))
 			{
 				//make a random integer
-				new_random_AST = new_AST(tag, (uAST*)new_object(u::integer.ver(), generate_exponential_dist()));
+				new_random_AST = new_AST(tag, (uAST*)new_object_value(u::integer.ver(), generate_exponential_dist()));
 			}
 			else
 			{
 				std::vector<uAST*> fields;
-				for (uint64_t incrementor = 0; incrementor < pointer_fields; ++incrementor)
+				for (uint64_t incrementor = 0; incrementor < AST_descriptor[tag].pointer_fields; ++incrementor)
 				{
 					function* second_prev_func = fuzztester_roots.at(mersenne() % fuzztester_roots.size());
 					fields.push_back(second_prev_func ? second_prev_func->the_AST : 0); //get pointers to previous ASTs
@@ -220,7 +219,6 @@ class source_reader
 		if (thisASTname.compare("") != 0) ASTmap.insert(std::make_pair(thisASTname, new_type_location));
 
 		if (READER_VERBOSE_DEBUG) print("AST tag was ", AST_type, "\n");
-		uint64_t pointer_fields = AST_descriptor[AST_type].pointer_fields;
 
 
 		//field_num is which field we're on
@@ -229,7 +227,7 @@ class source_reader
 		for (; next_token != "]"; next_token = get_token(), ++field_num)
 		{
 			check(field_num < max_fields_in_AST, "more fields than possible");
-			if (field_num < pointer_fields) //it's a pointer!
+			if (field_num < AST_descriptor[AST_type].pointer_fields) //it's a pointer!
 			{
 				if (next_token == "{") new_type_location->fields[field_num] = create_single_basic_block(true);
 				else new_type_location->fields[field_num] = read_single_AST(next_token);
@@ -243,7 +241,7 @@ class source_reader
 						isNumber = isNumber && isdigit(k);
 					check(isNumber, string("tried to input non-number ") + next_token);
 					check(next_token.size(), "token is empty, probably a missing ]");
-					new_type_location->fields[field_num] = (uint64_t)new_object(u::integer, std::stoull(next_token));
+					new_type_location->fields[field_num] = (uint64_t)new_object_value(u::integer, std::stoull(next_token));
 				}
 				else if (AST_type == ASTn("basicblock"))
 				{

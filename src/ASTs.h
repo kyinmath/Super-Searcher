@@ -184,12 +184,11 @@ inline Tptr get_AST_full_type(uint64_t tag)
 	return concatenate_types({u::integer, get_AST_fields_type(tag)});
 }
 
-
+//for the AST flat object; doesn't look through deeper pointers.
 inline uint64_t get_field_size_of_AST(uint64_t tag)
 {
 	if (tag == ASTn("imv")) return 1;
 	if (tag == ASTn("basicblock")) return 1;
-	//todo: basic block AST.
 	return AST_descriptor[tag].pointer_fields;
 }
 
@@ -199,17 +198,18 @@ inline uint64_t get_full_size_of_AST(uint64_t tag)
 	return get_field_size_of_AST(tag) + 1;
 }
 #include "memory.h"
+//handles "basicblock" intelligently
 inline uAST* new_AST(uint64_t tag, llvm::ArrayRef<uAST*> fields)
 {
 	check(tag < ASTn("never reached"), "tag is huge");
-	uint64_t total_field_size = get_field_size_of_AST(tag);
+	uint64_t field_size = get_field_size_of_AST(tag);
 	uint64_t total_full_size = get_full_size_of_AST(tag);
 	uAST* new_home = (uAST*)allocate(total_full_size);
 	new_home->tag = tag;
 	if (tag != ASTn("basicblock"))
 	{
-		check(total_field_size == fields.size(), "passed the wrong number of fields to new_AST");
-		for (uint64_t x = 0; x < total_field_size; ++x)
+		check(field_size == fields.size(), "passed the wrong number of fields to new_AST");
+		for (uint64_t x = 0; x < field_size; ++x)
 			new_home->fields[x] = (uint64_t)fields[x];
 	}
 	if (tag == ASTn("basicblock"))
