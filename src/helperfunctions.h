@@ -86,7 +86,7 @@ inline llvm::AllocaInst* create_actual_alloca(uint64_t size) {
 //only handles functions whose return type is an integer, or void. no arrays allowed.
 //the function is stated to return an i64() if it returns anything.
 //parameters are all forced to i64().
-template<typename return_type, typename... parameters> inline llvm::Value* llvm_small_return_func(return_type (*function)(parameters...))
+template<typename return_type, typename... parameters> inline llvm::Value* llvm_int_only_func(return_type (*function)(parameters...))
 {
 	bool return_is_void = std::is_same<return_type, void>::value;
 	std::vector<llvm::Type*> argument_type(sizeof...(parameters), llvm_i64());
@@ -281,7 +281,7 @@ inline llvm::Value* load_from_memory(llvm::Value* location, uint64_t size)
 
 //every time IR is generated, this holds the relevant return info.
 //if memory_location is active, hidden_reference may still be true or false. this affects whether you can get a pointer to it.
-//hidden_reference := no pointers allowed. hidden_reference => memory_location is active. 
+//hidden_reference := no pointers allowed. hidden_reference => memory_location is active. hidden_reference <=> you are allowed to load the IR directly.
 //note: #define finish_passthrough() in cs11.cpp depends on this structure. we'll need to handle hidden_subtype later.
 struct Return_Info
 {
@@ -306,7 +306,7 @@ struct Return_Info
 		: error_code(err), IR(b), place(0), type(t), hidden_reference(h), hidden_subtype(hid_type) {}
 	Return_Info(IRgen_status err, memory_allocation* m, Tptr t, bool h = false, llvm::Value* hid_type = nullptr)
 		: error_code(err), IR(0), place(m), type(t), hidden_reference(h), hidden_subtype(hid_type)
-	{ IR = load_from_memory(place->allocation, get_size(type)); }
+	{ IR = hidden_reference ? load_from_memory(place->allocation, get_size(type)) : 0; }
 
 	//default constructor for a null object
 	//make sure it does NOT go in map<>objects, because the lifetime is not meaningful. no references allowed.
