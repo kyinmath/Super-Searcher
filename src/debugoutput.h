@@ -44,7 +44,7 @@ inline void output_type(const Tptr target)
 		print("null type\n");
 		return;
 	}
-	print("type ", Type_descriptor[target.ver()].name, "(", target.ver(), ") raw ", (uint64_t*)target.val, ", ");
+	print("type ", Type_descriptor[target.ver()].name, "(", target.ver(), ") at ", (uint64_t*)target.val, ", ");
 	print("fields");
 	for (auto& x : Type_pointer_range(target))
 		print(' ', x);
@@ -191,6 +191,8 @@ struct output_AST_struct
 			}
 			if (xvec->size > 1 && braces_allowed)
 				print("}");
+			if (xvec->size == 0)
+				print("0");
 		}
 		else
 		{

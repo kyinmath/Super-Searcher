@@ -214,7 +214,7 @@ inline uAST* new_AST(uint64_t tag, llvm::ArrayRef<uAST*> fields)
 	}
 	if (tag == ASTn("basicblock"))
 	{
-		new_home->fields[0].ptr = (uAST*)vector_build(u::AST_pointer, fields);
+		new_home->fields[0].ptr = (uAST*)vector_build(fields);
 	}
 	if (VERBOSE_GC) print("new AST ", new_home, '\n');
 	return (uAST*)new_home;

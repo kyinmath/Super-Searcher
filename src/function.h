@@ -6,7 +6,6 @@
 
 //function in clouds has a pointer to this object.
 constexpr bool OUTPUT_ASSEMBLY = false; //problem: if this is turned on, ubsan complains about the print function I think. maybe the flags are bad?
-extern bool VERBOSE_GC;
 struct function
 {
 	uAST* the_AST; //note that our mark algorithm relies on the exact integer offset of this object being 0

@@ -2,14 +2,11 @@
 #include "types.h"
 #include "memory.h"
 
-constexpr bool VECTOR_DEBUG = false;
 //vector containing a single object per element.
 struct svector
 {
-	Tptr type; //must be exactly one element.
 	uint64_t size;
-	uint64_t reserved_size;
-	//after this come the contents
+	uint64_t reserved_size; //after this come the contents. [] relies on reserved_size being the last.
 	//std::array<uint64_t, 0> contents; this causes segfaults with asan/ubsan. don't do it.
 
 
@@ -25,24 +22,19 @@ constexpr uint64_t vector_header_size = sizeof(svector) / sizeof(uint64_t);
 
 
 template<class T>
-inline svector* vector_build(Tptr type, llvm::ArrayRef<T> elements)
+inline svector* vector_build(llvm::ArrayRef<T> elements)
 {
-	check(get_size(type) == 1, "wrong size for a vector");
 	uint64_t reserved_size = 3 + elements.size() + (elements.size() >> 1); //pushback() relies on there being enough space after a relocation.
 	svector* new_location = (svector*)allocate(vector_header_size + reserved_size);
-	new_location->type = type;
 	new_location->size = elements.size();
 	new_location->reserved_size = reserved_size;
 	for (uint64_t x = 0; x < elements.size(); ++x)
 		(*new_location)[x] = (uint64_t)elements[x];
-	if (VECTOR_DEBUG) print("new location at ", new_location, '\n');
+	if (VECTOR_DEBUG) print("new vector at ", new_location, '\n');
 	return new_location;
 }
 
-inline svector* new_vector(Tptr type)
-{
-	return vector_build(type, llvm::ArrayRef<uint64_t>{});
-}
+inline svector* new_vector() { return vector_build(llvm::ArrayRef<uint64_t>{}); }
 
 inline void pushback_int(svector*& s, uint64_t value)
 {
@@ -51,7 +43,7 @@ inline void pushback_int(svector*& s, uint64_t value)
 	if (s->size == s->reserved_size)
 	{
 		if (VECTOR_DEBUG) print("reallocating vector after pushback");
-		s = vector_build(s->type, llvm::ArrayRef<uint64_t>(*s)); //specify the ArrayRef type to force the uint64_t template to work
+		s = vector_build(llvm::ArrayRef<uint64_t>(*s)); //specify the ArrayRef type to force the uint64_t template to work
 	}
 	(*s)[s->size++] = value;
 }

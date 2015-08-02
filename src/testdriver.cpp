@@ -184,31 +184,29 @@ class source_reader
 
 		string thisASTname = "";
 
-		if (first != string(1, '[')) //it's a name reference or a new variable.
+		//it's an AST name. variable declarations start with a _. they come before the AST, because goto needs to see previously created labels, and BBs relocate.
+		//we rely on short circuit evaluation to not access the 0th element of an empty string.
+		if ((first.size() > 0) && (first.at(0) == '_'))
 		{
-			//it's an AST name. variable declarations start with a _. they come before the AST, because goto needs to see previously created labels, and BBs relocate.
-			//we rely on short circuit evaluation to not access the 0th element of an empty string.
-			if ((first.size() > 0) && (first.at(0) == '_'))
+			//print("first before ignore and get_token is ", first, "\n");
+			thisASTname = first.substr(1, string::npos);
+			//print("first is ", first, "\n");
+			//print("thisASTname is ", thisASTname, "\n");
+			if (!thisASTname.empty())
 			{
-				//print("first before ignore and get_token is ", first, "\n");
-				thisASTname = first.substr(1, string::npos);
-				//print("first is ", first, "\n");
-				//print("thisASTname is ", thisASTname, "\n");
-				if (!thisASTname.empty())
-				{
-					check(ASTmap.find(thisASTname) == ASTmap.end(), string("duplicated variable name: ") + thisASTname);
-				}
-				first = get_token(); //re-get the token, and now look for [, since we've processed the name.
-				check(first == string(1, '['), "should have gotten [ after a name");
+				check(ASTmap.find(thisASTname) == ASTmap.end(), string("duplicated variable name: ") + thisASTname);
 			}
-			else
-			{
-				//print("first was ", first, '\n');
-				auto AST_search = ASTmap.find(first);
-				check(AST_search != ASTmap.end(), string("variable name not found: ") + first);
-				return AST_search->second;
-			}
+			first = get_token(); //re-get the token. it should be [ or {, since we've processed the name.
 		}
+		if (first != string(1, '[') && first != string(1, '{')) //it's a name reference or a new variable.
+		{
+			//print("first was ", first, '\n');
+			auto AST_search = ASTmap.find(first);
+			check(AST_search != ASTmap.end(), string("variable name not found: ") + first);
+			return AST_search->second;
+		}
+		if (first == string(1, '{'))
+			return create_single_basic_block(true);
 
 		string tag_str = get_token();
 		uint64_t AST_type = ASTn(tag_str.c_str());
@@ -266,6 +264,7 @@ class source_reader
 		return new_type_location;
 	}
 
+	//if it's reading a {}, the { has already been consumed.
 	uAST* create_single_basic_block(bool create_brace_at_end = false)
 	{
 		uAST* BB_AST = new_AST(ASTn("basicblock"), {});
@@ -468,13 +467,11 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "deletemodule") == 0) DELETE_MODULE_IMMEDIATELY = true;
 		else if (strcmp(argv[x], "truefuzz") == 0)
 		{
-			DEBUG_GC = true;
 			OUTPUT_MODULE = false;
 		}
 		else if (strcmp(argv[x], "benchmark") == 0)
 		{
 			runs = 10000;
-			DEBUG_GC = false;
 			console.setstate(std::ios_base::failbit);
 			console.rdbuf(nullptr);
 			llvm_console = &llvm_null_stream;

@@ -46,11 +46,20 @@ extern bool CONSOLE;
 extern bool TIMER;
 extern bool DONT_ADD_MODULE_TO_ORC;
 extern bool DELETE_MODULE_IMMEDIATELY;
-extern bool DEBUG_GC;
-extern bool VERBOSE_GC;
 extern bool OUTPUT_MODULE;
 constexpr bool HEURISTIC = true; //heuristically gives errors. for example, large objects are assumed to be bad.
 
+//todo: expanding memory. (or, acquire maximum available memory? nah, we'll let the OOM killer work)
+//the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. 
+//thus, we wrap them in a unique() function, so that the user only ever sees GC-handled objects.
+#ifdef NOCHECK
+constexpr bool DEBUG_GC = false;
+#else
+constexpr bool DEBUG_GC = true; //do some checking to make sure the GC is tracking free memory accurately. slow. mainly: whenever GCing or creating, it sets memory locations to special values.
+#endif
+constexpr bool VERBOSE_GC = false;
+constexpr bool SUPER_VERBOSE_GC = false; //some additional, extremely noisy output. print every single living value at GC time.
+constexpr bool VECTOR_DEBUG = false;
 
 //ok, so these two are special: they work like a stack. when you want to work with a context/builder, you push it here. and when you're done, you pop it from here.
 //otherwise, everything using them would have to carry around references to them. and then when you wanted to use llvm_array, you'd need to bind references to it.

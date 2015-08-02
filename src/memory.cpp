@@ -8,17 +8,6 @@
 #include "function.h"
 
 
-//todo: actually figure out memory size according to the computer specs
-//the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. 
-//thus, we wrap them in a unique() function, so that the user only ever sees GC-handled objects.
-#ifdef NOCHECK
-bool DEBUG_GC = false;
-#else
-bool DEBUG_GC = true; //do some checking to make sure the GC is tracking free memory accurately. slow. mainly: whenever GCing or creating, it sets memory locations to special values.
-#endif
-bool VERBOSE_GC = false;
-bool SUPER_VERBOSE_GC = false; //some additional, extremely noisy output. print every single living value at GC time.
-
 constexpr const uint64_t pool_size = 100000ull;
 constexpr const uint64_t function_pool_size = 2000ull * 64;
 constexpr const uint64_t initial_special_value = 21212121ull;
@@ -275,7 +264,7 @@ void marky_mark(uint64_t* memory, Tptr t)
 		{
 			mark_single_element(*memory, subt);
 			memory += get_size(subt);
-			check(get_size(subt) == 1);
+			check(get_size(subt) == 1, "can't use mark_single_element on large or small objects");
 		}
 	}
 	else mark_single_element(*memory, t);
@@ -289,7 +278,7 @@ void mark_single_element(uint64_t& memory, Tptr t)
 		print("marking single ", &memory, ' ');
 		output_type(t);
 	}
-	if (memory) print(""); //trying to force a memory access
+	if (memory) print(""); //force a memory access
 	//check(&memory != nullptr, "passed 0 memory pointer to mark_single"); //UB for references.
 	check(t != 0, "passed 0 type pointer to mark_single");
 	switch (t.ver())
@@ -320,7 +309,6 @@ void mark_single_element(uint64_t& memory, Tptr t)
 			svector* the_vector = (svector*)memory;
 			uint64_t* int_pointer_to_vector = (uint64_t*)the_vector;
 			if (found_living_object(int_pointer_to_vector, vector_header_size + the_vector->reserved_size)) break;
-			marky_mark(int_pointer_to_vector, u::type);
 			for (auto& x : Vector_range(the_vector))
 				marky_mark(&x, t.field(0)); //if we change t.field(0) to pointer_to_the_vector->type, it is a bug. that means the vector type is wrong.
 		}
