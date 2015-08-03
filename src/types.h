@@ -126,7 +126,7 @@ if the tag is 0, then we enforce that it's a null type.
 to do this, the 0 tag must always have fields. (it's concatenate for now)
 concatenation: it's like a dynarray. first field is the size of the array, and the remaining fields are the types of the components.
 
-use the copy_type() and new_type() functions instead, which handle sizes correctly.
+use the copy_type(), get_unique_type() and new_local_type() functions instead, which handle sizes correctly.
 */
 class Tptr
 {
@@ -176,29 +176,30 @@ inline uint64_t total_valid_fields(const Tptr t)
 }
 
 #include "memory.h"
-//warning: takes fields directly. so concatenate should worry.
-inline Tptr new_nonunique_type(uint64_t tag, llvm::ArrayRef<Tptr> fields)
+//takes fields smartly, and handles con_vec. takes in an allocator function. however, this won't flatten con_vecs, which is required.
+//it needs to take an allocator because sometimes with snapshots/serialization, you don't want to build in main memory
+inline Tptr new_local_type(uint64_t*(*allocator)(uint64_t), uint64_t tag, llvm::ArrayRef<Tptr> fields)
 {
-	uint64_t total_field_size = (tag == Typen("con_vec")) ? (uint64_t)fields[0] + 1 : Type_descriptor[tag].pointer_fields;
+	uint64_t total_field_size = (tag == Typen("con_vec")) ? fields.size() + 1 : Type_descriptor[tag].pointer_fields; //includes the vector size number, for con_vec.
 	if (tag == Typen("con_vec")) check(total_field_size >= 3, "no making small con_vecs allowed");
 	if (total_field_size == 0) return (Tptr)tag;
-	uint64_t* new_home = allocate(total_field_size + 1);
+	uint64_t* new_home = allocator(total_field_size + 1);
 	new_home[0] = tag;
-	for (uint64_t x = 0; x < total_field_size; ++x)
-		new_home[x + 1] = (uint64_t)fields[x];
+	if (tag != Typen("con_vec"))
+	{
+		for (uint64_t x = 0; x < total_field_size; ++x)
+			new_home[x + 1] = (uint64_t)fields[x];
+	}
+	else
+	{
+		new_home[1] = fields.size();
+		for (uint64_t x = 0; x < total_field_size; ++x)
+			new_home[x + 2] = (uint64_t)fields[x];
+	}
 	return (uint64_t)new_home;
 }
 
-Tptr get_unique_type(Tptr model, bool can_reuse_parameter);
-
-//warning: takes fields directly. so concatenate should worry.
-inline Tptr new_type(uint64_t tag, llvm::ArrayRef<Tptr> fields)
-{
-	Tptr new_tptr = new_nonunique_type(tag, fields);
-	return get_unique_type(new_tptr, true);
-}
-
-//doesn't return a unique version.
+//doesn't return a unique version. copies to main memory using the allocate() function.
 inline Tptr copy_type(const Tptr t)
 {
 	uint64_t fields = total_valid_fields(t);

@@ -531,7 +531,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (type.ver() == 0) return_code(vector_cant_take_large_objects, 0);
 			else if (type.ver() > Typen("pointer")) return_code(type_mismatch, 0);
 			else if (get_size(type) != 1) return_code(type_mismatch, 0);
-			finish_special(builder->CreateCall(llvm_int_only_func(new_vector), {}), new_type(Typen("vector"), type));
+			finish_special(builder->CreateCall(llvm_int_only_func(new_vector), {}), get_unique_type(Typen("vector"), type));
 		}
 		return_code(requires_constant, 1);
 
@@ -906,10 +906,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			clear_stack(starting_stack_position);
 			finish(0);
 		}
-	case ASTn("run_function"):
-		{
-			finish(builder->CreateCall(llvm_int_only_func(run_null_parameter_function), field_results[0].IR));
-		}
+	case ASTn("run_function"): finish(builder->CreateCall(llvm_int_only_func(run_null_parameter_function), field_results[0].IR));
 	case ASTn("imv"): //bakes in the value into the compiled function. changes by the function are temporary.
 		{
 			uint64_t* dynamic_object = (uint64_t*)target->fields[0];

@@ -188,5 +188,5 @@ Tptr concatenate_types(llvm::ArrayRef<Tptr> components)
 
 	if (true_components.size() == 1) return 0; //only thing in the vector is the size
 	if (true_components.size() == 2) return true_components[1]; //one element in the vector.
-	else return new_type(Typen("con_vec"), true_components);
+	else return get_unique_type(new_local_type(allocate, Typen("con_vec"), true_components), true);
 }

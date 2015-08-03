@@ -354,12 +354,12 @@ void cannot_compile_string(std::string input_string)
 void test_suite()
 {
 	//try moving the type check to the back as well.
-	Tptr unique_zero = new_type(Typen("integer"), {});
-	check(unique_zero == new_type(Typen("integer"), {}), "duplicated type doesn't even unique");
-	Tptr pointer_zero = new_type(Typen("pointer"), unique_zero);
-	check(pointer_zero == new_type(Typen("pointer"), unique_zero), "pointers don't unique");
+	Tptr unique_zero = get_unique_type(Typen("integer"), {});
+	check(unique_zero == get_unique_type(Typen("integer"), {}), "duplicated type doesn't even unique");
+	Tptr pointer_zero = get_unique_type(Typen("pointer"), unique_zero);
+	check(pointer_zero == get_unique_type(Typen("pointer"), unique_zero), "pointers don't unique");
 	check(pointer_zero != unique_zero, "pointers uniqueing to integers");
-	Tptr unique_pointer_dynamic = new_type(Typen("dynamic object"), {});
+	Tptr unique_pointer_dynamic = get_unique_type(Typen("dynamic object"), {});
 	check(pointer_zero != unique_pointer_dynamic, "different pointers unique");
 
 	check(u::integer == get_unique_type(u::integer, false), "u::types aren't unique");
