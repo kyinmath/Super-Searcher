@@ -49,7 +49,7 @@ extern bool DELETE_MODULE_IMMEDIATELY;
 extern bool OUTPUT_MODULE;
 constexpr bool HEURISTIC = true; //heuristically gives errors. for example, large objects are assumed to be bad.
 
-//todo: expanding memory. (or, acquire maximum available memory? nah, we'll let the OOM killer work)
+//future: expanding memory. (or, acquire maximum available memory? nah, we'll let the OOM killer work)
 //the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. 
 //thus, we wrap them in a unique() function, so that the user only ever sees GC-handled objects.
 #ifdef NOCHECK

@@ -385,7 +385,7 @@ void test_suite()
 	//try to load the next object. it should go through the failure branch.
 	compile_verify_string("_empty[dynamify] _ret[imv 0] _a[imv 40] _subobj[dyn_subobj _dyn[dynamify [imv 40]] [imv 1] [store ret [imv 4]] [store ret subobj] [store empty subobj]] [concatenate ret]", u::integer, 4);
 
-	//todo: implement the "pointer to something", then test it here.
+	//future: implement the "pointer to something", then test it here.
 
 	//again, try to load from dynamic objects. this time, a concatenation of two objects. load the int from the concatenation, then write it.
 	compile_verify_string("_empty[dynamify] _ret[imv 0] _subobj[dyn_subobj _dyn[dynamify [concatenate _in[imv 40] [pointer ret]]] [imv 0] [label] [store ret subobj]] [concatenate ret]", u::integer, 40);
@@ -422,7 +422,7 @@ void test_suite()
 
 	//compile_string("[run_function [compile [convert_to_AST [system1 [imv 2]] [label] {[imv 0]v [dynamify [pointer v]]}]]]");
 	//compile_string("[run_function [compile [convert_to_AST [imv 1] [label] [dynamify]]]]"); //produces 0 inside the dynamic pointer, using the zero AST.
-	//todo: implement vectors, then test them here
+	//future: implement vectors, then test them here
 
 	//debugtypecheck(T::does_not_return); stopped working after type changes to bake in tags into the pointer. this is useless anyway, in a unity build.
 }

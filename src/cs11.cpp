@@ -189,6 +189,10 @@ generate_IR is run on fields of the AST. it knows how many fields are needed by 
 then, the main IR generation is done using a switch-case on a tag.
 the return value is created using the finish() macros. these automatically pull in any miscellaneous necessary information, such as stack lifetimes, and bundles them into a Return_Info. furthermore, if the return value needs to be stored in a stack location, finish() does this automatically using the move_to_stack lambda.
 
+stack_degree is only allowed to be 2 if you're in a basic block. this is because finish() requires stack_degree to know whether to make it a hidden allocation, which Return_Info() uses to determine whether to emit a load from the object.
+however, there's one exception: a BB can take in stack_degree == 0, and call out stack degree = 2. this is the only possible circumventer though.
+invariant: pass in stack_degree == 2 <===> can't use the returned IR
+
 note that while we have a rich type system, the only types that llvm sees are int64s and arrays of int64s. pointers, locks, etc. have their information stripped, so llvm only sees the size of each object. we forcefully cast things to integers.
 	for an object of size 1, its llvm-type is an integer
 	for an object of size N>=2, the llvm-type is an alloca'd array of N integers, which is [12 x i64]*. note the * - it's a pointer to an array, not the array itself.
@@ -196,7 +200,7 @@ for objects that end up on the stack, their return value is either i64* or [S x 
 the actual allocas are always [S x i64]*, even when S = 1. but, getting active objects returns i64*.
 currently, the finish() macro takes in the array itself, not the pointer-to-array.
 */
-Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree = 0)
+Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
 	//note: early escapes must still leave the IR builder in a valid state, so that create_if_Value can do its rubbish business.
@@ -381,6 +385,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree = 0
 				final = generate_IR((uAST*)AST, 2);
 				if (final.error_code) return final;
 			}
+			if (stack_degree == 0 && final.place != nullptr) final.IR = load_from_memory(final.place->allocation, get_size(final.type));
 			return final;
 		}
 	case ASTn("zero"): finish(llvm_integer(0));
@@ -881,15 +886,29 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree = 0
 		}
 	case ASTn("load_imv_from_AST"):
 		{
-			auto loader = llvm_int_only_func(load_imv_from_AST); //todo: we should load a reference.
-			finish(builder->CreateCall(loader, field_results[0].IR));
+			auto loader = llvm_function(load_imv_from_AST, llvm_i64()->getPointerTo(), llvm_i64()); //todo: we should load a reference.
+			llvm::Value* reference_to_imv = builder->CreateCall(loader, field_results[0].IR);
+			
+			Return_Info case_IR;
+			IRemitter run_field = [&]() -> llvm::Value*
+			{
+				case_IR = generate_IR(target->fields[1]); //error checking is moved to after the comparison.
+				return nullptr; //signifying an unused phi value.
+			};
+
+			uint64_t starting_stack_position = object_stack.size();
+			new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(reference_to_imv), Typen("dynamic pointer"), true));
+
+			auto reference_integer = builder->CreatePtrToInt(reference_to_imv, llvm_i64());
+			llvm::Value* comparison = builder->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));
+			create_if_value(comparison, run_field, [](){ return nullptr; });
+			if (case_IR.error_code) return case_IR;
+			clear_stack(starting_stack_position);
+			finish(0);
 		}
 	case ASTn("run_function"):
 		{
-			llvm::Value* runner = llvm_int_only_func(run_null_parameter_function);
-			llvm::Value* run_result = builder->CreateCall(runner, field_results[0].IR);
-
-			finish(run_result);
+			finish(builder->CreateCall(llvm_int_only_func(run_null_parameter_function), field_results[0].IR));
 		}
 	case ASTn("imv"): //bakes in the value into the compiled function. changes by the function are temporary.
 		{

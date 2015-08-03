@@ -97,8 +97,9 @@ template<typename return_type, typename... parameters> inline llvm::Value* llvm_
 }
 
 //return type is not a llvm::Function*, because it's a pointer to a function.
-template<typename... llvm_type, typename fptr> inline llvm::Value* llvm_function(fptr* function, llvm::Type* return_type, llvm_type... argument_types)
+template<typename some_return_type, typename... parameters, typename... llvm_type> inline llvm::Value* llvm_function(some_return_type(*function)(parameters...), llvm::Type* return_type, llvm_type... argument_types)
 {
+	check(sizeof...(parameters) == sizeof...(llvm_type), "function parameter number should match");
 	std::vector<llvm::Type*> argument_type{argument_types...};
 	llvm::FunctionType* function_type = llvm::FunctionType::get(return_type, argument_type, false);
 	llvm::PointerType* function_pointer_type = function_type->getPointerTo();

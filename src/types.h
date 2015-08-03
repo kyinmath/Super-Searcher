@@ -82,7 +82,7 @@ constexpr Type_info Type_descriptor[] =
 	{"AST pointer", 0, 1}, //can be nullptr. the actual object has tag, then previous, then some fields.
 	{"type pointer", 0, 1}, //can be nullptr. actual object is tag + fields.
 	{"function pointer", 0, 1}, //can be nullptr. the purpose of not specifying the return/parameter type is given in "doc/AST pointers"
-	{"vector", 1, 1}, //base pointer cannot be null. interior type must be exactly size 1. todo: fix dynamic offset AST for this.
+	{"vector", 1, 1}, //base pointer cannot be null. interior type must be exactly size 1.
 	{"pointer", 1, 1}, //nullptr prohibited. comes last, because our dynamic offset AST is fragile and relies on it. same, for our vector AST.
 	{"pointer to something", 0, 1}, //an in-function type. you better be storing the actual type somewhere. this can never be stored into anything. however, we are currently enforcing that this must be a valid full pointer. so if you convert it to another valid pointer type, you actually can store it somewhere.
 	{"vector of something", 0, 1}, //an in-function type. same as the pointer to something; used for dynamic_subobj.
@@ -232,7 +232,7 @@ namespace T
 	constexpr Tptr null = 0;
 };
 
-//the actual objects are placed in type_creator.cpp, to avoid static initialization fiasco
+//the actual objects are placed in memory.cpp, to avoid static initialization fiasco
 namespace u
 {
 	extern Tptr does_not_return;
@@ -253,7 +253,6 @@ all object sizes are integer multiples of 64 bits.
 this function returns the size of an object as (number of bits/64).
 thus, a uint64 has size "1". a struct of two uint64s has size "2". etc.
 there can't be loops because Types are immut. the user doesn't have access to Type creation functions.
-	we'll mark this as the "good" function. it takes in Types that are known to be unique.
 */
 constexpr uint64_t get_size(Tptr target) __attribute__((pure));
 constexpr uint64_t get_size(Tptr target)
@@ -266,7 +265,7 @@ constexpr uint64_t get_size(Tptr target)
 		//we now rely on every object being size 1
 		return target.field(0);
 	}
-	error("couldn't get size of type tag, check backtrace for target->tag");
+	error(string("couldn't get size of type tag ") + std::to_string(target.ver()));
 }
 
 //finds one element in a concatenate. the size offset is returns in return_offset. the size of the object is returned normally.

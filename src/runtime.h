@@ -106,16 +106,12 @@ inline dynobj* run_null_parameter_function(function* func)
 
 		BasicBlock *BB(BasicBlock::Create(*context, "entry", trampoline));
 		new_builder.SetInsertPoint(BB);
-		Value* target_function = llvm_function(fptr, llvm_type(size_of_return));
+		Value* target_function = llvm_function((uint64_t(*)(void))fptr, llvm_type(size_of_return)); //cast the function to a fake fptr type.
 		Value* result_of_call = new_builder.CreateCall(target_function, {});
 
-
-
 		//START DYNAMIC. writes in both the type and the object.
-		llvm::Value* allocator = llvm_function(allocate, llvm_i64()->getPointerTo(), llvm_i64());
-		llvm::Value* dynamic_object_raw = builder->CreateCall(allocator, {llvm_integer(size_of_return + 1)});
-		auto integer_type_pointer = llvm_integer((uint64_t)return_type);
-		write_into_place(integer_type_pointer, dynamic_object_raw);
+		llvm::Value* dynamic_allocator = llvm_function(new_dynamic_obj, llvm_i64()->getPointerTo(), llvm_i64());
+		llvm::Value* dynamic_object_raw = builder->CreateCall(dynamic_allocator, llvm_integer(return_type));
 
 		llvm::Value* dynamic_actual_object_address = builder->CreateGEP(dynamic_object_raw, llvm_integer(1));
 		llvm::Type* target_pointer_type = llvm_type(size_of_return)->getPointerTo();
@@ -297,11 +293,11 @@ inline std::array<uint64_t, 2> dynamic_subtype(Tptr type, uint64_t offset)
 }
 
 
-inline uint64_t load_imv_from_AST(uAST* p)
+inline uint64_t* load_imv_from_AST(uAST* p)
 {
 	if (p == 0) return 0;
 	else if (p->tag != 0) return 0;
-	else return (uint64_t)(p->fields[0]);
+	else return (uint64_t*)(&p->fields[0]);
 }
 
 

@@ -125,7 +125,7 @@ constexpr AST_info AST_descriptor[] =
 	{"agency2", T::null, T::integer, T::integer},
 	//we need a specific "overwrite function" AST, that can't be the usual store. because it might fail, and so we must return an error code.
 	a("load_tag", T::integer, compile_without_type_check), //takes AST or type.
-	{"load_imv_from_AST", T::dynamic_object, T::AST_pointer}, //todo: make it give a reference.
+	a("load_imv_from_AST", T::null, T::AST_pointer).add_pointer_fields(1),
 	//load_vector_from_BB
 	//a("do_after", T::special_return, compile_without_type_check).make_pointer_fields(2),
 	//{"return", T::special_return, T::compile_without_type_check}, have to check that the type matches the actual return type. call all dtors. we can take T::does_not_return, but that just disables the return.

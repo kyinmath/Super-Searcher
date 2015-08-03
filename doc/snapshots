@@ -19,6 +19,7 @@ snapshotting:
 	don't copy types or do anything with them.
 GC:
 	no relocations necessary. only need a set, not a map.
+	warning: types need large numbers, bigger than never_reached. and, nothing is allowed to exist at 0.
 
 the difference is what to do on finding a pointer to:
 1. normal object

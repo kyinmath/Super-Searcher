@@ -114,7 +114,7 @@ class compiler_object
 		return result;
 	}
 
-	Return_Info generate_IR(uAST* user_target, uint64_t stack_degree);
+	Return_Info generate_IR(uAST* user_target, uint64_t stack_degree = 0);
 	
 public:
 	compiler_object() : J(*c), error_location(nullptr), return_type(0), new_context(new llvm::LLVMContext()) {}

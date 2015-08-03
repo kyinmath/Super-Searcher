@@ -208,7 +208,7 @@ bool found_living_object(uint64_t* memory, uint64_t size)
 		check(memory >= big_memory_pool, "memory out of bounds");
 		check(memory + size <= big_memory_pool + pool_size, "memory out of bounds");
 	}
-	if (living_objects.find(memory) != living_objects.end()) return 1; //it's already there. nothing needs to be done, if we assume that full pointers point to the entire object. todo.
+	if (living_objects.find(memory) != living_objects.end()) return 1; //it's already there. nothing needs to be done, since we assume that full pointers point to the entire object.
 	if (SUPER_VERBOSE_GC)
 	{
 		print("found ", memory, " v");
@@ -240,6 +240,7 @@ void new_mark_element(uint64_t* memory, Tptr t)
 }
 
 //if you call marky_mark, make sure to remember to call found_living_object as well. but mainly, consider using new_mark_element instead.
+//unlike mark_single(), this can handle Tptrs.
 void marky_mark(uint64_t* memory, Tptr t)
 {
 	check(t != 0, "marking a null type");
