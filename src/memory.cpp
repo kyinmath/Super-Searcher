@@ -325,6 +325,7 @@ void mark_target(uint64_t& memory, Tptr t)
 		function* func = (function*)memory;
 		if (found_function(func)) break;
 
+		
 		mark_target((uint64_t&)(func->the_AST), u::AST_pointer);
 		mark_target((uint64_t&)(func->return_type), u::type);
 		//future: maybe the parameter

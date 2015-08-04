@@ -57,9 +57,9 @@ constexpr bool DEBUG_GC = false;
 #else
 constexpr bool DEBUG_GC = true; //do some checking to make sure the GC is tracking free memory accurately. slow. mainly: whenever GCing or creating, it sets memory locations to special values.
 #endif
-constexpr bool VERBOSE_GC = false;
-constexpr bool SUPER_VERBOSE_GC = false; //some additional, extremely noisy output. print every single living value at GC time.
-constexpr bool VECTOR_DEBUG = false;
+constexpr bool VERBOSE_GC = true;
+constexpr bool SUPER_VERBOSE_GC = true; //some additional, extremely noisy output. print every single living value at GC time.
+constexpr bool VERBOSE_VECTOR = false;
 extern bool UNSERIALIZE_MODE; //if this is true, then the GC should act in unserialization mode instead of sweeping mode.
 
 //for the memory allocator

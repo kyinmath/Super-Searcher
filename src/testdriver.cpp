@@ -363,10 +363,13 @@ void test_suite()
 
 	//basics
 	compile_verify_string("[zero]", u::integer, 0);
+	start_GC();
 	compile_verify_string("[imv 1]", u::integer, 1);
 	compile_string("[concatenate [imv 100] [imv 200]]");
+	start_GC();
 	compile_verify_string("_a[imv 100] [imv 200]", u::integer, 200);
 	compile_verify_string("_a[imv 100] [imv 200] [imv 300]", u::integer, 300);
+	start_GC();
 
 	//random value. then check that (x / k) * k + x % k == x
 	compile_verify_string("_a[system1 [imv 2]] [subtract [add [multiply [udiv a [imv 4]] [imv 4]] [urem a [imv 4]]] a]", u::integer, 0);

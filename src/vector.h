@@ -30,7 +30,7 @@ inline svector* vector_build(llvm::ArrayRef<T> elements)
 	new_location->reserved_size = reserved_size;
 	for (uint64_t x = 0; x < elements.size(); ++x)
 		(*new_location)[x] = (uint64_t)elements[x];
-	if (VECTOR_DEBUG) print("new vector at ", new_location, '\n');
+	if (VERBOSE_VECTOR) print("new vector at ", new_location, '\n');
 	return new_location;
 }
 
@@ -38,11 +38,11 @@ inline svector* new_vector() { return vector_build(llvm::ArrayRef<uint64_t>{}); 
 
 inline void pushback_int(svector*& s, uint64_t value)
 {
-	if (VECTOR_DEBUG) print("pushing back vector at ", s, " value ", value, '\n');
+	if (VERBOSE_VECTOR) print("pushing back vector at ", s, " value ", value, '\n');
 	check(s->size <= s->reserved_size, "more elements than reserved");
 	if (s->size == s->reserved_size)
 	{
-		if (VECTOR_DEBUG) print("reallocating vector after pushback");
+		if (VERBOSE_VECTOR) print("reallocating vector after pushback");
 		s = vector_build(llvm::ArrayRef<uint64_t>(*s)); //specify the ArrayRef type to force the uint64_t template to work
 	}
 	(*s)[s->size++] = value;
