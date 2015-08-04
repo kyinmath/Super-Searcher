@@ -126,7 +126,7 @@ if the tag is 0, then we enforce that it's a null type.
 to do this, the 0 tag must always have fields. (it's concatenate for now)
 concatenation: it's like a dynarray. first field is the size of the array, and the remaining fields are the types of the components.
 
-use the copy_type(), get_unique_type() and new_local_type() functions instead, which handle sizes correctly.
+use the copy_type(), uniquefy_premade_type() and new_local_type() functions instead, which handle sizes correctly.
 */
 class Tptr
 {
@@ -169,7 +169,8 @@ struct Type_pointer_range
 	}
 };
 
-//can't use nullptr on this.
+//can't use nullptr on this. returns the GC size, so concatenate gets +1.
+//to get the actual size, test this for 0, and then add 1 if nonzero.
 inline uint64_t total_valid_fields(const Tptr t)
 {
 	return (t.ver() == Typen("con_vec")) ? t.field(0) + 1 : Type_descriptor[t.ver()].pointer_fields;
@@ -180,23 +181,33 @@ inline uint64_t total_valid_fields(const Tptr t)
 //it needs to take an allocator because sometimes with snapshots/serialization, you don't want to build in main memory
 inline Tptr new_local_type(uint64_t*(*allocator)(uint64_t), uint64_t tag, llvm::ArrayRef<Tptr> fields)
 {
-	uint64_t total_field_size = (tag == Typen("con_vec")) ? fields.size() + 1 : Type_descriptor[tag].pointer_fields; //includes the vector size number, for con_vec.
-	if (tag == Typen("con_vec")) check(total_field_size >= 3, "no making small con_vecs allowed");
-	if (total_field_size == 0) return (Tptr)tag;
-	uint64_t* new_home = allocator(total_field_size + 1);
+	uint64_t no_of_fields = (tag == Typen("con_vec")) ? fields.size() : Type_descriptor[tag].pointer_fields; //doesn't include the vector size number, for con_vec.
+	check(no_of_fields == fields.size(), "wrong number of elements");
+	if (tag == Typen("con_vec")) check(no_of_fields >= 2, "no making small con_vecs allowed");
+	if (no_of_fields == 0) return (Tptr)tag;
+	uint64_t* new_home = allocator(no_of_fields + 1 + (tag == Typen("con_vec") ? 1 : 0));
 	new_home[0] = tag;
 	if (tag != Typen("con_vec"))
 	{
-		for (uint64_t x = 0; x < total_field_size; ++x)
+		for (uint64_t x = 0; x < no_of_fields; ++x)
 			new_home[x + 1] = (uint64_t)fields[x];
 	}
 	else
 	{
 		new_home[1] = fields.size();
-		for (uint64_t x = 0; x < total_field_size; ++x)
+		for (uint64_t x = 0; x < fields.size(); ++x)
 			new_home[x + 2] = (uint64_t)fields[x];
 	}
 	return (uint64_t)new_home;
+}
+
+//if the model is in the heap, can_reuse_parameter = true.
+//otherwise, if it has limited lifetime (for example, it's on the stack), can_reuse_parameter = false, because we need to create a new model in the heap before making it unique
+Tptr uniquefy_premade_type(Tptr model, bool can_reuse_parameter);
+
+inline Tptr new_unique_type(uint64_t tag, llvm::ArrayRef<Tptr> fields)
+{
+	return uniquefy_premade_type(new_local_type(allocate, tag, fields), true);
 }
 
 //doesn't return a unique version. copies to main memory using the allocate() function.

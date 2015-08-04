@@ -8,6 +8,9 @@ benefit of pointer_to_AST: variable size.
 %the compilation function knows it can just immute the AST. otherwise, it would need to create a copy
 %AST pointers do need to be pointers when used. we can only compile full objects. so we'd have to make full objects eventually; it's good to bake the fullness into the type.
 
+vector basic blocks are far better than linked lists. because:
+O(1) access. super flat structure for fair random acquisition. this is impossible for linked lists.
+O(1) insertion in the middle. you can have BBs inside BBs, which means it's easy to insert BBs.
 
 in our AST structure, the pointers point backwards, because forward makes them impossible to construct. (otherwise, we could use a dynamic concatenation).
 	however, analyzing such ASTs is virtually impossible. for example, my generate_IR function has so many different returns.

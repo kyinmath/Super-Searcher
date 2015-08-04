@@ -164,29 +164,27 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 }
 
 //this takes a vector of types, and then puts them in concatenation. to do this, it first expands out the types into their components, then shoves them back together
-//automatically uses get_unique_type()
+//automatically uses uniquefy_premade_type()
 Tptr concatenate_types(llvm::ArrayRef<Tptr> components)
 {
-	std::vector<Tptr> true_components{0}; //every Type here is a single element, not a concatenation. except: the very first element of the vector is the total number of components.
+	std::vector<Tptr> true_components{}; //every Type here is a single element, not a concatenation.
 
 	for (auto& x : components)
 	{
 		if (x == 0) continue;
 		if (x.ver() == Typen("con_vec"))
 		{
-			uint64_t last_offset_field = x.field(0) + 1;
-			for (uint64_t k = 1; k < last_offset_field; ++k)
-				true_components.push_back(x.field(k));
+			for (Tptr& k : Type_pointer_range(x))
+				true_components.push_back(k);
 		}
 		else true_components.push_back(x);
 	}
-	true_components[0] = (Tptr)(true_components.size() - 1); //get the number of fields in the eventual type
 	
 	//print("size of true components is ", true_components.size();
 	//output_type(components[0]);
 	//output_type(true_components[1]);
 
-	if (true_components.size() == 1) return 0; //only thing in the vector is the size
-	if (true_components.size() == 2) return true_components[1]; //one element in the vector.
-	else return get_unique_type(new_local_type(allocate, Typen("con_vec"), true_components), true);
+	if (true_components.size() == 0) return 0; //only thing in the vector is the size
+	if (true_components.size() == 1) return true_components[0]; //one element in the vector.
+	else return new_unique_type(Typen("con_vec"), true_components);
 }

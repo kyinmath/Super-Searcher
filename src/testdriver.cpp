@@ -18,7 +18,6 @@ llvm::raw_null_ostream llvm_null_stream;
 
 std::array<uint64_t, ASTn("never reached")> hitcount;
 std::vector<uint64_t> allowed_tags;
-extern std::deque< function*> fuzztester_roots; //for use in garbage collecting. each valid AST that the fuzztester has a reference to must be kept in here
 //each of these is a basicblock AST.
 /**
 The fuzztester generates random ASTs and attempts to compile them. not all randomly-generated ASTs will be well-formed.
@@ -34,26 +33,23 @@ and, it can't produce [concatenate [int]a [load a]]. that requires speculative c
 */
 void fuzztester(uint64_t iterations)
 {
-	uint64_t max_fuzztester_size = 1;
+	uint64_t max_fuzztester_size = 3;
 	//std::vector<uAST*> loose_ASTs;
 	while (iterations)
 	{
 		--iterations; //this is here, instead of having "iterations--", so that integer-sanitizer doesn't complain
-		fuzztester_roots.push_back(nullptr); //we this is so that we always have something to find, when we're looking for previous ASTs
+		event_roots.push_back(nullptr); //we this is so that we always have something to find, when we're looking for previous ASTs
 		//create a random AST
 		uint64_t tag = mersenne() % ASTn("never reached");
-		if (LIMITED_FUZZ_CHOICES)
-			tag = allowed_tags[mersenne() % allowed_tags.size()];
-		uint64_t prev_number = generate_exponential_dist() % fuzztester_roots.size(); //perhaps: prove that exponential_dist is desired.
-		//birthday collisions is the problem. a concatenate with two branches will almost never appear, because it'll result in an active object duplication.
-		//but does exponential falloff solve this problem in the way we want?
+		if (LIMITED_FUZZ_CHOICES) tag = allowed_tags[mersenne() % allowed_tags.size()];
+		uint64_t prev_number = generate_random() % event_roots.size(); //perhaps: prove that exponential_dist is desired.
 
-		function* previous_func = fuzztester_roots.at(prev_number);
+		function* previous_func = event_roots.at(prev_number);
 		uAST* previous = previous_func ? previous_func->the_AST : 0; //assume it's a basic block?
 		uAST* test_AST;
 		if (tag == ASTn("basicblock")) //simply concatenate two previous basic blocks.
 		{
-			function* second_prev_func = fuzztester_roots.at(mersenne() % fuzztester_roots.size());
+			function* second_prev_func = event_roots.at(mersenne() % event_roots.size());
 			test_AST = new_AST(tag, {previous, second_prev_func ? second_prev_func->the_AST : 0});
 		}
 		else
@@ -69,7 +65,7 @@ void fuzztester(uint64_t iterations)
 				std::vector<uAST*> fields;
 				for (uint64_t incrementor = 0; incrementor < AST_descriptor[tag].pointer_fields; ++incrementor)
 				{
-					function* second_prev_func = fuzztester_roots.at(mersenne() % fuzztester_roots.size());
+					function* second_prev_func = event_roots.at(mersenne() % event_roots.size());
 					fields.push_back(second_prev_func ? second_prev_func->the_AST : 0); //get pointers to previous ASTs
 				}
 				new_random_AST = new_AST(tag, fields);
@@ -87,7 +83,7 @@ void fuzztester(uint64_t iterations)
 		}
 
 		output_AST_console_version(test_AST);
-		fuzztester_roots.pop_back(); //delete the null we put on the back
+		event_roots.pop_back(); //delete the null we put on the back
 		finiteness = FINITENESS_LIMIT;
 
 		uint64_t result[3];
@@ -96,9 +92,9 @@ void fuzztester(uint64_t iterations)
 		auto func = (function*)result[0];
 		if (result[1] == 0)
 		{
-			fuzztester_roots.push_back(func);
-			if (fuzztester_roots.size() > max_fuzztester_size)
-				fuzztester_roots.pop_front();
+			if (event_roots.size() > max_fuzztester_size)
+				event_roots[generate_random() % event_roots.size()] = func;
+			else event_roots.push_back(func);
 
 
 			if (DONT_ADD_MODULE_TO_ORC || DELETE_MODULE_IMMEDIATELY)
@@ -120,7 +116,7 @@ void fuzztester(uint64_t iterations)
 		if ((generate_random() % (GC_TIGHT ? 1 : 30)) == 0)
 			start_GC();
 	}
-	fuzztester_roots.clear();
+	event_roots.clear();
 }
 
 
@@ -354,16 +350,16 @@ void cannot_compile_string(std::string input_string)
 void test_suite()
 {
 	//try moving the type check to the back as well.
-	Tptr unique_zero = get_unique_type(Typen("integer"), {});
-	check(unique_zero == get_unique_type(Typen("integer"), {}), "duplicated type doesn't even unique");
-	Tptr pointer_zero = get_unique_type(Typen("pointer"), unique_zero);
-	check(pointer_zero == get_unique_type(Typen("pointer"), unique_zero), "pointers don't unique");
+	Tptr unique_zero = new_unique_type(Typen("integer"), {});
+	check(unique_zero == new_unique_type(Typen("integer"), {}), "duplicated type doesn't even unique");
+	Tptr pointer_zero = new_unique_type(Typen("pointer"), unique_zero);
+	check(pointer_zero == new_unique_type(Typen("pointer"), unique_zero), "pointers don't unique");
 	check(pointer_zero != unique_zero, "pointers uniqueing to integers");
-	Tptr unique_pointer_dynamic = get_unique_type(Typen("dynamic object"), {});
+	Tptr unique_pointer_dynamic = new_unique_type(Typen("dynamic object"), {});
 	check(pointer_zero != unique_pointer_dynamic, "different pointers unique");
 
-	check(u::integer == get_unique_type(u::integer, false), "u::types aren't unique");
-	check(u::integer == get_unique_type(T::integer, false), "u::types don't come from T::types");
+	check(u::integer == uniquefy_premade_type(u::integer, false), "u::types aren't unique");
+	check(u::integer == uniquefy_premade_type(T::integer, false), "u::types don't come from T::types");
 
 	//basics
 	compile_verify_string("[zero]", u::integer, 0);
@@ -427,6 +423,11 @@ void test_suite()
 	//debugtypecheck(T::does_not_return); stopped working after type changes to bake in tags into the pointer. this is useless anyway, in a unity build.
 }
 #endif
+
+void initialize()
+{
+	type_roots.push_back(u::vector_of_ASTs);
+}
 
 int main(int argc, char* argv[])
 {

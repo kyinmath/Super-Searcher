@@ -66,17 +66,14 @@ what about overjumping?
 	perfect jumping: random, no correlation
 
 
+later events will probably require context switching. for example, you look at chess, and then you start your chess engine. you need to select the chess engine.
+	means functions can't just be laid out in a single vector. you'll really have to create some sort of map.
 we still need some form of cells, so that ideas can come together in a network
 for example, idea search, which simply fires around and adds things up.
 	now it's better; user can parallelize instead of only thinking about one thing at a time
 
-We want functions that access the same resources to share threads, for concurrency (not to block each other) and locality.
-
 function processing should be like an insertable queue. You put items somewhere in the queue, and then run the queue when you want.
 since we don't want a million pointers in a real sortable, insertable structure, the main system simply organizes it into a bunch of "timepoint" vectors of functions, which are periodically cycled downward.
-
-
-let's say you duplicate a group of objects. then, pointers within that group should point to the new group
 
 if the thread runs individual functions instead of an entire vector, then it's easy to see what the problem is.
 also, it's easy to stop threads, interrupt.
@@ -96,3 +93,5 @@ function judgment history
 cancer will probably be a problem. so the goodness functions, whatever they are, should generally not be modified by the immediate judgment functions.
 is an event-driven model good for everything, not just functions? for example, playing chess...
 	I guess so. we can still run many different models simultaneously. we will only have one goodness function though. each model competes to maximize the goodness function.
+
+we should have a kind of graph. functions are linked to related functions. this makes it easier to transplant code into related functions, instead of to totally unrelated functions.

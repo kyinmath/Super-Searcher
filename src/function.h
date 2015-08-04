@@ -4,6 +4,7 @@
 #include "orc.h"
 #include <iomanip>
 
+extern KaleidoscopeJIT* c;
 //function in clouds has a pointer to this object.
 constexpr bool OUTPUT_ASSEMBLY = false; //problem: if this is turned on, ubsan complains about the print function I think. maybe the flags are bad?
 struct function

@@ -74,7 +74,7 @@ uint64_t compiler_object::compile_AST(uAST* target)
 	if (return_object.error_code) return return_object.error_code;
 
 	return_type = return_object.type;
-	check(return_type == get_unique_type(return_type, false), "compilation returned a non-unique type");
+	check(return_type == uniquefy_premade_type(return_type, false), "compilation returned a non-unique type");
 	//can't be u::does_not_return, because goto can't go forward past the end of a function.
 
 	auto size_of_return = get_size(return_object.type);
@@ -236,7 +236,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	//note the hidden default values that are captured; they're listed above in the ///default values section.
 	auto finish_internal = [&](llvm::Value* return_value, Tptr type) -> Return_Info
 	{
-		check(type == get_unique_type(type, false), "returned non unique type in finish()");
+		check(type == uniquefy_premade_type(type, false), "returned non unique type in finish()");
 
 		if (VERBOSE_DEBUG && return_value != nullptr)
 		{
@@ -300,7 +300,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	//maybe later, we'll separate everything out. so if you specify the type and the return isn't special_pointer, it'll error as well.
 #define finish_special(X, type) do {return finish_internal(X, type); } while (0)
 
-#define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, get_unique_type(AST_descriptor[target->tag].return_object.type, false)); } while (0)
+#define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, uniquefy_premade_type(AST_descriptor[target->tag].return_object.type, false)); } while (0)
 #define finish_passthrough(X) do {default_allocation = X.place; return finish_internal(X.IR, X.type);} while(0)
 
 	//if this AST is already in the object list, return the previously-gotten value. this comes before the loop catcher.
@@ -347,13 +347,13 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 		if (VERBOSE_DEBUG)
 		{
-			print("type checking. result type is \n");
+			print("generate_IR() result type is ");
 			pftype(result.type);
-			print("desired type is \n");
+			print("desired type is ");
 			pftype(AST_descriptor[target->tag].parameter_types[x].type);
 		}
 
-		if (get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false) == u::does_not_return)
+		if (uniquefy_premade_type(AST_descriptor[target->tag].parameter_types[x].type, false) == u::does_not_return)
 			finish_special(nullptr, u::does_not_return); //just get out of here, since we're never going to run the current command anyway.
 
 		//check that the type matches.
@@ -361,7 +361,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		{
 			//this is fine with labels even though labels require emission whether reached or not, because labels don't compile using the default mechanism
 			//even if there are labels skipped over by this escape, nobody can see them because of our try-catch goto scheme.
-			if (type_check(RVO, result.type, get_unique_type(AST_descriptor[target->tag].parameter_types[x].type, false)) != type_check_result::perfect_fit) return_code(type_mismatch, x);
+			if (type_check(RVO, result.type, uniquefy_premade_type(AST_descriptor[target->tag].parameter_types[x].type, false)) != type_check_result::perfect_fit) return_code(type_mismatch, x);
 		}
 
 		field_results.push_back(result);
@@ -531,7 +531,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (type.ver() == 0) return_code(vector_cant_take_large_objects, 0);
 			else if (type.ver() > Typen("pointer")) return_code(type_mismatch, 0);
 			else if (get_size(type) != 1) return_code(type_mismatch, 0);
-			finish_special(builder->CreateCall(llvm_int_only_func(new_vector), {}), get_unique_type(Typen("vector"), type));
+			finish_special(builder->CreateCall(llvm_int_only_func(new_vector), {}), new_unique_type(Typen("vector"), type));
 		}
 		return_code(requires_constant, 1);
 
@@ -609,7 +609,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			if (found_AST->second.place == nullptr) return_code(pointer_to_temporary, 0);
 			if (found_AST->second.hidden_reference == true) return_code(pointer_to_reference, 0);
-			Tptr new_pointer_type = new_type(Typen("pointer"), found_AST->second.type);
+			Tptr new_pointer_type = new_unique_type(Typen("pointer"), found_AST->second.type);
 
 			llvm::Value* final_result = builder->CreatePtrToInt(found_AST->second.place->allocation, llvm_i64(), s("flattening pointer"));
 			objects.find(target->fields[0])->second.place->turn_full();

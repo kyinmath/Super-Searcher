@@ -37,7 +37,7 @@ struct AST_info
 	ctt parameter_types[max_fields_in_AST];
 
 	uint64_t pointer_fields; //how many field elements are pointers.
-	//for ASTs, this means pointers to other ASTs. for Types, this means pointers to other Types.
+	//for ASTs, this means pointers to other ASTs.
 	//this forces fields_to_compile downward if it is too high. by default, they are equal.
 	//if we remove this, we better fix up the difference between compiled fields and non-compiled fields. no more size... for fields to compile.
 	constexpr AST_info add_pointer_fields(int x)
@@ -178,7 +178,7 @@ inline Tptr get_AST_fields_type(uint64_t tag)
 	return concatenate_types(fields);
 }
 
-
+//this isn't usable for memory anyway.
 inline Tptr get_AST_full_type(uint64_t tag)
 {
 	return concatenate_types({u::integer, get_AST_fields_type(tag)});
@@ -208,7 +208,7 @@ inline uAST* new_AST(uint64_t tag, llvm::ArrayRef<uAST*> fields)
 	new_home->tag = tag;
 	if (tag != ASTn("basicblock"))
 	{
-		check(field_size == fields.size(), "passed the wrong number of fields to new_AST");
+		check(field_size == fields.size(), "passed the wrong number of fields to new_AST, wanted " + std::to_string(field_size) + ", got " + std::to_string(fields.size()));
 		for (uint64_t x = 0; x < field_size; ++x)
 			new_home->fields[x] = (uAST*)fields[x];
 	}
@@ -228,7 +228,7 @@ inline uAST* copy_AST(uAST* t)
 	if (t == nullptr) return 0;
 	uint64_t tag = t->tag;
 	check(tag < ASTn("never reached"), "tag is huge");
-	uint64_t total_field_size = get_size(get_AST_fields_type(tag));
+	uint64_t total_field_size = get_field_size_of_AST(tag);
 	uAST* new_home;
 	if (tag == ASTn("imv"))
 	{

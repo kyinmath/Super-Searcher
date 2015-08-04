@@ -47,16 +47,16 @@ things that are important are repeated many times. just like in DNA.
 
 Function recombination: modification of existing functions. each step is repeated as many times as necessary.
 	after each change, we should generally test if the function will still compile. if it won't compile, we must roll-back. roll-back is necessarily baked into the function.
-1. browsing mode
+1. browsing
 	1. choose a random function to obtain from
 	2. snip the function by choosing a head, then copying
 		INTEGER: size of snip
-2. insertion mode
-	1. in some other function, find some location by randomly browsing.
-	2. find a snipping location by going down previous_BB pointers, and choosing two points. INTEGER: distance between points.
-		insert the head in the top of the snip.
-		browse through the snippet's backpointers to find the bottom. change the bottom's AST to point to the original snip.
-3. random modification. insertion adds in code, but now we have to mix the code to make it interact.
+2. Insertion
+	1. in some other function, find some sequence of ASTs by randomly browsing. INTEGER: distance between points. also, allow multi-level BBs? maybe not. that can be done by cleanup mode.
+	2. find a snipping location by going down previous_BB pointers. (copy the old AST into the slot. append the new BB to the back). or: (append the new BB to the back, directly).
+3. Deletion
+	1. simply browse through, and zero some stuff.
+4. Substitution. insertion adds in code, but now we have to mix the code to make it interact.
 	1. randomly browse the function, memorizing AST locations.
 	2. randomly change some AST locations to other ASTs.
 	3. randomly load imv values. do some modification to them, by incrementing/decrementing them randomly (this should be passed off to another function)

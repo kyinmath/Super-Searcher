@@ -28,6 +28,7 @@
   <ItemGroup>
     <ClCompile Include="src\cs11.cpp" />
     <ClCompile Include="src\memory.cpp" />
+    <ClCompile Include="src\serialization_snapshot.cpp" />
     <ClCompile Include="src\testdriver.cpp" />
     <ClCompile Include="src\types.cpp" />
     <ClCompile Include="src\type_creator.cpp" />
@@ -61,7 +62,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>C:\Users\CompAcc\Readonly virtual\llvm-trunk\llvm\include;$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
+    <IncludePath>C:\Users\CompAcc\Readonly virtual\llvm-trunk\llvm\include;$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Users\CompAcc\Stuff\Fitting\linuxheaders</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

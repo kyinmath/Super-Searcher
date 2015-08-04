@@ -1,0 +1,5 @@
+file layout:
+
+pool_location in memory, pool size, pool start offset in file.
+function pool location in memory, function pool size, function pool offset in file.
+event names, then event offsets to the function pool.

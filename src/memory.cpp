@@ -6,13 +6,9 @@
 #include "types.h"
 #include "runtime.h"
 #include "function.h"
-
+#include "vector.h"
 
 //found_living_object and found_function depend on these pools being contiguous
-constexpr const uint64_t pool_size = 100000ull;
-constexpr const uint64_t function_pool_size = 2000ull * 64;
-constexpr const uint64_t initial_special_value = 21212121ull;
-constexpr const uint64_t collected_special_value = 1234567ull;
 std::vector<uint64_t> big_memory_allocation(pool_size, initial_special_value);
 uint64_t* big_memory_pool = big_memory_allocation.data();
 //designated initializers don't work, because they add 7MB memory to the executable
@@ -28,12 +24,18 @@ std::map<uint64_t*, uint64_t> living_objects; //first value = address of user-se
 uint64_t first_possible_empty_function_block; //where to start looking for an empty function block.
 std::stack < std::pair<uint64_t*, Tptr>> to_be_marked; //stack of things to be marked. this is good because it lets us avoid recursion.
 
+//this is initialized through a function called by main(), so there's no worries about static fiasco where the u:: types are initialized after this.
+std::vector< Tptr > type_roots; //exactly the u::things that aren't a simple integer. initialized by initialize(). will only contain the vector_of_ASTs for now.
+std::vector< function*> event_roots;
+type_htable_t type_hash_table; //a hash table of all the unique types. don't touch this unless you're the memory allocation
+
 void new_mark_element(uint64_t* memory, Tptr t);
 bool found_living_object(uint64_t* memory, uint64_t size); //adds the object onto the list of living objects.
-void marky_mark(uint64_t* memory, Tptr t); //marks any further objects found in a possibly-concatenated object. you must add it to the list of living objects separately; marky_mark doesn't do that. the reason is that some things like dynamic objects want to use marky_mark, but want to add a different object to the living_objects stack. they don't want to create a whole new concatenation.
-void mark_single_element(uint64_t& memory, Tptr t); //note that mark_single takes a reference instead of a pointer. this was to get rid of the horrible *(vector**) casts which I didn't understand. however, this means that marky_mark and mark_single are different in their arguments. marky_mark() takes a pointer so it can handle Tptr.
+
 void initialize_roots();
 void sweepy_sweep();
+
+bool UNSERIALIZATION_MODE;
 
 uint64_t* allocate(uint64_t size)
 {
@@ -112,25 +114,21 @@ function* allocate_function()
 	error("OOM function");
 }
 
-std::deque< function*> fuzztester_roots;
-type_htable_t type_hash_table; //a hash table of all the unique types. don't touch this unless you're the memory allocation
-//this is extern, because of static initialization fiasco. but we still want to use it at the end of GC, so it should be global. thus, the actual objects are at the bottom of the file.
-extern std::vector< Tptr > unique_type_roots;
 void initialize_roots()
 {
-	for (auto& root_type : unique_type_roots)
+	for (auto& root_type : type_roots)
 	{
+		if (VERBOSE_GC) print("gc root type at ", root_type, '\n');
 		if (Type_descriptor[root_type.ver()].pointer_fields != 0)
-			to_be_marked.push(std::make_pair((uint64_t*)root_type.val, get_Type_full_type(root_type)));
+		{
+			mark_target((uint64_t&)root_type.val, u::type);
+			if (UNSERIALIZATION_MODE) uniquefy_premade_type(root_type, true);
+		}
 	}
-	//print("outputting all types in hash table\n");
-	//for (auto& type : type_hash_table)
-	//	output_type(type);
-
-	for (auto& root_function : fuzztester_roots)
+	for (auto& root_function : event_roots)
 	{
-		print("gc root function at ", root_function, '\n');
-		mark_single_element((uint64_t&)root_function, Typen("function pointer"));
+		if (VERBOSE_GC) print("gc root function at ", root_function, '\n');
+		mark_target((uint64_t&)root_function, Typen("function pointer"));
 	}
 
 	//add in the event-driven ASTs
@@ -139,6 +137,7 @@ void initialize_roots()
 
 void start_GC()
 {
+	UNSERIALIZATION_MODE = false;
 	if (VERBOSE_GC)
 	{
 		uint64_t total_memory_use = 0;
@@ -149,9 +148,16 @@ void start_GC()
 		}
 		print("total free before GC ", total_memory_use, '\n');
 	}
+	if (SUPER_VERBOSE_GC)
+	{
+		print("outputting all types in hash table\n");
+		for (auto& type : type_hash_table)
+			output_type(type);
+	}
 	sweep_function_pool_flags = new uint64_t[function_pool_size / 64]();
 	check(living_objects.empty(), "need to start GC with an empty tree");
 	initialize_roots();
+	/* //we're no longer using this.
 	while (!to_be_marked.empty())
 	{
 		auto k = to_be_marked.top();
@@ -165,7 +171,7 @@ void start_GC()
 		}
 		if (found_living_object(k.first, get_size(k.second))) continue;
 		marky_mark(k.first, k.second);
-	}
+	}*/
 	if (VERBOSE_GC)
 	{
 		for (auto& x : living_objects)
@@ -229,46 +235,23 @@ bool found_function(function* func)
 	return false;
 }
 
-
+//adds the object to the living object set as well.
 void new_mark_element(uint64_t* memory, Tptr t)
 {
 	check(t != 0, "marking a null type");
 	//to_be_marked.push({memory, t});
+	if (memory == 0) return;
 
 	if (found_living_object(memory, get_size(t))) return;
-	marky_mark(memory, t); //this is better for debugging. we get a stack trace instead of flattening the stack.
+	mark_target(*memory, t); //this is better for debugging. we get a stack trace instead of flattening the stack.
 }
 
-//if you call marky_mark, make sure to remember to call found_living_object as well. but mainly, consider using new_mark_element instead.
-//unlike mark_single(), this can handle Tptrs.
-void marky_mark(uint64_t* memory, Tptr t)
-{
-	check(t != 0, "marking a null type");
-	if (VERBOSE_GC)
-	{
-		print("marking memory ", memory, " ");
-		output_type(t);
-	}
-	if (t.ver() == u::type) //handle the special type optimization
-	{
-		if (Type_descriptor[((Tptr&)*memory).ver()].pointer_fields == 0)
-			return;
-	}
-	if (t.ver() == Typen("con_vec"))
-	{
-		//print("marking convec\n");
-		for (auto& subt : Type_pointer_range(t))
-		{
-			mark_single_element(*memory, subt);
-			memory += get_size(subt);
-			check(get_size(subt) == 1, "can't use mark_single_element on large or small objects");
-		}
-	}
-	else mark_single_element(*memory, t);
-}
-#include "vector.h"
-//memory points to the single object.
-void mark_single_element(uint64_t& memory, Tptr t)
+//steps: 1. you correct the pointer.
+//2. you call found_living_object/found_living function. this comes after 1, because dynamic pointers need to learn their type to learn their size, and found_living requires knowing the size.
+//3. you mark the targets in the section you just found, recursing. this comes after 2, to prevent infinite recursion.
+
+//memory is a reference to a single 1-size object.
+void mark_target(uint64_t& memory, Tptr t)
 {
 	if (VERBOSE_GC)
 	{
@@ -278,60 +261,91 @@ void mark_single_element(uint64_t& memory, Tptr t)
 	if (memory) print(""); //force a memory access
 	//check(&memory != nullptr, "passed 0 memory pointer to mark_single"); //UB for references.
 	check(t != 0, "passed 0 type pointer to mark_single");
+
+	//interpreting the memory as a pointer.
+	uint64_t*& int_pointer = (uint64_t*&)memory;
+
+	if (UNSERIALIZATION_MODE)
+	{
+		if (t.ver() == Typen("integer")); //do nothing
+		else if (t.ver() == Typen("function pointer")) correct_function_pointer(int_pointer); //note: corrections should consider 0 as well.
+		else if (t.ver() == Typen("con_vec")); // do nothing
+		else correct_pointer(int_pointer);
+	}
+
 	switch (t.ver())
 	{
 	case Typen("con_vec"):
-		error("no nested con_vecs allowed");
+		{
+			uint64_t* increm = &memory;
+			for (auto& subt : Type_pointer_range(t))
+			{
+				mark_target(*increm, subt);
+				++increm;
+				check(get_size(subt) == 1, "type not of size 1");
+			}
+		}
+		break;
 	case Typen("integer"):
 		break;
 	case Typen("pointer"):
-		new_mark_element((uint64_t*)memory, t.field(0));
+		new_mark_element(int_pointer, t.field(0));
 		break;
 	case Typen("dynamic object"):
 		if (memory != 0)
 		{
-			dynobj* dynamic_obj = (dynobj*)memory;
-			uint64_t* pointer_to_the_type_and_object = (uint64_t*)memory;
+			dynobj*& dynamic_obj = (dynobj*&)memory;
+			mark_target((uint64_t&)dynamic_obj->type, u::type); //correct the type pointer first. since types can't lead to dynamic objects, we can't infinite loop, even though we're marking the element before putting it in the living objects list.
 			check(dynamic_obj->type != 0, "when making a dynamic object, only the base pointer may be 0, not the type inside");
-			//we don't want to create a concatenation. thus, we call marky_mark directly.
-			if (found_living_object(pointer_to_the_type_and_object, get_size(dynamic_obj->type) + 1)) break;
-			marky_mark(pointer_to_the_type_and_object, u::type);
-			marky_mark(pointer_to_the_type_and_object + 1, *pointer_to_the_type_and_object);
+
+			if (found_living_object(int_pointer, get_size(dynamic_obj->type) + 1)) break; //we can use the type pointer, since it's corrected.
+			mark_target(*(int_pointer + 1), dynamic_obj->type);
 		}
 		break;
 
 	case Typen("vector"):
 		{
-			//we don't want to make a huge concatenation for the type. thus, we force the issue by marking things directly, instead of adding onto the stack. I'm worried that this might cause stack overflows, but hopefully, it won't skip over the guard page.
-			svector* the_vector = (svector*)memory;
-			uint64_t* int_pointer_to_vector = (uint64_t*)the_vector;
-			if (found_living_object(int_pointer_to_vector, vector_header_size + the_vector->reserved_size)) break;
+			svector*& the_vector = (svector*&)memory;
+			if (found_living_object(int_pointer, vector_header_size + the_vector->reserved_size)) break;
 			for (auto& x : Vector_range(the_vector))
-				marky_mark(&x, t.field(0)); //if we change t.field(0) to pointer_to_the_vector->type, it is a bug. that means the vector type is wrong.
+				mark_target(x, t.field(0));
 		}
 		break;
 	case Typen("AST pointer"):
 		if (memory != 0)
 		{
-			uAST* the_AST = (uAST*)memory;
-			Tptr type_of_AST = get_AST_full_type(the_AST->tag);
-			new_mark_element((uint64_t*)memory, type_of_AST);
+			uAST*& the_AST = (uAST*&)memory;
+
+			uint64_t tag = the_AST->tag;
+			check(tag < ASTn("never reached"), "get_AST_type is a sandboxed function, use the user facing version instead");
+			if (tag == ASTn("imv")) new_mark_element((uint64_t*&)the_AST->fields[0], u::dynamic_object);
+			if (tag == ASTn("basicblock")) new_mark_element((uint64_t*&)the_AST->fields[0], u::vector_of_ASTs);
+			uint64_t number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
+			found_living_object(int_pointer, get_full_size_of_AST(the_AST->tag));
+			for (uAST*& x : AST_range(the_AST))
+				mark_target((uint64_t&)x, u::AST_pointer);
 		}
 		break;
 	case Typen("type pointer"):
 		if (memory != 0)
 		{
-			Tptr the_type = (Tptr)memory;
+			Tptr& the_type = (Tptr&)memory;
+			if (UNSERIALIZATION_MODE) uniquefy_premade_type(the_type, true);
+
 			if (Type_descriptor[the_type.ver()].pointer_fields != 0)
-				new_mark_element((uint64_t*)memory, get_Type_full_type(the_type));
+			{
+				found_living_object(int_pointer, total_valid_fields(t) + 1);
+				for (Tptr& subtype : Type_pointer_range(the_type))
+					mark_target((uint64_t&)subtype, u::type);
+			}
 		}
 		break;
 	case Typen("function pointer"):
 		function* func = (function*)memory;
 		if (found_function(func)) break;
 
-		mark_single_element((uint64_t&)(func->the_AST), u::AST_pointer);
-		mark_single_element((uint64_t&)(func->return_type), u::type);
+		mark_target((uint64_t&)(func->the_AST), u::AST_pointer);
+		mark_target((uint64_t&)(func->return_type), u::type);
 		//future: maybe the parameter
 
 		break;
@@ -367,7 +381,7 @@ void sweepy_sweep()
 		}
 		memory_incrementor = next_memory->first + next_memory->second;
 	}
-	if (memory_incrementor != &big_memory_pool[pool_size]) //the final bit of memory at the end
+	if (memory_incrementor < &big_memory_pool[pool_size]) //the final bit of memory at the end
 	{
 		if (VERBOSE_GC)
 			print("last memory available starting from ", memory_incrementor, '\n');
@@ -379,7 +393,7 @@ void sweepy_sweep()
 		}
 		free_memory.insert({&big_memory_pool[pool_size] - memory_incrementor, memory_incrementor});
 	}
-	else if (VERBOSE_GC) error("no mem available at the end. what is wrong?");
+	else check(memory_incrementor == &big_memory_pool[pool_size], "memory incrementor is past the pool");
 	living_objects.clear();
 
 	for (uint64_t x = 0; x < function_pool_size / 64; ++x)
@@ -410,16 +424,13 @@ void sweepy_sweep()
 //this is here to prevent static fiasco. must be below all the constants for the memory allocator. and must be below the hash table.
 namespace u
 {
-	Tptr does_not_return = get_unique_type(T::does_not_return, false); //it's false, because the constexpr types are not in the memory pool
-	Tptr integer = get_unique_type(T::integer, false);
-	Tptr dynamic_object = get_unique_type(T::dynamic_object, false);
-	Tptr type = get_unique_type(T::type, false);
-	Tptr AST_pointer = get_unique_type(T::AST_pointer, false);
-	Tptr function_pointer = get_unique_type(T::function_pointer, false);
-	Tptr vector_of_ASTs = new_type(Typen("vector"), AST_pointer);
+	Tptr does_not_return = uniquefy_premade_type(T::does_not_return, false); //it's false, because the constexpr types are not in the memory pool
+	Tptr integer = uniquefy_premade_type(T::integer, false);
+	Tptr dynamic_object = uniquefy_premade_type(T::dynamic_object, false);
+	Tptr type = uniquefy_premade_type(T::type, false);
+	Tptr AST_pointer = uniquefy_premade_type(T::AST_pointer, false);
+	Tptr function_pointer = uniquefy_premade_type(T::function_pointer, false);
+	Tptr vector_of_ASTs = new_unique_type(Typen("vector"), AST_pointer);
 	Tptr pointer_to_something = Typen("pointer to something");
 	Tptr vector_of_something = Typen("vector of something");
 };
-
-//this comes below the types, to prevent static fiasco.
-std::vector< Tptr > unique_type_roots{u::does_not_return, u::integer, u::dynamic_object, u::type, u::AST_pointer, u::function_pointer, u::vector_of_ASTs, u::pointer_to_something, u::vector_of_something};

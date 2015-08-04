@@ -60,6 +60,16 @@ constexpr bool DEBUG_GC = true; //do some checking to make sure the GC is tracki
 constexpr bool VERBOSE_GC = false;
 constexpr bool SUPER_VERBOSE_GC = false; //some additional, extremely noisy output. print every single living value at GC time.
 constexpr bool VECTOR_DEBUG = false;
+extern bool UNSERIALIZE_MODE; //if this is true, then the GC should act in unserialization mode instead of sweeping mode.
+
+//for the memory allocator
+constexpr const uint64_t pool_size = 100000ull;
+constexpr const uint64_t function_pool_size = 2000ull * 64;
+constexpr const uint64_t initial_special_value = 21212121ull;
+constexpr const uint64_t collected_special_value = 1234567ull;
+
+extern uint64_t pointer_offset; //when unserializing, the difference between the new and old pointers
+extern uint64_t function_pointer_offset;
 
 //ok, so these two are special: they work like a stack. when you want to work with a context/builder, you push it here. and when you're done, you pop it from here.
 //otherwise, everything using them would have to carry around references to them. and then when you wanted to use llvm_array, you'd need to bind references to it.
