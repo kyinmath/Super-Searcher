@@ -29,7 +29,6 @@ std::vector< Tptr > type_roots; //exactly the u::things that aren't a simple int
 std::vector< function*> event_roots;
 type_htable_t type_hash_table; //a hash table of all the unique types. don't touch this unless you're the memory allocation
 
-void new_mark_element(uint64_t* memory, Tptr t);
 bool found_living_object(uint64_t* memory, uint64_t size); //adds the object onto the list of living objects.
 
 void initialize_roots();
@@ -214,17 +213,6 @@ bool found_function(function* func)
 	return false;
 }
 
-//adds the object to the living object set as well.
-void new_mark_element(uint64_t* memory, Tptr t)
-{
-	check(t != 0, "marking a null type");
-	//to_be_marked.push({memory, t});
-	if (memory == 0) return;
-
-	if (found_living_object(memory, get_size(t))) return;
-	mark_target(*memory, t); //this is better for debugging. we get a stack trace instead of flattening the stack.
-}
-
 //steps: 1. you correct the pointer.
 //2. you call found_living_object/found_living function. this comes after 1, because dynamic pointers need to learn their type to learn their size, and found_living requires knowing the size.
 //3. you mark the targets in the section you just found, recursing. this comes after 2, to prevent infinite recursion.
@@ -312,6 +300,7 @@ void mark_target(uint64_t& memory, Tptr t)
 		{
 			Tptr& the_type = (Tptr&)memory;
 			uniquefy_premade_type(the_type, true);
+			if (VERBOSE_GC) print("uniquefying in GC ", the_type, '\n');
 
 			if (Type_descriptor[the_type.ver()].pointer_fields != 0)
 			{
@@ -406,12 +395,12 @@ void sweepy_sweep()
 //this is here to prevent static fiasco. must be below all the constants for the memory allocator. and must be below the hash table.
 namespace u
 {
-	Tptr does_not_return = uniquefy_premade_type(T::does_not_return, false); //it's false, because the constexpr types are not in the memory pool
-	Tptr integer = uniquefy_premade_type(T::integer, false);
-	Tptr dynamic_object = uniquefy_premade_type(T::dynamic_object, false);
-	Tptr type = uniquefy_premade_type(T::type, false);
-	Tptr AST_pointer = uniquefy_premade_type(T::AST_pointer, false);
-	Tptr function_pointer = uniquefy_premade_type(T::function_pointer, false);
+	Tptr does_not_return = uniquefy_premade_type(T::does_not_return, true); //it's false, because the constexpr types are not in the memory pool. except with the Tptr optimization, it's all constant.
+	Tptr integer = uniquefy_premade_type(T::integer, true);
+	Tptr dynamic_object = uniquefy_premade_type(T::dynamic_object, true);
+	Tptr type = uniquefy_premade_type(T::type, true);
+	Tptr AST_pointer = uniquefy_premade_type(T::AST_pointer, true);
+	Tptr function_pointer = uniquefy_premade_type(T::function_pointer, true);
 	Tptr vector_of_ASTs = new_unique_type(Typen("vector"), AST_pointer);
 	Tptr pointer_to_something = Typen("pointer to something");
 	Tptr vector_of_something = Typen("vector of something");

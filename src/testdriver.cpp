@@ -360,15 +360,15 @@ void test_suite()
 
 	check(u::integer == uniquefy_premade_type(u::integer, false), "u::types aren't unique");
 	check(u::integer == uniquefy_premade_type(T::integer, false), "u::types don't come from T::types");
-
-	//basics
+	
+	//basics. console reading, function return types, basic blocks, referencing copies, etc.
 	compile_verify_string("[zero]", u::integer, 0);
 	start_GC();
 	compile_verify_string("[imv 1]", u::integer, 1);
 	compile_string("[concatenate [imv 100] [imv 200]]");
 	start_GC();
 	compile_verify_string("_a[imv 100] [imv 200]", u::integer, 200);
-	compile_verify_string("_a[imv 100] [imv 200] [imv 300]", u::integer, 300);
+	compile_verify_string("_a[imv 100] [imv 200] a", u::integer, 100);
 	start_GC();
 
 	//random value. then check that (x / k) * k + x % k == x
@@ -438,6 +438,7 @@ int main(int argc, char* argv[])
 	llvm::InitializeNativeTarget();
 	llvm::InitializeNativeTargetAsmPrinter();
 	llvm::InitializeNativeTargetAsmParser();
+	initialize();
 
 	std::unique_ptr<llvm::TargetMachine> TM_backer(llvm::EngineBuilder().selectTarget());
 	TM = TM_backer.get();

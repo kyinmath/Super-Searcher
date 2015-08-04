@@ -74,8 +74,9 @@ uint64_t compiler_object::compile_AST(uAST* target)
 	if (return_object.error_code) return return_object.error_code;
 
 	return_type = return_object.type;
-	check(return_type == uniquefy_premade_type(return_type, false), "compilation returned a non-unique type");
+	//check(return_type == uniquefy_premade_type(return_type, false), "compilation returned a non-unique type");
 	//can't be u::does_not_return, because goto can't go forward past the end of a function.
+	//we can't do this checking anymore, because not all return types are in the type hash table after GC.
 
 	auto size_of_return = get_size(return_object.type);
 	FunctionType* FT(FunctionType::get(llvm_type_including_void(size_of_return), false));
@@ -236,7 +237,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	//note the hidden default values that are captured; they're listed above in the ///default values section.
 	auto finish_internal = [&](llvm::Value* return_value, Tptr type) -> Return_Info
 	{
-		check(type == uniquefy_premade_type(type, false), "returned non unique type in finish()");
+		//check(type == uniquefy_premade_type(type, false), "returned non unique type in finish()");
+		//no longer possible, not all types are uniqued.
 
 		if (VERBOSE_DEBUG && return_value != nullptr)
 		{
@@ -300,7 +302,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	//maybe later, we'll separate everything out. so if you specify the type and the return isn't special_pointer, it'll error as well.
 #define finish_special(X, type) do {return finish_internal(X, type); } while (0)
 
-#define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, uniquefy_premade_type(AST_descriptor[target->tag].return_object.type, false)); } while (0)
+#define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, uniquefy_premade_type(AST_descriptor[target->tag].return_object.type, true)); } while (0)
 #define finish_passthrough(X) do {default_allocation = X.place; return finish_internal(X.IR, X.type);} while(0)
 
 	//if this AST is already in the object list, return the previously-gotten value. this comes before the loop catcher.
@@ -353,7 +355,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			pftype(AST_descriptor[target->tag].parameter_types[x].type);
 		}
 
-		if (uniquefy_premade_type(AST_descriptor[target->tag].parameter_types[x].type, false) == u::does_not_return)
+		if (uniquefy_premade_type(AST_descriptor[target->tag].parameter_types[x].type, true) == u::does_not_return)
 			finish_special(nullptr, u::does_not_return); //just get out of here, since we're never going to run the current command anyway.
 
 		//check that the type matches.
@@ -361,7 +363,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		{
 			//this is fine with labels even though labels require emission whether reached or not, because labels don't compile using the default mechanism
 			//even if there are labels skipped over by this escape, nobody can see them because of our try-catch goto scheme.
-			if (type_check(RVO, result.type, uniquefy_premade_type(AST_descriptor[target->tag].parameter_types[x].type, false)) != type_check_result::perfect_fit) return_code(type_mismatch, x);
+			if (type_check(RVO, result.type, uniquefy_premade_type(AST_descriptor[target->tag].parameter_types[x].type, true)) != type_check_result::perfect_fit) return_code(type_mismatch, x);
 		}
 
 		field_results.push_back(result);

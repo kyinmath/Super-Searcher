@@ -53,7 +53,11 @@ inline void pftype(Tptr target)
 	}
 	output_type(target);
 	for (auto& x : Type_pointer_range(target))
+	{
+		print("(");
 		pftype(x);
+		print(") ");
+	}
 }
 
 

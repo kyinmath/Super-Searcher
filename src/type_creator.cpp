@@ -10,7 +10,7 @@ Then, it checks type_hash_table if there is already a unique type that is the sa
 #include "type_creator.h" //this line must exist to find the hash function
 #include "cs11.h"
 
-bool UNIQUE_VERBOSE_DEBUG = false;
+bool UNIQUE_VERBOSE_DEBUG = true;
 
 //this wrapper type is used for the hash table. we want equality and hashing to occur on a Type, not a Tptr, since hashing on pointers is dumb. but we want the hash table to store pointers to types, so that references to them stay valid forever.
 
@@ -30,6 +30,7 @@ std::pair<Tptr, bool> get_unique_type_internal(Tptr model, bool can_reuse_parame
 		output_type(model);
 	}
 	check((model != 0) && ((uint64_t)model != Typen("pointer")), "our optimization is failing");
+	check(model.ver() < Typen("never reached"), "out of bounds tag");
 
 	bool create_new_for_sure = false; //it's true if one of the subfields created a type instead of finding it.
 	//in that case, we don't have to check if this object is in the hash table. we know it is new.
