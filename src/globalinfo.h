@@ -10,23 +10,37 @@ extern llvm::raw_ostream* llvm_console;
 using std::string;
 
 
+extern bool QUIET;
+extern bool OPTIMIZE;
+extern bool INTERACTIVE;
+extern bool CONSOLE;
+extern bool TIMER;
+extern bool DONT_ADD_MODULE_TO_ORC;
+extern bool DELETE_MODULE_IMMEDIATELY;
+extern bool OUTPUT_MODULE;
+constexpr bool HEURISTIC = true; //heuristically gives errors. for example, large objects are assumed to be bad.
+
+
 #ifndef NO_CONSOLE
 inline void print(){}
 
 template<typename First, typename ...Rest>
 inline void print(First && first, Rest && ...rest)
 {
-	console << std::forward<First>(first);
-	print(std::forward<Rest>(rest)...);
+	if (!QUIET)
+	{
+		console << std::forward<First>(first);
+		print(std::forward<Rest>(rest)...);
+	}
 }
 #else
-
+#define QUIET true
 template<typename ...Rubbish> inline void print(Rubbish && ...rest){}
 #endif
 
 extern bool VERBOSE_DEBUG;
 //llvm::StringRef disallowed because cout can't take it
-[[noreturn]] inline constexpr void error(const string& Str) { std::cout << "Error: " << Str << '\n'; abort(); } //std::cout, because we want error messages even when default console output is turned off. which sets failbit on cerr.
+[[noreturn]] inline constexpr void error(const string& Str) { std::cerr << "Error: " << Str << '\n'; abort(); } //std::cerr, because we want error messages even when default console output (print) is turned off.
 
 
 //s("test") returns "test" if enabled, and nothing otherwise
@@ -39,16 +53,6 @@ inline std::string s(std::string k) { return ""; }
 inline std::string s(std::string k) { return k; }
 inline constexpr void check(bool condition, const string& Str = "") { if (!condition) error(Str); }
 #endif
-
-extern bool OPTIMIZE;
-extern bool INTERACTIVE;
-extern bool CONSOLE;
-extern bool TIMER;
-extern bool DONT_ADD_MODULE_TO_ORC;
-extern bool DELETE_MODULE_IMMEDIATELY;
-extern bool OUTPUT_MODULE;
-constexpr bool HEURISTIC = true; //heuristically gives errors. for example, large objects are assumed to be bad.
-
 //future: expanding memory. (or, acquire maximum available memory? nah, we'll let the OOM killer work)
 //the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. 
 //thus, we wrap them in a unique() function, so that the user only ever sees GC-handled objects.
@@ -57,10 +61,10 @@ constexpr bool DEBUG_GC = false;
 #else
 constexpr bool DEBUG_GC = true; //do some checking to make sure the GC is tracking free memory accurately. slow. mainly: whenever GCing or creating, it sets memory locations to special values.
 #endif
-constexpr bool VERBOSE_GC = true;
-constexpr bool SUPER_VERBOSE_GC = true; //some additional, extremely noisy output. print every single living value at GC time.
+constexpr bool VERBOSE_GC = false;
+constexpr bool SUPER_VERBOSE_GC = false; //some additional, extremely noisy output. print every single living value at GC time.
 constexpr bool VERBOSE_VECTOR = false;
-extern bool UNSERIALIZE_MODE; //if this is true, then the GC should act in unserialization mode instead of sweeping mode.
+extern bool UNSERIALIZATION_MODE; //if this is true, then the GC should act in unserialization mode instead of GC sweeping mode.
 
 //for the memory allocator
 constexpr const uint64_t pool_size = 100000ull;

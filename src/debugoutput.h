@@ -38,9 +38,7 @@ private:
 //for debug purposes, we don't want to limit it to the number of pointer fields.
 inline void output_type(const Tptr target)
 {
-#ifndef NO_CONSOLE
 	print(target, '\n');
-#endif
 }
 
 //for debugging. outputs a Type and everything it points to, recursively.
@@ -64,16 +62,13 @@ inline void pftype(Tptr target)
 //only call on a non-nullptr target. outputs a single AST.
 inline void output_AST(uAST* target)
 {
-#ifndef NO_CONSOLE
 	print(ou(target), '\n');
-#endif
 }
 
 #include <set>
 //for debugging. outputs an AST and everything it can see, recursively.
 inline void pfAST(uAST* target)
 {
-#ifndef NO_CONSOLE
 	if (target == nullptr)
 	{
 		print("null AST\n");
@@ -102,7 +97,6 @@ inline void pfAST(uAST* target)
 			if (target->fields[x] != nullptr)
 				pfAST(target->fields[x]);
 	}
-#endif
 }
 
 //outputs the AST in a form that can be input into the console
@@ -144,8 +138,6 @@ struct output_AST_struct
 	//the purpose of "braces_allowed" is to decide whether to output {} or not. if it's false, you're at the top level, and no braces are permitted 
 	void output_output(uAST* target, bool braces_allowed)
 	{
-#ifndef NO_CONSOLE
-		
 		//we need to know if we printed a _name, in case we are emitting a basic block, because it might try to output its target directly, or maybe just a 0.
 		//because if we did print a _name, we better emit the BB errata as well.
 		bool printed_reference = false;
@@ -202,8 +194,6 @@ struct output_AST_struct
 				print(' ', target->fields[x]);
 			print(']');
 		}
-
-#endif
 	}
 };
 

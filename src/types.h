@@ -334,7 +334,7 @@ inline std::ostream& operator<< (std::ostream& o, const Tptr t)
 	o << "t " << Type_descriptor[t.ver()].name << "(" << t.ver() << ") at " << (uint64_t*)t.val << ", ";
 	if (Type_descriptor[t.ver()].pointer_fields != 0) o << "fields";
 	else o << "no fields";
-	for (auto& x : Type_pointer_range(t)) o << ' ' << x;
+	for (auto& x : Type_pointer_range(t)) o << " (" << x << ")";
 	return o;
 }
 

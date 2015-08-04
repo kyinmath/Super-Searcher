@@ -107,8 +107,6 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 		case Typen("integer"):
 			if (iter[0].ver() == iter[1].ver() || iter[0].ver() == Typen("pointer") || iter[0].ver() == Typen("type pointer") || iter[0].ver() == Typen("function pointer") || iter[0].ver() == Typen("AST pointer"))
 				return type_check_result::perfect_fit;
-			//maybe we should also allow two uints in a row to take a dynamic pointer?
-			//we'd have to think about that. the current system allows for large types in the new reference to accept pieces, but I don't know if that's the best.
 			return type_check_result::different;
 
 		case Typen("dynamic object"):

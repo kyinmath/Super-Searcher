@@ -656,7 +656,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				llvm::Value* overall_dynamic_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 
 				auto comparison = builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("special case 0 dynamic object"));
-				//this block handles the case where the base of the dynamic pointer is 0.
+				//this block handles the case where the base of the dynamic object is 0.
 				llvm::Value* overall_type = create_if_value(
 					comparison,
 					[&](){ return builder->CreateLoad(overall_dynamic_object, s("type of overall dynamic")); },
@@ -718,12 +718,12 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				if (x != 0) //if it's 0, don't put a reference on the stack, because the type is empty.
 				{
 					Tptr loaded_object_type = 0;
-					if (x == Typen("pointer")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
+					if (x == Typen("pointer")) //dependency on type. here, we create another dynamic object, instead of returning an actual regular pointer.
 					{
 						loaded_object_type = Typen("pointer to something");
 						new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(correct_pointer), loaded_object_type, true, single_type));
 					}
-					else if (x == Typen("vector")) //dependency on type. here, we create another dynamic pointer, instead of returning an actual regular pointer.
+					else if (x == Typen("vector")) //dependency on type. here, we create another dynamic object, instead of returning an actual regular pointer.
 					{
 						loaded_object_type = Typen("vector of something");
 						new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(correct_pointer), loaded_object_type, true, single_type));
@@ -899,7 +899,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			};
 
 			uint64_t starting_stack_position = object_stack.size();
-			new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(reference_to_imv), Typen("dynamic pointer"), true));
+			new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(reference_to_imv), Typen("dynamic object"), true));
 
 			auto reference_integer = builder->CreatePtrToInt(reference_to_imv, llvm_i64());
 			llvm::Value* comparison = builder->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));

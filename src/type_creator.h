@@ -29,11 +29,7 @@ namespace std {
 		size_t operator () (const Tptr l, const Tptr r) const noexcept
 		{
 			if (UNIQUE_VERBOSE_DEBUG)
-			{
-				print("testing equal: await \"true\" response \n");
-				output_type(l);
-				output_type(r);
-			}
+				print("testing equal: await \"true\" response, ", l, " vs ", r, '\n');
 			if ((l == 0) != (r == 0)) return false;
 			if ((l == 0) && (r == 0)) return true;
 

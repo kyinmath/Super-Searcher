@@ -13,6 +13,7 @@ bool OLD_AST_OUTPUT = false;
 bool OUTPUT_MODULE = true;
 bool FUZZTESTER_NO_COMPILE = false;
 bool READER_VERBOSE_DEBUG = false;
+bool QUIET = false;
 uint64_t runs = ~0ull;
 llvm::raw_null_ostream llvm_null_stream;
 
@@ -420,7 +421,7 @@ void test_suite()
 
 
 	//compile_string("[run_function [compile [convert_to_AST [system1 [imv 2]] [label] {[imv 0]v [dynamify [pointer v]]}]]]");
-	//compile_string("[run_function [compile [convert_to_AST [imv 1] [label] [dynamify]]]]"); //produces 0 inside the dynamic pointer, using the zero AST.
+	//compile_string("[run_function [compile [convert_to_AST [imv 1] [label] [dynamify]]]]"); //produces 0 inside the dynamic object, using the zero AST.
 	//future: implement vectors, then test them here
 
 	//debugtypecheck(T::does_not_return); stopped working after type changes to bake in tags into the pointer. this is useless anyway, in a unity build.
@@ -467,7 +468,6 @@ int main(int argc, char* argv[])
 			runs = std::stoull(next_token);
 		}
 		else if (strcmp(argv[x], "oldoutput") == 0) OLD_AST_OUTPUT = true;
-		//else if (strcmp(argv[x], "fuzznocompile") == 0) FUZZTESTER_NO_COMPILE = true;
 		else if (strcmp(argv[x], "noaddmodule") == 0) DONT_ADD_MODULE_TO_ORC = true;
 		else if (strcmp(argv[x], "deletemodule") == 0) DELETE_MODULE_IMMEDIATELY = true;
 		else if (strcmp(argv[x], "truefuzz") == 0)
@@ -477,8 +477,7 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "benchmark") == 0)
 		{
 			runs = 10000;
-			console.setstate(std::ios_base::failbit);
-			console.rdbuf(nullptr);
+			QUIET = true;
 			llvm_console = &llvm_null_stream;
 			BENCHMARK = true;
 		}
@@ -491,14 +490,13 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "gctight") == 0) GC_TIGHT = true;
 		else if (strcmp(argv[x], "quiet") == 0)
 		{
-			console.setstate(std::ios_base::failbit);
-			console.rdbuf(nullptr);
+			QUIET = true;
 			llvm_console = &llvm_null_stream;
 		}
 		else error(string("unrecognized flag ") + argv[x]);
 	}
 
-#ifndef NO_CONSOLE
+#ifndef NOCHECK
 	if (!BENCHMARK)
 	{
 		test_suite();

@@ -104,10 +104,10 @@ constexpr AST_info AST_descriptor[] =
 	a("pointer", special_return).add_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
 	a("concatenate", special_return, compile_without_type_check, compile_without_type_check), //squashes two objects together to make a big object
 	a("nvec", special_return, T::type), //makes a new vector, type of interior can't be chosen by a constant int, because pointers need further types.
-	{"dynamify", T::dynamic_object, compile_without_type_check}, //turns a regular pointer into a dynamic pointer. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
+	{"dynamify", T::dynamic_object, compile_without_type_check}, //turns a regular pointer into a dynamic object. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
 	a("compile", T::function_pointer, T::AST_pointer), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
 	{"run_function", T::dynamic_object, T::function_pointer},
-	//{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, compile_without_type_check}, //concatenate the interiors of two dynamic pointers
+	//{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, compile_without_type_check}, //concatenate the interiors of two dynamic objects
 	a("goto", special_return).add_pointer_fields(3), //first field is label, second field is success, third field is failure
 	a("label", T::null).add_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
 	a("convert_to_AST", T::AST_pointer, T::integer, compile_without_type_check), //returns 0 on failure, the null AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST. integer, then a vector/nothing.
@@ -115,7 +115,7 @@ constexpr AST_info AST_descriptor[] =
 	{"store", T::null, compile_without_type_check, compile_without_type_check}, //pointer, then value.
 	{"load_subobj", special_return, compile_without_type_check, T::integer}, //if AST, gives Nth subtype. if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields.
 	a("load_subobj_ref", T::null, compile_without_type_check, T::integer).add_pointer_fields(1), //creates a reference and places it in the last field, instead of returning it. this is necessary if the loading can fail. used for ASTs, and for vectors.
-	a("dyn_subobj", T::type, compile_without_type_check, T::integer).add_pointer_fields(Typen("pointer") + 1), //if the proper type is a pointer/vector, we return the "pointer to something"/"vector of something". returns the type obtained. can take in either a dynamic pointer, a pointer to something, or a vector of something.
+	a("dyn_subobj", T::type, compile_without_type_check, T::integer).add_pointer_fields(Typen("pointer") + 1), //if the proper type is a pointer/vector, we return the "pointer to something"/"vector of something". returns the type obtained. can take in either a dynamic object, a pointer to something, or a vector of something.
 	a("vector_push", T::null, compile_without_type_check, compile_without_type_check), //push an object.
 	a("vector_size", T::integer, compile_without_type_check),
 	{"typeof", T::type, compile_without_type_check}, //returns the type of an object. necessary to create new vectors.
@@ -129,7 +129,8 @@ constexpr AST_info AST_descriptor[] =
 	//load_vector_from_BB
 	//a("do_after", T::special_return, compile_without_type_check).make_pointer_fields(2),
 	//{"return", T::special_return, T::compile_without_type_check}, have to check that the type matches the actual return type. call all dtors. we can take T::does_not_return, but that just disables the return.
-	//{"snapshot", T::dynamic_pointer, T::dynamic pointer}, //makes a deep copy. ought to return size as well, since size is a way to cheat, by growing larger.
+	//{"snapshot", T::dynamic_pointer, T::dynamic object}, //makes a deep copy. ought to return size as well, since size is a way to cheat, by growing larger.
+	//{"optimize", T::AST_pointer, T::AST_pointer}, //optimizes an AST chain into a better AST chain that produces the same code.
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.
 	/*
 	{ "divss", 3 }, warning: integer division by -1 must be considered. (1, 31) / -1 is segfault.

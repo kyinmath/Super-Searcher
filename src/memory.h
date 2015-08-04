@@ -24,6 +24,4 @@ void start_GC();
 inline void correct_function_pointer(uint64_t*& memory) { if (memory != 0) memory += function_pointer_offset; }
 inline void correct_pointer(uint64_t*& memory) { if (memory != 0) memory += pointer_offset; }
 
-//marks any further objects found in a possibly-concatenated object.
-//does not create any new types. this lets it work for unserialization, where the unique type hash table isn't populated.
-void mark_target(uint64_t& memory, Tptr t); //note that this takes a reference instead of a pointer. this was to get rid of the horrible *(vector**) casts which I didn't understand.
+extern uint64_t* big_memory_pool;

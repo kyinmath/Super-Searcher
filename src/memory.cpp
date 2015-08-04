@@ -31,14 +31,21 @@ type_htable_t type_hash_table; //a hash table of all the unique types. don't tou
 
 bool found_living_object(uint64_t* memory, uint64_t size); //adds the object onto the list of living objects.
 
+//marks any further objects found in a possibly-concatenated object.
+//does not create any new types. this lets it work for unserialization, where the unique type hash table isn't populated.
+void mark_target(uint64_t& memory, Tptr t); //note that this takes a reference instead of a pointer. this was to get rid of the horrible *(vector**) casts which I didn't understand.
+
+
 void initialize_roots();
 void sweepy_sweep();
 
 bool UNSERIALIZATION_MODE;
+uint64_t GC_IS_RUNNING = false; //used to catch allocations while GC is running
 
 uint64_t* allocate(uint64_t size)
 {
 	check(size != 0, "allocating 0 elements means nothing");
+	check(!GC_IS_RUNNING, "no allocating while GCing");
 	uint64_t true_size = size;
 	auto k = free_memory.lower_bound(true_size);
 	if (k == free_memory.end())
@@ -132,11 +139,35 @@ void initialize_roots()
 
 	//add in the event-driven ASTs
 }
-
+void trace_objects();
 
 void start_GC()
 {
 	UNSERIALIZATION_MODE = false;
+	trace_objects();
+}
+
+
+void trace_objects()
+{
+	GC_IS_RUNNING = true;
+	if (SUPER_VERBOSE_GC)
+	{
+		print("listing all memory\n");
+		for (uint64_t x = 0; x < pool_size; ++x)
+		{
+			if (big_memory_pool[x] != initial_special_value && big_memory_pool[x] != collected_special_value)
+			{
+				print("writ ", &big_memory_pool[x]);
+				while (big_memory_pool[x] != initial_special_value && big_memory_pool[x] != collected_special_value && x < pool_size)
+				{
+					print(" ", big_memory_pool[x]);
+					++x;
+				}
+				print('\n');
+			}
+		}
+	}
 	if (VERBOSE_GC)
 	{
 		uint64_t total_memory_use = 0;
@@ -147,12 +178,12 @@ void start_GC()
 		}
 		print("total free before GC ", total_memory_use, '\n');
 	}
-	if (SUPER_VERBOSE_GC)
+	/*if (SUPER_VERBOSE_GC)
 	{
 		print("outputting all types in hash table\n");
 		for (auto& type : type_hash_table)
 			output_type(type);
-	}
+	}*/
 	sweep_function_pool_flags = new uint64_t[function_pool_size / 64]();
 	check(living_objects.empty(), "need to start GC with an empty tree");
 	type_hash_table.clear(); //clear the unique table, we'll rebuild it.
@@ -178,6 +209,7 @@ void start_GC()
 
 		for (auto& x : living_objects) print("living object after GC ", x.first, " size ", x.second, '\n');
 	}
+	GC_IS_RUNNING = false;
 
 }
 
@@ -214,7 +246,7 @@ bool found_function(function* func)
 }
 
 //steps: 1. you correct the pointer.
-//2. you call found_living_object/found_living function. this comes after 1, because dynamic pointers need to learn their type to learn their size, and found_living requires knowing the size.
+//2. you call found_living_object/found_living function. this comes after 1, because dynamic objects need to learn their type to learn their size, and found_living requires knowing the size.
 //3. you mark the targets in the section you just found, recursing. this comes after 2, to prevent infinite recursion.
 
 //memory is a reference to a single 1-size object.
@@ -287,7 +319,7 @@ void mark_target(uint64_t& memory, Tptr t)
 
 			uint64_t tag = the_AST->tag;
 			check(tag < ASTn("never reached"), "get_AST_type is a sandboxed function, use the user facing version instead");
-			found_living_object(int_pointer, get_full_size_of_AST(the_AST->tag));
+			if (found_living_object(int_pointer, get_full_size_of_AST(the_AST->tag))) break;
 
 			if (tag == ASTn("imv")) mark_target((uint64_t&)the_AST->fields[0], u::dynamic_object);
 			if (tag == ASTn("basicblock")) mark_target((uint64_t&)the_AST->fields[0], u::vector_of_ASTs);
@@ -299,15 +331,15 @@ void mark_target(uint64_t& memory, Tptr t)
 		if (memory != 0)
 		{
 			Tptr& the_type = (Tptr&)memory;
-			uniquefy_premade_type(the_type, true);
 			if (VERBOSE_GC) print("uniquefying in GC ", the_type, '\n');
 
 			if (Type_descriptor[the_type.ver()].pointer_fields != 0)
 			{
-				found_living_object(int_pointer, total_valid_fields(t) + 1);
+				if (found_living_object(int_pointer, total_valid_fields(the_type) + 1)) break;
 				for (Tptr& subtype : Type_pointer_range(the_type))
 					mark_target((uint64_t&)subtype, u::type);
 			}
+			uniquefy_premade_type(the_type, true); //we can only uniquefy after marking, not before, because the type hash table relies on subfields being unique. otherwise, it'll make a new copy.
 		}
 		break;
 	case Typen("function pointer"):

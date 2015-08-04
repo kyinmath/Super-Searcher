@@ -78,6 +78,7 @@ void serialize(uint64_t id)
 
 uint64_t pointer_offset; //when unserializing, the difference between the new and old pointers
 uint64_t function_pointer_offset;
+void trace_objects();
 
 void unserialize(uint64_t id)
 {
@@ -100,12 +101,12 @@ void unserialize(uint64_t id)
 	for (uint64_t x = 0; x < function_pool_size; ++x) id_file.read(reinterpret_cast<char*>(&function_pool[x].the_AST), sizeof(uint64_t));
 	id_file.close();
 
-	//this is first, because we need vector_of_ASTs to be uniqued before we can start doing GC work, or converting anything else. but, we also need the living_objects set to persist.
-	for (auto& x : type_roots)
+	//this is first, because we need vector_of_ASTs to be uniqued before we can start doing GC work, or converting anything else.
+	UNSERIALIZATION_MODE = true;
+	trace_objects();
+	for (int x = 0; x < function_pool_size; ++x)
 	{
-		mark_target((uint64_t&)x, u::type); //automatically uniquefies types.
+		if (function_pool[x].the_AST)
 	}
-	for (auto& x : event_roots) mark_target((uint64_t&)x, u::function_pointer);
-
 	//TODO: compile any nonzero ASTs
 }

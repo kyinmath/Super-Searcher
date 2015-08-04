@@ -61,7 +61,7 @@ template<size_t array_num> inline void cout_array(std::array<uint64_t, array_num
 }
 #include "dynamic.h"
 
-//return value is a dynamic pointer to the return value. it's just the object pointer, not the type.
+//return value is a dynamic object to the return value. it's just the object pointer, not the type.
 //on failure, we can't get the type. since this requires a branch, we should get the type here.
 inline dynobj* run_null_parameter_function(function* func)
 {

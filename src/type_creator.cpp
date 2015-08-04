@@ -10,7 +10,7 @@ Then, it checks type_hash_table if there is already a unique type that is the sa
 #include "type_creator.h" //this line must exist to find the hash function
 #include "cs11.h"
 
-bool UNIQUE_VERBOSE_DEBUG = true;
+bool UNIQUE_VERBOSE_DEBUG = false;
 
 //this wrapper type is used for the hash table. we want equality and hashing to occur on a Type, not a Tptr, since hashing on pointers is dumb. but we want the hash table to store pointers to types, so that references to them stay valid forever.
 
