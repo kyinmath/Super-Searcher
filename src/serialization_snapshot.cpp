@@ -105,7 +105,7 @@ void unserialize(uint64_t id)
 	{
 		mark_target((uint64_t&)x, u::type); //automatically uniquefies types.
 	}
-	for (auto& x : event_roots) mark_target((uint64_t&)x, );
+	for (auto& x : event_roots) mark_target((uint64_t&)x, u::function_pointer);
 
 	//TODO: compile any nonzero ASTs
 }
