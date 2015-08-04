@@ -4,6 +4,7 @@
 #include <string>
 #include "globalinfo.h"
 #include "function.h"
+#include "memory.h"
 
 //being vectors lets us write them directly into a file, since memory is contiguous.
 extern std::vector< function*> event_roots;
@@ -57,7 +58,6 @@ void serialize(uint64_t id)
 {
 	std::ofstream id_file(std::to_string(id), std::ios::binary);
 	check(id_file.is_open(), "stream opening failed");
-	uint64_t file_header_size = sizeof(file_header) / sizeof(uint64_t);
 	file_header header;
 
 	header.pool = big_memory_pool;
@@ -83,7 +83,6 @@ void unserialize(uint64_t id)
 {
 	std::ifstream id_file(std::to_string(id), std::ios::binary);
 	check(id_file.is_open() && id_file.good(), "stream opening failed");
-	uint64_t file_header_size = sizeof(file_header) / sizeof(uint64_t);
 	file_header header;
 	id_file.read(reinterpret_cast<char*>(&header), sizeof(header));
 
@@ -104,10 +103,9 @@ void unserialize(uint64_t id)
 	//this is first, because we need vector_of_ASTs to be uniqued before we can start doing GC work, or converting anything else. but, we also need the living_objects set to persist.
 	for (auto& x : type_roots)
 	{
-		mark_target((uint64_t&)x);
-		uniquefy_premade_type(x, true);
+		mark_target((uint64_t&)x, u::type); //automatically uniquefies types.
 	}
-	for (auto& x : event_roots) mark_target((uint64_t&)x);
+	for (auto& x : event_roots) mark_target((uint64_t&)x, );
 
 	//TODO: compile any nonzero ASTs
 }

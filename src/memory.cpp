@@ -156,33 +156,12 @@ void start_GC()
 	}
 	sweep_function_pool_flags = new uint64_t[function_pool_size / 64]();
 	check(living_objects.empty(), "need to start GC with an empty tree");
+	type_hash_table.clear(); //clear the unique table, we'll rebuild it.
 	initialize_roots();
-	/* //we're no longer using this.
-	while (!to_be_marked.empty())
-	{
-		auto k = to_be_marked.top();
-		to_be_marked.pop(); //this happens before marky_mark(), because marky_mark() might insert things on the top of the stack. then, those things are killed off by this pop().
-		//instead, after we grab a task, we take it off the stack.
-		if (VERBOSE_GC)
-		{
-			print("GC marking ", k.first, " ");
-			output_type(k.second);
-			print("the size of the marking stack before marking is ", to_be_marked.size(), '\n');
-		}
-		if (found_living_object(k.first, get_size(k.second))) continue;
-		marky_mark(k.first, k.second);
-	}*/
 	if (VERBOSE_GC)
 	{
 		for (auto& x : living_objects)
 			print("living object ", x.first, " size ", x.second, '\n');
-	}
-
-	//can't use range-based for loops, since the erasure invalidates the iterator completely.
-	for (auto it = type_hash_table.begin(); it != type_hash_table.end();)
-	{
-		if (living_objects.find((uint64_t*)it->val) == living_objects.end()) it = type_hash_table.erase(it);
-		else ++it;
 	}
 
 	sweepy_sweep();
@@ -258,8 +237,7 @@ void mark_target(uint64_t& memory, Tptr t)
 		print("marking single ", &memory, ' ');
 		output_type(t);
 	}
-	if (memory) print(""); //force a memory access
-	//check(&memory != nullptr, "passed 0 memory pointer to mark_single"); //UB for references.
+	if (memory) print(""); //force a memory access. if it's a 0 reference, it should segfault
 	check(t != 0, "passed 0 type pointer to mark_single");
 
 	//interpreting the memory as a pointer.
@@ -289,7 +267,10 @@ void mark_target(uint64_t& memory, Tptr t)
 	case Typen("integer"):
 		break;
 	case Typen("pointer"):
-		new_mark_element(int_pointer, t.field(0));
+		if (memory == 0) break;
+		if (found_living_object(int_pointer, get_size(t))) break;
+		mark_target(*int_pointer, t.field(0)); //this is better for debugging. we get a stack trace instead of flattening the stack.
+
 		break;
 	case Typen("dynamic object"):
 		if (memory != 0)
@@ -318,10 +299,10 @@ void mark_target(uint64_t& memory, Tptr t)
 
 			uint64_t tag = the_AST->tag;
 			check(tag < ASTn("never reached"), "get_AST_type is a sandboxed function, use the user facing version instead");
-			if (tag == ASTn("imv")) new_mark_element((uint64_t*&)the_AST->fields[0], u::dynamic_object);
-			if (tag == ASTn("basicblock")) new_mark_element((uint64_t*&)the_AST->fields[0], u::vector_of_ASTs);
-			uint64_t number_of_AST_pointers = AST_descriptor[tag].pointer_fields;
 			found_living_object(int_pointer, get_full_size_of_AST(the_AST->tag));
+
+			if (tag == ASTn("imv")) mark_target((uint64_t&)the_AST->fields[0], u::dynamic_object);
+			if (tag == ASTn("basicblock")) mark_target((uint64_t&)the_AST->fields[0], u::vector_of_ASTs);
 			for (uAST*& x : AST_range(the_AST))
 				mark_target((uint64_t&)x, u::AST_pointer);
 		}
@@ -330,7 +311,7 @@ void mark_target(uint64_t& memory, Tptr t)
 		if (memory != 0)
 		{
 			Tptr& the_type = (Tptr&)memory;
-			if (UNSERIALIZATION_MODE) uniquefy_premade_type(the_type, true);
+			uniquefy_premade_type(the_type, true);
 
 			if (Type_descriptor[the_type.ver()].pointer_fields != 0)
 			{

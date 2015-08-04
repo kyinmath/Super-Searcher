@@ -24,6 +24,7 @@ uint64_t generate_exponential_dist();
 extern KaleidoscopeJIT* c;
 
 //being vectors lets us write them directly into a file, since memory is contiguous.
+struct function;
 extern std::vector< function*> event_roots;
 extern std::vector< Tptr > type_roots;
 
