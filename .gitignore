@@ -197,3 +197,5 @@ toy
 *.ini
 *.sln
 /linuxheaders
+/virtual/admin
+/virtual/slave

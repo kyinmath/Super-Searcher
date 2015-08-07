@@ -32,8 +32,8 @@ type_htable_t type_hash_table; //a hash table of all the unique types. don't tou
 bool found_living_object(uint64_t* memory, uint64_t size); //adds the object onto the list of living objects.
 
 //marks any further objects found in a possibly-concatenated object.
-//does not create any new types. this lets it work for unserialization, where the unique type hash table isn't populated.
-void mark_target(uint64_t& memory, Tptr t); //note that this takes a reference instead of a pointer. this was to get rid of the horrible *(vector**) casts which I didn't understand.
+//prohibited from creating any new types. this lets it work for unserialization, where the unique type hash table isn't populated.
+void mark_target(uint64_t& memory, Tptr t); //note that this takes a reference instead of a pointer. this was to get rid of the horrible two-star *(vector**) casts
 
 
 void initialize_roots();

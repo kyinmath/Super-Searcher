@@ -96,16 +96,18 @@ constexpr AST_info AST_descriptor[] =
 	{"random", T::integer},
 	a("if", special_return, T::integer).add_pointer_fields(2), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
 	{"lessu", T::integer, T::integer, T::integer}, //less than comparison
+	{"lesss", T::integer, T::integer, T::integer}, //less than signed comparison
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
 	{"subtract", T::integer, T::integer, T::integer},
 	{"multiply", T::integer, T::integer, T::integer},
+	{"ushr", T::integer, T::integer, T::integer},
 	{"udiv", T::integer, T::integer, T::integer},
 	{"urem", T::integer, T::integer, T::integer},
 	a("pointer", special_return).add_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
 	a("concatenate", special_return, compile_without_type_check, compile_without_type_check), //squashes two objects together to make a big object
 	a("nvec", special_return, T::type), //makes a new vector, type of interior can't be chosen by a constant int, because pointers need further types.
 	{"dynamify", T::dynamic_object, compile_without_type_check}, //turns a regular pointer into a dynamic object. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
-	a("compile", T::function_pointer, T::AST_pointer), //compiles an AST, returning a dynamic AST. the two other fields are branches to be run on success or failure. these two fields see the error code, then a dynamic object, when loading the compilation AST. thus, they can't be created in a single pass, because pointers point in both directions.
+	a("compile", T::function_pointer, T::AST_pointer), //compiles an AST, returning a dynamic AST. for now, we don't return an error code.
 	{"run_function", T::dynamic_object, T::function_pointer},
 	//{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, compile_without_type_check}, //concatenate the interiors of two dynamic objects
 	a("goto", special_return).add_pointer_fields(3), //first field is label, second field is success, third field is failure
@@ -135,7 +137,6 @@ constexpr AST_info AST_descriptor[] =
 	/*
 	{ "divss", 3 }, warning: integer division by -1 must be considered. (1, 31) / -1 is segfault.
 	{ "lteq", 2 },
-	{ "less signed", 2 },
 	{ "lteq signed", 2 },
 	//{ "equal", 2 }, this is useless; subtraction does it.
 	{ "logical not", 1 },

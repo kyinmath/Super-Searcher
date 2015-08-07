@@ -1,5 +1,6 @@
 we want some things:
 1. move constructors. dynamic objects should not be copied.
+	this is only useful if anything has a constructor/copy constructor. if everything is a straight memcopy, it's not useful.
 thus, we have a function which creates the object in the first branch, and then runs the second branch knowing the existence of the first branch.
 this must run immediately after the left is done.
 	if it waits for the overall object to fall from the stack, then if it's placed on the stack, it will take forever. but in that case, you might as well not use do_after?

@@ -2,16 +2,12 @@ ok, now we must figure out how to write into dynamic pointers.
 	the thing to note is that the writing check is mainly done AFTER all the work of creating the object to be written.
 in addition, I think by the time you're writing into something, you already basically know what the underlying object is.
 
-how is writing into pointers going to work?
-
 idea: dyn_subobj doesn't load a pointer precisely, but it loads a reference. like stack_degree == 2. so you can write into it after all.
 	the problem is that this is equivalent to getting subobject pointers. and that's not allowed to happen.
 	but...it's cheap. and it's what we want to have happen. so, are we going to resurrect lifetime values?
 
 ok, so my new idea is: we operate things like references.
-	1. no getting permanent references to them. only [store] is allowed to get super-temporary references to them.
-then, what happens if the object itself is a pointer? you might be loading it as either a pointer or a reference...
-	unless we simply disallow this from happening, or something?
+	1. no getting permanent references to them. only [store] is allowed to use temporary references to them.
 
 the barrier here is that we can't specify arbitrary destinations to be stored into. with references, the destinations are fixed for each store location.
 	idea: if it already exists in the objects map, it's a reference.

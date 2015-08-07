@@ -54,6 +54,12 @@
     <ClInclude Include="src\vector.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\comms.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\fitter.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\cs11.cpp">
@@ -69,6 +75,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\types.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\serialization_snapshot.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\comms.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

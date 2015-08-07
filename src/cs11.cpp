@@ -35,21 +35,16 @@ bool VERBOSE_DEBUG = false;
 bool DONT_ADD_MODULE_TO_ORC = false;
 bool DELETE_MODULE_IMMEDIATELY = false;
 
-basic_onullstream<char> null_stream;
-std::ostream& console = std::cerr;
 llvm::raw_ostream* llvm_console = &llvm::outs();
 KaleidoscopeJIT* c;
 llvm::LLVMContext* context;
-llvm::IRBuilder<>* builder;
+llvm::IRBuilder<>* IRB;
 uint64_t finiteness;
 llvm::TargetMachine* TM;
 
-#include <chrono>
 #include <random>
-uint64_t seed = std::chrono::system_clock::now().time_since_epoch().count(); //one seed for everything is a bad idea
-std::mt19937_64 mersenne(seed);
-
-
+std::random_device seeder; //this better be nondeterministic. on Windows, sometimes it isn't
+std::mt19937_64 mersenne(seeder() + ((uint64_t)seeder() << 32));
 
 #include <llvm/Transforms/Utils/Cloning.h>
 //return value is the error code, which is 0 if successful
@@ -90,22 +85,22 @@ uint64_t compiler_object::compile_AST(uAST* target)
 	if (size_of_return)
 	{
 		if (size_of_return == 1)
-			builder->CreateRet(return_object.IR);
+			IRB->CreateRet(return_object.IR);
 		else if (return_object.IR->getType()->isArrayTy())
-			builder->CreateRet(return_object.IR);
+			IRB->CreateRet(return_object.IR);
 		else //since we permit {i64, i64}, we have to canonicalize the type here.
 		{
 			check(size_of_return < ~0u, "load object not equipped to deal with large objects, because CreateInsertValue has a small index");
 			llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(size_of_return));
 			for (uint64_t a = 0; a < size_of_return; ++a)
 			{
-				llvm::Value* integer_transfer = builder->CreateExtractValue(return_object.IR, {(unsigned)a});
-				undef_value = builder->CreateInsertValue(undef_value, integer_transfer, {(unsigned)a});
+				llvm::Value* integer_transfer = IRB->CreateExtractValue(return_object.IR, {(unsigned)a});
+				undef_value = IRB->CreateInsertValue(undef_value, integer_transfer, {(unsigned)a});
 			};
-			builder->CreateRet(undef_value);
+			IRB->CreateRet(undef_value);
 		}
 	}
-	else builder->CreateRetVoid();
+	else IRB->CreateRetVoid();
 #ifndef NO_CONSOLE
 	if (OUTPUT_MODULE)
 		M->print(*llvm_console, nullptr);
@@ -253,7 +248,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		else if (VERBOSE_DEBUG) print("finish() in generate_IR, null value\n");
 		if (VERBOSE_DEBUG)
 		{
-			builder->GetInsertBlock()->getParent()->print(*llvm_console, nullptr);
+			IRB->GetInsertBlock()->getParent()->print(*llvm_console, nullptr);
 			print("generate_IR single AST ", target, " ", AST_descriptor[target->tag].name, " vvvvvvvvv\n");
 		}
 
@@ -371,7 +366,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	/*
 	//Note: this is a general purpose writer. it's good for things!
 	llvm::Value* printer = llvm_function(print_uint64_t, llvm_void(), llvm_i64());
-	builder->CreateCall(printer, desired_type_to_store);
+	IRB->CreateCall(printer, desired_type_to_store);
 	*/
 
 	//we generate code for the AST, depending on its tag.
@@ -391,33 +386,33 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			return final;
 		}
 	case ASTn("zero"): finish(llvm_integer(0));
-	case ASTn("increment"): finish(builder->CreateAdd(field_results[0].IR, llvm_integer(1), s("increment")));
-	case ASTn("decrement"): finish(builder->CreateSub(field_results[0].IR, llvm_integer(1)));
-	case ASTn("add"): finish(builder->CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
-	case ASTn("subtract"): finish(builder->CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
-	case ASTn("multiply"): finish(builder->CreateMul(field_results[0].IR, field_results[1].IR, s("multiply")));
-	case ASTn("random"): finish(builder->CreateCall(llvm_int_only_func(generate_random), {}, s("random")));
-	case ASTn("lessu"): finish(builder->CreateZExt(builder->CreateICmpULT(field_results[0].IR, field_results[1].IR), llvm_i64()));
-	case ASTn("udiv"):
-		{
-			llvm::Value* comparison = builder->CreateICmpNE(field_results[1].IR, llvm_integer(0), s("division by zero check"));
-			llvm::Value* result = create_if_value(
-				comparison,
-				[&](){ return builder->CreateUDiv(field_results[0].IR, field_results[1].IR); },
-				[](){ return llvm_integer(0); }
-			);
-			finish(result);
-		}
+	case ASTn("increment"): finish(IRB->CreateAdd(field_results[0].IR, llvm_integer(1), s("increment")));
+	case ASTn("decrement"): finish(IRB->CreateSub(field_results[0].IR, llvm_integer(1)));
+	case ASTn("add"): finish(IRB->CreateAdd(field_results[0].IR, field_results[1].IR, s("add")));
+	case ASTn("subtract"): finish(IRB->CreateSub(field_results[0].IR, field_results[1].IR, s("subtract")));
+	case ASTn("multiply"): finish(IRB->CreateMul(field_results[0].IR, field_results[1].IR, s("multiply")));
+	case ASTn("random"): finish(IRB->CreateCall(llvm_int_only_func(generate_random), {}, s("random")));
+	case ASTn("lessu"): finish(IRB->CreateZExt(IRB->CreateICmpULT(field_results[0].IR, field_results[1].IR), llvm_i64()));
+	case ASTn("lesss"): finish(IRB->CreateZExt(IRB->CreateICmpSLT(field_results[0].IR, field_results[1].IR), llvm_i64()));
+	case ASTn("udiv"): //sdiv is more complicated, because we'd have to test for -1 division as well.
+		finish(create_if_value(
+			IRB->CreateICmpNE(field_results[1].IR, llvm_integer(0), s("div0 check")),
+			[&](){ return IRB->CreateUDiv(field_results[0].IR, field_results[1].IR); },
+			[](){ return llvm_integer(0); }
+		));
 	case ASTn("urem"): //default value is the value itself instead of zero. this is to preserve (x / k) * k + x % k = x, and to preserve mod agreeing with equivalence classes on Z.
-		{
-			llvm::Value* comparison = builder->CreateICmpNE(field_results[1].IR, llvm_integer(0), s("division by zero check"));
-			llvm::Value* result = create_if_value(
-				comparison,
-				[&](){ return builder->CreateURem(field_results[0].IR, field_results[1].IR); },
-				[&](){ return field_results[0].IR; }
-			);
-			finish(result);
-		}
+		//when modulo 0, such as with the number of pointer fields, sometimes you want 0 instead. well, in that case you want 0 anyway.
+		finish(create_if_value(
+			IRB->CreateICmpNE(field_results[1].IR, llvm_integer(0), s("div0 check")),
+			[&](){ return IRB->CreateURem(field_results[0].IR, field_results[1].IR); },
+			[&](){ return field_results[0].IR; }
+		));
+	case ASTn("ushr"): //unsigned shift right
+		finish(create_if_value(
+			IRB->CreateICmpULT(field_results[1].IR, llvm_integer(64), s("lt64 shift")),
+			[&](){ return IRB->CreateLShr(field_results[0].IR, field_results[1].IR); },
+			[&](){ return llvm_integer(0); }
+		));
 	case ASTn("if"): //it's vitally important that this can check pointers, so that we can tell if they're nullptr.
 		{
 			//condition object is automatically pushed onto the stack.
@@ -427,8 +422,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			uint64_t if_stack_position = object_stack.size();
 
 			//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
-			llvm::Value* comparison = builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("if() condition"));
-			llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
+			llvm::Value* comparison = IRB->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("if() condition"));
+			llvm::Function *TheFunction = IRB->GetInsertBlock()->getParent();
 
 			// it's necessary to insert blocks into the function so that we can avoid memleak on early return
 			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
@@ -436,16 +431,16 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			llvm::BasicBlock* caseBB[2];
 			Return_Info case_IR[2];
 			for (uint64_t x : {0, 1}) caseBB[x] = llvm::BasicBlock::Create(*context, s("ifcase"), TheFunction);
-			builder->CreateCondBr(comparison, caseBB[0], caseBB[1]);
+			IRB->CreateCondBr(comparison, caseBB[0], caseBB[1]);
 			
 			for (uint64_t x : {0, 1})
 			{
-				builder->SetInsertPoint(caseBB[x]);
+				IRB->SetInsertPoint(caseBB[x]);
 				case_IR[x] = generate_IR(target->fields[x + 1]);
 				if (case_IR[x].error_code) return case_IR[x];
 				clear_stack(if_stack_position);
-				builder->CreateBr(MergeBB);
-				caseBB[x] = builder->GetInsertBlock();
+				IRB->CreateBr(MergeBB);
+				caseBB[x] = IRB->GetInsertBlock();
 			}
 
 			Tptr result_type = case_IR[0].type; //first, we assume then_IR is the main type.
@@ -457,7 +452,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					return_code(type_mismatch, 2);
 			}
 
-			builder->SetInsertPoint(MergeBB);
+			IRB->SetInsertPoint(MergeBB);
 			llvm::Value* endPN = llvm_create_phi({case_IR[0].IR, case_IR[1].IR}, {caseBB[0], caseBB[1]});
 			finish_special(endPN, result_type);
 
@@ -482,7 +477,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			//problem with this is that create_if_value() doesn't handle type checking, and we must do type checking before we actually create the phi value. to do this, we'd have to pass in a lambda returning bool, if something has gone wrong
 
 			llvm::Value* comparison
-			llvm::Value* comparison = builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("if() condition"));
+			llvm::Value* comparison = IRB->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("if() condition"));
 
 			Return_Info case_IR[2];
 
@@ -518,7 +513,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			return_code(type_mismatch, 2);
 			}
 
-			builder->SetInsertPoint(MergeBB);
+			IRB->SetInsertPoint(MergeBB);
 			llvm::Value* endPN = llvm_create_phi({case_IR[0].IR, case_IR[1].IR}, {case_IR[0].type, case_IR[1].type}, {caseBB[0], caseBB[1]});
 			finish_special(endPN, result_type);
 			*/
@@ -533,13 +528,13 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (type.ver() == 0) return_code(vector_cant_take_large_objects, 0);
 			else if (type.ver() > Typen("pointer")) return_code(type_mismatch, 0);
 			else if (get_size(type) != 1) return_code(type_mismatch, 0);
-			finish_special(builder->CreateCall(llvm_int_only_func(new_vector), {}), new_unique_type(Typen("vector"), type));
+			finish_special(IRB->CreateCall(llvm_int_only_func(new_vector), {}), new_unique_type(Typen("vector"), type));
 		}
 		return_code(requires_constant, 1);
 
 	case ASTn("label"):
 		{
-			llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
+			llvm::Function *TheFunction = IRB->GetInsertBlock()->getParent();
 
 			// Create blocks for the then and else cases. Insert the block into the function, or else it'll leak when we return_code
 			llvm::BasicBlock *label = llvm::BasicBlock::Create(*context, "", TheFunction);
@@ -552,8 +547,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			//this expires the label, so that goto knows that the label is behind. with finiteness, this means the label isn't guaranteed.
 			label_insertion.first->second.is_forward = false;
 
-			builder->CreateBr(label);
-			builder->SetInsertPoint(label);
+			IRB->CreateBr(label);
+			IRB->SetInsertPoint(label);
 			finish(nullptr);
 		}
 
@@ -567,40 +562,40 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (info.is_forward)
 			{
 				emit_dtors(info.stack_size);
-				builder->CreateBr(labelsearch->second.block);
-				//builder->ClearInsertionPoint() is bugged. try [label [goto a]]a. note that the label has two predecessors, one which is a null operand
+				IRB->CreateBr(labelsearch->second.block);
+				//IRB->ClearInsertionPoint() is bugged. try [label [goto a]]a. note that the label has two predecessors, one which is a null operand
 				//so when you emit the branch for the label, even though the insertion point is clear, it still adds a predecessor to the block.
 				//instead, we have to emit a junk block
 
-				llvm::BasicBlock *JunkBB = llvm::BasicBlock::Create(*context, s("never reached"), builder->GetInsertBlock()->getParent());
-				builder->SetInsertPoint(JunkBB);
+				llvm::BasicBlock *JunkBB = llvm::BasicBlock::Create(*context, s("never reached"), IRB->GetInsertBlock()->getParent());
+				IRB->SetInsertPoint(JunkBB);
 
 				finish_special(nullptr, u::does_not_return);
 			}
 
 			//check finiteness. it's not an AllocaInst apparently (llvm asserts), because it wasn't allocated that way.
-			llvm::Value* finiteness_pointer = builder->CreateIntToPtr(llvm_integer((uint64_t)&finiteness), llvm_i64()->getPointerTo());
-			llvm::Value* current_finiteness = builder->CreateLoad(finiteness_pointer);
-			llvm::Value* comparison = builder->CreateICmpNE(current_finiteness, llvm_integer(0), s("finiteness comparison"));
+			llvm::Value* finiteness_pointer = IRB->CreateIntToPtr(llvm_integer((uint64_t)&finiteness), llvm_i64()->getPointerTo());
+			llvm::Value* current_finiteness = IRB->CreateLoad(finiteness_pointer);
+			llvm::Value* comparison = IRB->CreateICmpNE(current_finiteness, llvm_integer(0), s("finiteness comparison"));
 
 
-			llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
+			llvm::Function *TheFunction = IRB->GetInsertBlock()->getParent();
 			llvm::BasicBlock *SuccessBB = llvm::BasicBlock::Create(*context, s("finiteness success"), TheFunction);
 			llvm::BasicBlock *FailureBB = llvm::BasicBlock::Create(*context, s("finiteness failure"), TheFunction);
-			builder->CreateCondBr(comparison, SuccessBB, FailureBB);
+			IRB->CreateCondBr(comparison, SuccessBB, FailureBB);
 
-			builder->SetInsertPoint(SuccessBB);
+			IRB->SetInsertPoint(SuccessBB);
 
 			//decrease finiteness. this comes before emission of the success branch.
-			llvm::Value* finiteness_minus_one = builder->CreateSub(current_finiteness, llvm_integer(1));
-			builder->CreateStore(finiteness_minus_one, finiteness_pointer);
+			llvm::Value* finiteness_minus_one = IRB->CreateSub(current_finiteness, llvm_integer(1));
+			IRB->CreateStore(finiteness_minus_one, finiteness_pointer);
 
 			Return_Info Success_IR = generate_IR(target->fields[1]);
 			if (Success_IR.error_code) return Success_IR;
 
 			emit_dtors(info.stack_size);
-			builder->CreateBr(labelsearch->second.block);
-			builder->SetInsertPoint(FailureBB);
+			IRB->CreateBr(labelsearch->second.block);
+			IRB->SetInsertPoint(FailureBB);
 
 			Return_Info Failure_IR = generate_IR(target->fields[2]);
 			finish_passthrough(Failure_IR); //whether it's a failure or not.
@@ -613,7 +608,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (found_AST->second.hidden_reference == true) return_code(pointer_to_reference, 0);
 			Tptr new_pointer_type = new_unique_type(Typen("pointer"), found_AST->second.type);
 
-			llvm::Value* final_result = builder->CreatePtrToInt(found_AST->second.place->allocation, llvm_i64(), s("flattening pointer"));
+			llvm::Value* final_result = IRB->CreatePtrToInt(found_AST->second.place->allocation, llvm_i64(), s("flattening pointer"));
 			objects.find(target->fields[0])->second.place->turn_full();
 			finish_special(final_result, new_pointer_type);
 		}
@@ -653,68 +648,68 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			llvm::Value* offset = field_results[1].IR;
 			if (type_check(RVO, field_results[0].type, u::dynamic_object) == type_check_result::perfect_fit)
 			{
-				llvm::Value* overall_dynamic_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
+				llvm::Value* overall_dynamic_object = IRB->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 
-				auto comparison = builder->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("special case 0 dynamic object"));
+				auto comparison = IRB->CreateICmpNE(field_results[0].IR, llvm_integer(0), s("special case 0 dynamic object"));
 				//this block handles the case where the base of the dynamic object is 0.
 				llvm::Value* overall_type = create_if_value(
 					comparison,
-					[&](){ return builder->CreateLoad(overall_dynamic_object, s("type of overall dynamic")); },
+					[&](){ return IRB->CreateLoad(overall_dynamic_object, s("type of overall dynamic")); },
 					[](){ return llvm_integer(0); }
 				);
 
-				llvm::Value* offset_from_pointer = builder->CreateAdd(offset, llvm_integer(1)); //skip over the type.
-				correct_pointer = builder->CreateGEP(overall_dynamic_object, offset_from_pointer); //might not be inbounds.
+				llvm::Value* offset_from_pointer = IRB->CreateAdd(offset, llvm_integer(1)); //skip over the type.
+				correct_pointer = IRB->CreateGEP(overall_dynamic_object, offset_from_pointer); //might not be inbounds.
 
 				auto dynamic_func = llvm_function(dynamic_subtype, double_int(), llvm_i64(), llvm_i64());
-				auto type_data = builder->CreateCall(dynamic_func, {overall_type, offset}, s("dynamic sub"));
-				single_type = builder->CreateExtractValue(type_data, {0}, s("type of subdynamic"));
-				switch_type = builder->CreateExtractValue(type_data, {1}, s("switch type"));
+				auto type_data = IRB->CreateCall(dynamic_func, {overall_type, offset}, s("dynamic sub"));
+				single_type = IRB->CreateExtractValue(type_data, {0}, s("type of subdynamic"));
+				switch_type = IRB->CreateExtractValue(type_data, {1}, s("switch type"));
 			}
 			else
 			{
 				if (field_results[0].hidden_subtype == nullptr) return_code(lost_hidden_subtype, 0);
 
-				llvm::Value* overall_object = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
+				llvm::Value* overall_object = IRB->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 
 				if (field_results[0].type == u::pointer_to_something)
 				{
 					auto dynamic_func = llvm_function(dynamic_subtype, double_int(), llvm_i64(), llvm_i64());
-					auto type_data = builder->CreateCall(dynamic_func, {field_results[0].hidden_subtype, offset}, s("dynamic sub"));
-					single_type = builder->CreateExtractValue(type_data, {0}, s("type of subdynamic"));
-					switch_type = builder->CreateExtractValue(type_data, {1}, s("switch type"));
+					auto type_data = IRB->CreateCall(dynamic_func, {field_results[0].hidden_subtype, offset}, s("dynamic sub"));
+					single_type = IRB->CreateExtractValue(type_data, {0}, s("type of subdynamic"));
+					switch_type = IRB->CreateExtractValue(type_data, {1}, s("switch type"));
 
-					correct_pointer = builder->CreateGEP(overall_object, offset); //might not be inbounds.
+					correct_pointer = IRB->CreateGEP(overall_object, offset); //might not be inbounds.
 
 				}
 				else if (field_results[0].type == u::vector_of_something)
 				{
 					single_type = field_results[0].hidden_subtype;
-					switch_type = builder->CreateCall(llvm_int_only_func(type_tag), field_results[0].hidden_subtype);
+					switch_type = IRB->CreateCall(llvm_int_only_func(type_tag), field_results[0].hidden_subtype);
 
-					llvm::Value* offset_from_pointer = builder->CreateAdd(offset, llvm_integer(vector_header_size)); //skip over the vector.
-					correct_pointer = builder->CreateGEP(overall_object, offset_from_pointer);
+					llvm::Value* offset_from_pointer = IRB->CreateAdd(offset, llvm_integer(vector_header_size)); //skip over the vector.
+					correct_pointer = IRB->CreateGEP(overall_object, offset_from_pointer);
 				}
 				else return_code(type_mismatch, 0);
 			}
 
 			uint64_t starting_stack_position = object_stack.size();
-			llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
+			llvm::Function *TheFunction = IRB->GetInsertBlock()->getParent();
 
 			//0 case is the default. llvm switch statements require a default.
 			llvm::BasicBlock *failed_to_get = llvm::BasicBlock::Create(*context, "", TheFunction);
 
-			auto switch_on_type = builder->CreateSwitch(switch_type, failed_to_get, Typen("does not return") - 1, 0); //dependency on type
+			auto switch_on_type = IRB->CreateSwitch(switch_type, failed_to_get, Typen("does not return") - 1, 0); //dependency on type
 			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
 			for (uint64_t x = 0; x <= Typen("pointer"); ++x) //dependency on type
 			{
 				if (x != 0)
 				{
 					llvm::BasicBlock *caseBB = llvm::BasicBlock::Create(*context, "", TheFunction);
-					builder->SetInsertPoint(caseBB);
+					IRB->SetInsertPoint(caseBB);
 					switch_on_type->addCase(llvm_integer(x), caseBB);
 				}
-				else builder->SetInsertPoint(failed_to_get);
+				else IRB->SetInsertPoint(failed_to_get);
 				if (x != 0) //if it's 0, don't put a reference on the stack, because the type is empty.
 				{
 					Tptr loaded_object_type = 0;
@@ -738,10 +733,10 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				if (case_IR.error_code) return case_IR;
 
 				clear_stack(starting_stack_position);
-				builder->CreateBr(MergeBB);
+				IRB->CreateBr(MergeBB);
 			}
 
-			builder->SetInsertPoint(MergeBB);
+			IRB->SetInsertPoint(MergeBB);
 			finish(single_type);
 		}
 
@@ -755,12 +750,12 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			case Typen("vector"):
 				{
 					type_of_object = field_results[0].type.field(0);
-					reference_p = builder->CreateCall(llvm_function(reference_at, llvm_i64()->getPointerTo(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
+					reference_p = IRB->CreateCall(llvm_function(reference_at, llvm_i64()->getPointerTo(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
 				}
 			case Typen("AST pointer"):
 				{
 					type_of_object = u::AST_pointer;
-					reference_p = builder->CreateCall(llvm_function(AST_subfield, llvm_i64()->getPointerTo(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
+					reference_p = IRB->CreateCall(llvm_function(AST_subfield, llvm_i64()->getPointerTo(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
 				}
 			default:
 				return_code(type_mismatch, 0);
@@ -777,8 +772,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			uint64_t starting_stack_position = object_stack.size();
 			new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(reference_p), type_of_object, true));
 
-			auto reference_integer = builder->CreatePtrToInt(reference_p, llvm_i64());
-			llvm::Value* comparison = builder->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));
+			auto reference_integer = IRB->CreatePtrToInt(reference_p, llvm_i64());
+			llvm::Value* comparison = IRB->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));
 			create_if_value(comparison, run_field_2, [](){ return nullptr; });
 			if (case_IR.error_code) return case_IR;
 			clear_stack(starting_stack_position);
@@ -792,14 +787,14 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (field_results[0].type.ver() != Typen("vector")) return_code(type_mismatch, 0);
 			if (type_check(RVO, field_results[1].type, field_results[0].type.field(0)) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
 			llvm::Value* pusher = llvm_function(pushback, llvm_void(), llvm_i64()->getPointerTo(), llvm_i64());
-			builder->CreateCall(pusher, {field_results[0].place->allocation, field_results[1].IR});
+			IRB->CreateCall(pusher, {field_results[0].place->allocation, field_results[1].IR});
 			finish(0);
 		}
-	case ASTn("vector_size"):
+	case ASTn("vector_size"): //in the future, this should handle dynamic pointers too, and concatenates
 		{
 			if (field_results[0].type.ver() != Typen("vector")) return_code(type_mismatch, 0);
 			llvm::Value* pusher = llvm_int_only_func(vector_size);
-			finish(builder->CreateCall(pusher, field_results[0].IR));
+			finish(IRB->CreateCall(pusher, field_results[0].IR));
 		}
 	case ASTn("dynamify"):
 		{
@@ -807,48 +802,19 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				finish(llvm_integer(0));
 
 			llvm::Value* dynamic_allocator = llvm_function(new_dynamic_obj, llvm_i64()->getPointerTo(), llvm_i64());
-			llvm::Value* dynamic_object = builder->CreateCall(dynamic_allocator, llvm_integer(field_results[0].type), s("dyn_allocate_memory"));
+			llvm::Value* dynamic_object = IRB->CreateCall(dynamic_allocator, llvm_integer(field_results[0].type), s("dyn_allocate_memory"));
 
 			//store the returned type and value into the acquired address
-			llvm::Value* dynamic_actual_object_address = builder->CreateGEP(dynamic_object, llvm_integer(1));
+			llvm::Value* dynamic_actual_object_address = IRB->CreateGEP(dynamic_object, llvm_integer(1));
 			write_into_place(field_results[0].IR, dynamic_actual_object_address);
 
-			llvm::Value* dynamic_address = builder->CreatePtrToInt(dynamic_object, llvm_i64());
+			llvm::Value* dynamic_address = IRB->CreatePtrToInt(dynamic_object, llvm_i64());
 
 			finish(dynamic_address);
 		}
-	/*case ASTn("dynamic_conc"):
-		{
-			llvm::Value* type;
-			llvm::Value* pointer;
-			type = builder->CreateExtractValue(field_results[0].IR, {0}, s("type of dynamic"));
-			pointer = builder->CreateExtractValue(field_results[0].IR, {1}, s("object of dynamic"));
-
-			//this is a very fragile transformation, which is necessary because array<uint64_t, 2> becomes {i64, i64}
-			//if ever the optimization changes, we might be in trouble.
-			llvm::Value* dynamic_conc_function = llvm_function(concatenate_dynamic, double_int(), llvm_i64(), llvm_i64(), llvm_i64());
-
-			llvm::Value* static_type = llvm_integer((uint64_t)field_results[1].type);
-
-			std::vector<llvm::Value*> arguments{type, pointer, static_type};
-			llvm::CallInst* result_of_conc = builder->CreateCall(dynamic_conc_function, arguments, s("dynamic concatenate"));
-			//result_of_conc->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::ReadNone);
-			result_of_conc->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
-
-			llvm::Value* integer_pointer_to_object = builder->CreateExtractValue(result_of_conc, {1}, s("pointer to object"));
-			llvm::Value* pointer_to_object = builder->CreateIntToPtr(integer_pointer_to_object, llvm_i64()->getPointerTo());
-			write_into_place(field_results[1].IR, pointer_to_object);
-			finish(result_of_conc);
-		}*/
 	case ASTn("compile"):
 		{
-			llvm::Value* compile_function = llvm_function(compile_returning_legitimate_object, llvm_void(), llvm_i64()->getPointerTo(), llvm_i64());
-
-			llvm::AllocaInst* return_holder = create_actual_alloca(3);
-			llvm::Value* forcing_return_type = builder->CreatePointerCast(return_holder, llvm_i64()->getPointerTo(), s("forcing return type"));
-			builder->CreateCall(compile_function, {forcing_return_type, field_results[0].IR}); //, s("compile"). void type means no name allowed
-			auto return_object = builder->CreateLoad(return_holder);
-			finish(return_object);
+			finish(IRB->CreateCall(llvm_int_only_func(compile_returning_just_function), field_results[0].IR, s("compile")));
 		}
 	case ASTn("convert_to_AST"):
 		{
@@ -856,7 +822,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (field_results[1].type == T::null)
 			{
 				llvm::Value* converter = llvm_int_only_func(no_vector_to_AST);
-				llvm::Value* AST_result = builder->CreateCall(converter, field_results[0].IR, s("converter"));
+				llvm::Value* AST_result = IRB->CreateCall(converter, field_results[0].IR, s("converter"));
 				finish(AST_result);
 			}
 
@@ -866,14 +832,14 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 			llvm::Value* converter = llvm_int_only_func(vector_to_AST);
 			std::vector<llvm::Value*> arguments{field_results[0].IR, hopeful_vector};
-			llvm::Value* AST_result = builder->CreateCall(converter, arguments, s("converter"));
+			llvm::Value* AST_result = IRB->CreateCall(converter, arguments, s("converter"));
 
 			finish(AST_result);
 		}
 	case ASTn("imv_AST"):
 		{
 			llvm::Value* converter = llvm_int_only_func(new_imv_AST);
-			finish(builder->CreateCall(converter, field_results[0].IR, s("new imv")));
+			finish(IRB->CreateCall(converter, field_results[0].IR, s("new imv")));
 		}
 	case ASTn("load_tag"):
 		{
@@ -881,15 +847,15 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (type_of_pointer == 0) return_code(type_mismatch, 0);
 			switch (type_of_pointer.ver())
 			{
-			case Typen("type pointer"): finish(builder->CreateCall(llvm_int_only_func(type_tag), field_results[0].IR));
-			case Typen("AST pointer"): finish(builder->CreateCall(llvm_int_only_func(AST_tag), field_results[0].IR));
+			case Typen("type pointer"): finish(IRB->CreateCall(llvm_int_only_func(type_tag), field_results[0].IR));
+			case Typen("AST pointer"): finish(IRB->CreateCall(llvm_int_only_func(AST_tag), field_results[0].IR));
 			default: return_code(type_mismatch, 0);
 			}
 		}
 	case ASTn("load_imv_from_AST"):
 		{
 			auto loader = llvm_function(load_imv_from_AST, llvm_i64()->getPointerTo(), llvm_i64()); //todo: we should load a reference.
-			llvm::Value* reference_to_imv = builder->CreateCall(loader, field_results[0].IR);
+			llvm::Value* reference_to_imv = IRB->CreateCall(loader, field_results[0].IR);
 			
 			Return_Info case_IR;
 			IRemitter run_field = [&]() -> llvm::Value*
@@ -901,14 +867,14 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			uint64_t starting_stack_position = object_stack.size();
 			new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(reference_to_imv), Typen("dynamic object"), true));
 
-			auto reference_integer = builder->CreatePtrToInt(reference_to_imv, llvm_i64());
-			llvm::Value* comparison = builder->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));
+			auto reference_integer = IRB->CreatePtrToInt(reference_to_imv, llvm_i64());
+			llvm::Value* comparison = IRB->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));
 			create_if_value(comparison, run_field, [](){ return nullptr; });
 			if (case_IR.error_code) return case_IR;
 			clear_stack(starting_stack_position);
 			finish(0);
 		}
-	case ASTn("run_function"): finish(builder->CreateCall(llvm_int_only_func(run_null_parameter_function), field_results[0].IR));
+	case ASTn("run_function"): finish(IRB->CreateCall(llvm_int_only_func(run_null_parameter_function), field_results[0].IR));
 	case ASTn("imv"): //bakes in the value into the compiled function. changes by the function are temporary.
 		{
 			uint64_t* dynamic_object = (uint64_t*)target->fields[0];
@@ -954,8 +920,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 								return_code(oversized_offset, 1);
 							uint64_t skip_this_many;
 							uint64_t size_of_load = get_size_conc(type_of_object, offset, &skip_this_many);
-							llvm::Value* pointer_cast = builder->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
-							llvm::Value* place = skip_this_many ? builder->CreateConstInBoundsGEP1_64(pointer_cast, skip_this_many, s("offset")) : pointer_cast;
+							llvm::Value* pointer_cast = IRB->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
+							llvm::Value* place = skip_this_many ? IRB->CreateConstInBoundsGEP1_64(pointer_cast, skip_this_many, s("offset")) : pointer_cast;
 
 							default_allocation = new_reference(place);
 							finish_special(load_from_memory(place, size_of_load), type_of_object.field(offset + 1));
@@ -966,15 +932,15 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			case Typen("type pointer"):
 				{
 					llvm::Value* type_offset = llvm_int_only_func(type_subfield);
-					llvm::Value* result_type = builder->CreateCall(type_offset, {field_results[0].IR, field_results[1].IR});
+					llvm::Value* result_type = IRB->CreateCall(type_offset, {field_results[0].IR, field_results[1].IR});
 					finish_special(result_type, u::type);
 				}
 			case Typen("function pointer"):
 				if (auto k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
 				{
 					uint64_t offset = k->getZExtValue();
-					if (offset == 0) finish_special(builder->CreateCall(llvm_int_only_func(AST_from_function), field_results[0].IR), u::AST_pointer);
-					else if (offset == 1) finish_special(builder->CreateCall(llvm_int_only_func(type_from_function), field_results[0].IR), u::type);
+					if (offset == 0) finish_special(IRB->CreateCall(llvm_int_only_func(AST_from_function), field_results[0].IR), u::AST_pointer);
+					else if (offset == 1) finish_special(IRB->CreateCall(llvm_int_only_func(type_from_function), field_results[0].IR), u::type);
 					else return_code(oversized_offset, 1);
 				}
 				return_code(requires_constant, 1);
@@ -988,27 +954,27 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("system1"):
 		{
-			llvm::CallInst* systemquery = builder->CreateCall(llvm_int_only_func(system1), field_results[0].IR);
+			llvm::CallInst* systemquery = IRB->CreateCall(llvm_int_only_func(system1), field_results[0].IR);
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::ReadOnly);
 			finish(systemquery);
 		}
 	case ASTn("system2"):
 		{
-			llvm::CallInst* systemquery = builder->CreateCall(llvm_int_only_func(system2), {field_results[0].IR, field_results[1].IR});
+			llvm::CallInst* systemquery = IRB->CreateCall(llvm_int_only_func(system2), {field_results[0].IR, field_results[1].IR});
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::ReadOnly);
 			finish(systemquery);
 		}
 	case ASTn("agency1"):
 		{
-			llvm::CallInst* systemquery = builder->CreateCall(llvm_int_only_func(agency1), field_results[0].IR);
+			llvm::CallInst* systemquery = IRB->CreateCall(llvm_int_only_func(agency1), field_results[0].IR);
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
 			finish(systemquery);
 		}
 	case ASTn("agency2"):
 		{
-			llvm::CallInst* systemquery = builder->CreateCall(llvm_int_only_func(agency2), {field_results[0].IR, field_results[1].IR});
+			llvm::CallInst* systemquery = IRB->CreateCall(llvm_int_only_func(agency2), {field_results[0].IR, field_results[1].IR});
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
 			finish(systemquery);
 		}

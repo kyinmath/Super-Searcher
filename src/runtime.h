@@ -7,7 +7,17 @@
 //warning: array<uint64_t, 2> becomes {i64, i64}
 //using our current set of optimization passes, the undef+insertvalue operations aren't optimized to anything better.
 
+//you won! time to fork yourself
+inline void copy_self()
+{
+	//we could:
+	//fork
+	//reinitialize the random number generator
+	//signal to the admin, so you can get a new map.
+	//make an event...but only for the new user, probably.
 
+	//however, signaling to the admin is hard. thus, we'll just serialize and unserialize.
+}
 inline uint64_t generate_random() { return mersenne(); }
 
 //generates an approximately exponential distribution using bit twiddling
@@ -18,32 +28,26 @@ inline uint64_t generate_exponential_dist()
 	return generate_random() & cutoff;
 }
 
-/*first argument is the location of the return object. if we didn't do this, we'd be forced to anyway, by http://www.uclibc.org/docs/psABI-i386.pdf P13. that's the way structs are returned, when 3 or larger.
-takes in AST.
-returns: the fptr, then the error code, then the dynamic object. for now, we let the dynamic error object be 0.
-*/
-inline void compile_returning_legitimate_object(uint64_t* memory_location, uint64_t int_target)
+//if there isn't a preallocated location, then pass in nullptr for the second argument.
+//this copies the AST if and only if the second argument is nullptr
+inline function* compile_specifying_location(uAST* target, function* pre_allocated_location)
 {
-	auto return_location = (std::array<uint64_t, 3>*) memory_location;
-	uAST* target = (uAST*)int_target;
+
 	compiler_object a;
 	uint64_t error = a.compile_AST(target);
-	
-	if (error)
-	{
-		*return_location = std::array<uint64_t, 3>{{0ull, error, 0ull}};
-		return;
-	}
+	if (error) return 0;
 	else
 	{
-		function* new_location = new(allocate_function()) function(deep_AST_copier(target).result, a.return_type, a.parameter_type, a.fptr, a.result_module, std::move(a.new_context));
-		if (VERBOSE_GC)
-		{
-			print(*new_location);
-		}
-		*return_location = std::array < uint64_t, 3 > {{(uint64_t)new_location, error, 0ull}};
-		return;
+		pre_allocated_location = new(pre_allocated_location ? pre_allocated_location : allocate_function()) function(pre_allocated_location ? target : deep_AST_copier(target).result, a.return_type, a.parameter_type, a.fptr, a.result_module, std::move(a.new_context));
+
+		if (VERBOSE_GC) print(*pre_allocated_location);
+		return pre_allocated_location;
 	}
+}
+
+inline function* compile_returning_just_function(uAST* target)
+{
+	return compile_specifying_location(target, nullptr);
 }
 
 inline void output_array(uint64_t* mem, uint64_t number)
@@ -111,15 +115,15 @@ inline dynobj* run_null_parameter_function(function* func)
 
 		//START DYNAMIC. writes in both the type and the object.
 		llvm::Value* dynamic_allocator = llvm_function(new_dynamic_obj, llvm_i64()->getPointerTo(), llvm_i64());
-		llvm::Value* dynamic_object_raw = builder->CreateCall(dynamic_allocator, llvm_integer(return_type));
+		llvm::Value* dynamic_object_raw = IRB->CreateCall(dynamic_allocator, llvm_integer(return_type));
 
-		llvm::Value* dynamic_actual_object_address = builder->CreateGEP(dynamic_object_raw, llvm_integer(1));
+		llvm::Value* dynamic_actual_object_address = IRB->CreateGEP(dynamic_object_raw, llvm_integer(1));
 		llvm::Type* target_pointer_type = llvm_type(size_of_return)->getPointerTo();
-		llvm::Value* dynamic_object = builder->CreatePointerCast(dynamic_actual_object_address, target_pointer_type);
+		llvm::Value* dynamic_object = IRB->CreatePointerCast(dynamic_actual_object_address, target_pointer_type);
 
 		//store the returned value into the acquired address
-		builder->CreateStore(result_of_call, dynamic_object);
-		builder->CreateRet(builder->CreatePtrToInt(dynamic_object_raw, llvm_i64()));
+		IRB->CreateStore(result_of_call, dynamic_object);
+		IRB->CreateRet(IRB->CreatePtrToInt(dynamic_object_raw, llvm_i64()));
 		///FINISH DYNAMIC
 
 #ifndef NO_CONSOLE

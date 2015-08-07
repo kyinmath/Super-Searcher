@@ -89,15 +89,15 @@ class compiler_object
 
 		//see http://llvm.org/docs/tutorial/LangImpl5.html#code-generation-for-if-then-else
 
-		llvm::Function *TheFunction = builder->GetInsertBlock()->getParent();
+		llvm::Function *TheFunction = IRB->GetInsertBlock()->getParent();
 		llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(*context, s("merge"), TheFunction);
 		llvm::Value* iftype[2];
 		llvm::BasicBlock* dynshuffleBB[2];
 		for (uint64_t x : {0, 1}) dynshuffleBB[x] = llvm::BasicBlock::Create(*context, s(""), TheFunction);
-		builder->CreateCondBr(comparison, dynshuffleBB[0], dynshuffleBB[1]);
+		IRB->CreateCondBr(comparison, dynshuffleBB[0], dynshuffleBB[1]);
 		for (uint64_t x : {0, 1})
 		{
-			builder->SetInsertPoint(dynshuffleBB[x]);
+			IRB->SetInsertPoint(dynshuffleBB[x]);
 			if (x == 0)
 			{
 				iftype[x] = true_case();
@@ -106,14 +106,14 @@ class compiler_object
 			{
 				iftype[x] = false_case();
 			}
-			builder->CreateBr(MergeBB);
-			dynshuffleBB[x] = builder->GetInsertBlock();
+			IRB->CreateBr(MergeBB);
+			dynshuffleBB[x] = IRB->GetInsertBlock();
 
 			//since the fields are conditionally executed, the temporaries generated in each branch are not necessarily referenceable.
 			//therefore, we must clear the stack between each branch.
 			clear_stack(if_stack_position);
 		}
-		builder->SetInsertPoint(MergeBB);
+		IRB->SetInsertPoint(MergeBB);
 		//if (should_I_bail()) return 0;
 		llvm::Value* result = llvm_create_phi({iftype[0], iftype[1]}, {dynshuffleBB[0], dynshuffleBB[1]});
 		return result;

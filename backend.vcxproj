@@ -12,9 +12,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\ASTs.h" />
+    <ClInclude Include="src\comms.h" />
     <ClInclude Include="src\cs11.h" />
     <ClInclude Include="src\debugoutput.h" />
     <ClInclude Include="src\dynamic.h" />
+    <ClInclude Include="src\fitter.h" />
     <ClInclude Include="src\function.h" />
     <ClInclude Include="src\globalinfo.h" />
     <ClInclude Include="src\helperfunctions.h" />
@@ -26,6 +28,7 @@
     <ClInclude Include="src\vector.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\comms.cpp" />
     <ClCompile Include="src\cs11.cpp" />
     <ClCompile Include="src\memory.cpp" />
     <ClCompile Include="src\serialization_snapshot.cpp" />

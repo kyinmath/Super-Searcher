@@ -1,4 +1,4 @@
-1. privileged things (dynarray)
+1. privileged things (vector of dynamic)
 	1.1 higher judgment functions. the higher judgment function is a quine, and occasionally makes copies of itself. contains many copies of the same command, so that randomness doesn't suddenly run out (we don't want our user to become a Turing machine)
 		on new-user event, it runs on the directed judgment function.
 		on new-country event, it runs on itself.
@@ -13,7 +13,7 @@ having few tiers of judgment is good, because the more tiers there are, the hard
 problem: everything must have a responsible owner, who is penalized if it goes wrong. for example, if we have language, then the language info must be stored across time.
 	however, if immediate judgment fucks it up, it won't really suffer any consequences, because language info isn't tested. same for long-lasting objects like cooperative locks, and circular buffers. judgment can screw it up for speed boosts, and then nobody suffers any consequences.
 
-1. big set of things (dynarray)
+1. big set of things (vector of dynamic)
 	1.1 working functions that directly feed back into judgment. mostly uses 1.3, the goodness indicators
 	1.2 working functions. touches everything.
 	1.3 goodness indicators (mostly integers)

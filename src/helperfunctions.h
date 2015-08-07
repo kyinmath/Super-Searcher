@@ -71,13 +71,13 @@ we create a many-element allocation instead of an array allocation, because we n
 otherwise, I see assert(): "replaceAllUses of value with new value of different type!"
 */
 inline llvm::AllocaInst* create_empty_alloca() {
-	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
+	llvm::BasicBlock& first_block = IRB->GetInsertBlock()->getParent()->getEntryBlock();
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
 	return TmpB.CreateAlloca(llvm_i64(), llvm_integer(0));
 }
 
 inline llvm::AllocaInst* create_actual_alloca(uint64_t size) {
-	llvm::BasicBlock& first_block = builder->GetInsertBlock()->getParent()->getEntryBlock();
+	llvm::BasicBlock& first_block = IRB->GetInsertBlock()->getParent()->getEntryBlock();
 	llvm::IRBuilder<> TmpB(&first_block, first_block.begin());
 	return TmpB.CreateAlloca(llvm_i64(), llvm_integer(size));
 }
@@ -93,7 +93,7 @@ template<typename return_type, typename... parameters> inline llvm::Value* llvm_
 	llvm::FunctionType* function_type = llvm::FunctionType::get(return_is_void ? llvm_void() : llvm_i64(), argument_type, false);
 	llvm::PointerType* function_pointer_type = function_type->getPointerTo();
 	llvm::Constant *function_address = llvm_integer((uint64_t)function);
-	return builder->CreateIntToPtr(function_address, function_pointer_type, s("convert address to function"));
+	return IRB->CreateIntToPtr(function_address, function_pointer_type, s("convert address to function"));
 }
 
 //return type is not a llvm::Function*, because it's a pointer to a function.
@@ -104,7 +104,7 @@ template<typename some_return_type, typename... parameters, typename... llvm_typ
 	llvm::FunctionType* function_type = llvm::FunctionType::get(return_type, argument_type, false);
 	llvm::PointerType* function_pointer_type = function_type->getPointerTo();
 	llvm::Constant *function_address = llvm_integer((uint64_t)function);
-	return builder->CreateIntToPtr(function_address, function_pointer_type, s("convert address to function"));
+	return IRB->CreateIntToPtr(function_address, function_pointer_type, s("convert address to function"));
 }
 
 inline uint64_t size_of_Value(llvm::Value* value)
@@ -153,8 +153,8 @@ inline llvm::Value* llvm_create_phi(llvm::ArrayRef<llvm::Value*> values, llvm::A
 				llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(eventual_size));
 				for (uint64_t a = 0; a < eventual_size; ++a)
 				{
-					llvm::Value* integer_transfer = builder->CreateExtractValue(x.first, {(unsigned)a});
-					undef_value = builder->CreateInsertValue(undef_value, integer_transfer, {(unsigned)a});
+					llvm::Value* integer_transfer = IRB->CreateExtractValue(x.first, {(unsigned)a});
+					undef_value = IRB->CreateInsertValue(undef_value, integer_transfer, {(unsigned)a});
 				}
 				x.first = undef_value;
 			}
@@ -163,7 +163,7 @@ inline llvm::Value* llvm_create_phi(llvm::ArrayRef<llvm::Value*> values, llvm::A
 
 
 
-	llvm::PHINode* PN = builder->CreatePHI(eventual_size == 1 ? eventual_type : llvm_array(eventual_size), legitimate_values.size()); //phi with two incoming variables
+	llvm::PHINode* PN = IRB->CreatePHI(eventual_size == 1 ? eventual_type : llvm_array(eventual_size), legitimate_values.size()); //phi with two incoming variables
 	for (auto& x : legitimate_values) PN->addIncoming(x.first, x.second);
 	return PN;
 }
@@ -189,7 +189,7 @@ inline void write_into_place(value_collection data, llvm::Value*& target, bool s
 
 		for (uint64_t subplace = 0; subplace < size; ++subplace)
 		{
-			llvm::Value* integer_transfer = (size > 1) ? builder->CreateExtractValue(single_object, subplace) : single_object;
+			llvm::Value* integer_transfer = (size > 1) ? IRB->CreateExtractValue(single_object, subplace) : single_object;
 
 			//transfer the values
 			if (ssa)
@@ -199,13 +199,13 @@ inline void write_into_place(value_collection data, llvm::Value*& target, bool s
 				else
 				{
 					check(offset < ~0u, "large types not allowed for CreateInsertValue");
-					target = builder->CreateInsertValue(target, integer_transfer, {(unsigned)offset});
+					target = IRB->CreateInsertValue(target, integer_transfer, {(unsigned)offset});
 				}
 			}
 			else
 			{
-				llvm::Value* location = offset ? builder->CreateConstInBoundsGEP1_64(target, offset, s("write")) : target;
-				builder->CreateStore(integer_transfer, location);
+				llvm::Value* location = offset ? IRB->CreateConstInBoundsGEP1_64(target, offset, s("write")) : target;
+				IRB->CreateStore(integer_transfer, location);
 			}
 			++offset;
 		}
@@ -268,14 +268,14 @@ public:
 inline llvm::Value* load_from_memory(llvm::Value* location, uint64_t size)
 {
 	check(size < ~0u, "load object not equipped to deal with large objects, because CreateInsertValue has a small index");
-	if (size == 1) return builder->CreateLoad(location);
+	if (size == 1) return IRB->CreateLoad(location);
 	llvm::Value* undef_value = llvm::UndefValue::get(llvm_array(size));
 	for (uint64_t a = 0; a < size; ++a)
 	{
 		llvm::Value* integer_transfer;
-		llvm::Value* new_location = a ? builder->CreateConstInBoundsGEP1_64(location, a, s("load")) : location;
-		integer_transfer = builder->CreateLoad(new_location);
-		undef_value = builder->CreateInsertValue(undef_value, integer_transfer, {(unsigned)a});
+		llvm::Value* new_location = a ? IRB->CreateConstInBoundsGEP1_64(location, a, s("load")) : location;
+		integer_transfer = IRB->CreateLoad(new_location);
+		undef_value = IRB->CreateInsertValue(undef_value, integer_transfer, {(unsigned)a});
 	};
 	return undef_value;
 }
@@ -317,14 +317,14 @@ struct Return_Info
 
 struct builder_context_stack
 {
-	llvm::IRBuilder<>* old_builder = builder;
+	llvm::IRBuilder<>* old_builder = IRB;
 	llvm::LLVMContext* old_context = context;
 	builder_context_stack(llvm::IRBuilder<>* b, llvm::LLVMContext* c) {
-		builder = b;
+		IRB = b;
 		context = c;
 	}
 	~builder_context_stack() {
-		builder = old_builder;
+		IRB = old_builder;
 		context = old_context;
 	}
 };

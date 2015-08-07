@@ -25,15 +25,12 @@ the difference is what to do on finding a pointer to:
 1. normal object
 	GC: put in set.
 	snapshot: map, relocate (copy).
-	serialize: map, relocate (copy), but as offset from base of memory allocation
 2. function
 	GC: mark specially.
 	snapshot: map, relocate in special place (copy), remember all functions for later recompilation.
-	serialize: relocate just the AST in a vector and store the number, recompile every function, recreate the return AST. note that the 0 position in the vector should be a null function, since that's possible.
 3. Tptr
 	GC: put in set.
 	snapshot: do nothing.
-	serialize: map, relocate (copy). on unserialization, put in hash table.
 
 problem: when unserializing, we have to create the new types. however, we can't get unique types, or any other types.
 idea: to serialize, simply copy memory directly into a file, along with the function pool locations. then, when unserializing, shift the function pointers as necessary. then recompile.

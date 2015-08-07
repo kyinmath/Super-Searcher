@@ -39,7 +39,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Users\CompAcc\Downloads\boost_1_55_0\boost_1_55_0\boost;</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Users\CompAcc\Downloads\boost_1_55_0\boost_1_55_0\boost;C:\Users\CompAcc\Stuff\Fitting\linuxheaders</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -69,6 +69,8 @@
     <ClInclude Include="..\shared.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\mmap.cpp" />
+    <ClCompile Include="..\slave.cpp" />
     <ClCompile Include="..\user_admin.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

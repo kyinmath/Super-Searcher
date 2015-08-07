@@ -14,8 +14,75 @@ bool OUTPUT_MODULE = true;
 bool FUZZTESTER_NO_COMPILE = false;
 bool READER_VERBOSE_DEBUG = false;
 bool QUIET = false;
+bool SERIALIZE_ON_EXIT = false;
+bool TRUEINIT = false;
+bool TRUERUN = false;
 uint64_t runs = ~0ull;
 llvm::raw_null_ostream llvm_null_stream;
+
+/*first argument is the location of the return object. if we didn't do this, we'd be forced to anyway, by http://www.uclibc.org/docs/psABI-i386.pdf P13. that's the way structs are returned, when 3 or larger.
+takes in AST.
+returns: the fptr, then the error code, then the dynamic object. for now, we let the dynamic error object be 0.
+*/
+inline void compile_returning_legitimate_object(uint64_t* memory_location, uAST* target)
+{
+	auto return_location = (std::array<uint64_t, 3>*) memory_location;
+	compiler_object a;
+	uint64_t error = a.compile_AST(target);
+
+	if (error)
+	{
+		*return_location = std::array<uint64_t, 3>{{0ull, error, 0ull}};
+		return;
+	}
+	else
+	{
+		function* new_location = new(allocate_function()) function(deep_AST_copier(target).result, a.return_type, a.parameter_type, a.fptr, a.result_module, std::move(a.new_context));
+		if (VERBOSE_GC)
+		{
+			print(*new_location);
+		}
+		*return_location = std::array < uint64_t, 3 > {{(uint64_t)new_location, error, 0ull}};
+		return;
+	}
+}
+
+uAST** find_random_AST(function* f)
+{
+	if (f == 0) return 0;
+	uAST*& start = f->the_AST;
+	while (generate_random() < (1ull << 63))
+	{
+		if (start == nullptr) return nullptr;
+		if (start->tag == ASTn("basicblock"))
+			start = (uAST*)(*start->BBvec())[generate_random() % (start->BBvec()->size)];
+		else if (start->tag != ASTn("imv"))
+		{
+			if (AST_descriptor[start->tag].pointer_fields)
+				start = (*start).fields[generate_random() % AST_descriptor[start->tag].pointer_fields];
+		}
+	}
+	return &start;
+}
+
+uAST** find_random_AST(uAST*& start)
+{
+	while (generate_random() < (1ull << 63))
+	{
+		if (start == nullptr) return nullptr;
+		if (start->tag == ASTn("basicblock"))
+			start = (uAST*)(*start->BBvec())[generate_random() % (start->BBvec()->size)];
+		else if (start->tag != ASTn("imv"))
+		{
+			if (AST_descriptor[start->tag].pointer_fields)
+				start = (*start).fields[generate_random() % AST_descriptor[start->tag].pointer_fields];
+		}
+	}
+	return &start;
+}
+
+
+
 
 std::array<uint64_t, ASTn("never reached")> hitcount;
 std::vector<uint64_t> allowed_tags;
@@ -35,23 +102,23 @@ and, it can't produce [concatenate [int]a [load a]]. that requires speculative c
 void fuzztester(uint64_t iterations)
 {
 	uint64_t max_fuzztester_size = 3;
-	//std::vector<uAST*> loose_ASTs;
 	while (iterations)
 	{
-		--iterations; //this is here, instead of having "iterations--", so that integer-sanitizer doesn't complain
+		--iterations; //this is here, instead of having "iterations--", so that integer-sanitizer doesn't complain about decrementing past 0
 		event_roots.push_back(nullptr); //we this is so that we always have something to find, when we're looking for previous ASTs
 		//create a random AST
 		uint64_t tag = mersenne() % ASTn("never reached");
 		if (LIMITED_FUZZ_CHOICES) tag = allowed_tags[mersenne() % allowed_tags.size()];
-		uint64_t prev_number = generate_random() % event_roots.size(); //perhaps: prove that exponential_dist is desired.
 
-		function* previous_func = event_roots.at(prev_number);
-		uAST* previous = previous_func ? previous_func->the_AST : 0; //assume it's a basic block?
+		function* previous_func = event_roots.at(generate_random() % event_roots.size());
+		uAST** previous_possible = find_random_AST(previous_func);
+		uAST* previous_full = previous_func ? previous_func->the_AST : 0;
 		uAST* test_AST;
 		if (tag == ASTn("basicblock")) //simply concatenate two previous basic blocks.
 		{
-			function* second_prev_func = event_roots.at(mersenne() % event_roots.size());
-			test_AST = new_AST(tag, {previous, second_prev_func ? second_prev_func->the_AST : 0});
+			function* second_prev_func = event_roots.at(generate_random() % event_roots.size());
+			uAST** sec_previous_possible = find_random_AST(second_prev_func);
+			test_AST = new_AST(tag, {previous_possible ? *previous_possible : 0, sec_previous_possible ? *sec_previous_possible : 0});
 		}
 		else
 		{
@@ -66,16 +133,25 @@ void fuzztester(uint64_t iterations)
 				std::vector<uAST*> fields;
 				for (uint64_t incrementor = 0; incrementor < AST_descriptor[tag].pointer_fields; ++incrementor)
 				{
-					function* second_prev_func = event_roots.at(mersenne() % event_roots.size());
-					fields.push_back(second_prev_func ? second_prev_func->the_AST : 0); //get pointers to previous ASTs
+					uAST** previous_possible2 = find_random_AST(previous_func);
+					fields.push_back(previous_possible2 ? *previous_possible2 : 0); //get pointers to previous ASTs
 				}
 				new_random_AST = new_AST(tag, fields);
 			}
-			if (previous)
+			if (previous_full)
 			{
-				test_AST = copy_AST(previous);
-				auto k = (svector*)test_AST->fields[0];
-				pushback_int(k, (uint64_t)new_random_AST);
+				test_AST = copy_AST(previous_full);
+				if (previous_full->tag == ASTn("basicblock"))
+				{
+					auto k = (svector*)test_AST->fields[0];
+					pushback_int(k, (uint64_t)new_random_AST);
+				}
+				else
+				{
+					uAST** tobereplaced = find_random_AST(test_AST);
+					if (tobereplaced)
+						*tobereplaced = new_random_AST;
+				}
 			}
 			else
 			{
@@ -88,7 +164,7 @@ void fuzztester(uint64_t iterations)
 		finiteness = FINITENESS_LIMIT;
 
 		uint64_t result[3];
-		compile_returning_legitimate_object(result, (uint64_t)test_AST);
+		compile_returning_legitimate_object(result, test_AST);
 		print("results of user compile are ", result[0], ' ', result[1], ' ', result[2], '\n');
 		auto func = (function*)result[0];
 		if (result[1] == 0)
@@ -119,8 +195,6 @@ void fuzztester(uint64_t iterations)
 	}
 	event_roots.clear();
 }
-
-
 
 
 /*
@@ -308,7 +382,7 @@ dynobj* compile_string(std::string input_string)
 	check(end != nullptr, "failed to make AST");
 	finiteness = FINITENESS_LIMIT;
 	uint64_t compile_result[3];
-	compile_returning_legitimate_object(compile_result, (uint64_t)end);
+	compile_returning_legitimate_object(compile_result, end);
 	check(compile_result[1] == 0, string("failed to compile, error code ") + std::to_string(compile_result[1]));
 	return run_null_parameter_function((function*)compile_result[0]); //even if it's 0, it's fine.
 }
@@ -343,9 +417,7 @@ void cannot_compile_string(std::string input_string)
 	uAST* end = k.read();
 	check(end != nullptr, "failed to make AST");
 	finiteness = FINITENESS_LIMIT;
-	uint64_t compile_result[3];
-	compile_returning_legitimate_object(compile_result, (uint64_t)end);
-	check(compile_result[1] != 0, "compile succeeded when it shouldn't have");
+	check(compile_returning_just_function(end) == 0, "compile succeeded when it shouldn't have");
 }
 
 void test_suite()
@@ -439,12 +511,14 @@ int main(int argc, char* argv[])
 	llvm::InitializeNativeTarget();
 	llvm::InitializeNativeTargetAsmPrinter();
 	llvm::InitializeNativeTargetAsmParser();
-	initialize();
 
 	std::unique_ptr<llvm::TargetMachine> TM_backer(llvm::EngineBuilder().selectTarget());
 	TM = TM_backer.get();
 	KaleidoscopeJIT c_holder(TM); //purpose is to make valgrind happy by deleting the compiler_host at the end of execution
 	c = &c_holder;
+
+	bool unserialize_choice = false;
+	uint64_t unserializationid;
 
 	bool BENCHMARK = false;
 	for (int x = 1; x < argc; ++x)
@@ -467,13 +541,21 @@ int main(int argc, char* argv[])
 			check(next_token.size(), "no digits in the number");
 			runs = std::stoull(next_token);
 		}
+		else if (strcmp(argv[x], "load") == 0)
+		{
+			bool isNumber = true;
+			string next_token = argv[++x];
+			for (auto& k : next_token)
+				isNumber = isNumber && isdigit(k);
+			check(isNumber, string("tried to input non-number ") + next_token);
+			check(next_token.size(), "no digits in the number");
+			unserializationid = std::stoull(next_token);
+		}
 		else if (strcmp(argv[x], "oldoutput") == 0) OLD_AST_OUTPUT = true;
 		else if (strcmp(argv[x], "noaddmodule") == 0) DONT_ADD_MODULE_TO_ORC = true;
 		else if (strcmp(argv[x], "deletemodule") == 0) DELETE_MODULE_IMMEDIATELY = true;
-		else if (strcmp(argv[x], "truefuzz") == 0)
-		{
-			OUTPUT_MODULE = false;
-		}
+		else if (strcmp(argv[x], "truefuzz") == 0) OUTPUT_MODULE = false;
+		else if (strcmp(argv[x], "serialize") == 0) SERIALIZE_ON_EXIT = true;
 		else if (strcmp(argv[x], "benchmark") == 0)
 		{
 			runs = 10000;
@@ -496,6 +578,10 @@ int main(int argc, char* argv[])
 		else error(string("unrecognized flag ") + argv[x]);
 	}
 
+	if (unserialize_choice)
+		unserialize(unserializationid);
+	else initialize();
+
 #ifndef NOCHECK
 	if (!BENCHMARK)
 	{
@@ -506,6 +592,7 @@ int main(int argc, char* argv[])
 	struct cleanup_at_end
 	{
 		~cleanup_at_end() {
+			if (SERIALIZE_ON_EXIT) serialize(generate_random());
 			start_GC(); //this cleanup is to let Valgrind know that we've legitimately taken care of all memory.
 
 			uint64_t total_successful_compiles = 0;
@@ -536,7 +623,7 @@ int main(int argc, char* argv[])
 			pfAST(end);
 			finiteness = FINITENESS_LIMIT;
 			uint64_t compile_result[3];
-			compile_returning_legitimate_object(compile_result, (uint64_t)end);
+			compile_returning_legitimate_object(compile_result, end);
 			dynobj* run_result = run_null_parameter_function((function*)compile_result[0]); //even if it's 0, it's fine.
 			if (compile_result[1] != 0)
 				std::cout << "wrong! error code " << compile_result[1] << "\n";

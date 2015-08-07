@@ -1,4 +1,4 @@
-inefficiency of dynamic objects:
+inefficiency of expanding dynamic objects:
 	every single dynamic object needs a reserved_size field. is that actually desirable?
 	whenever we want just a pointer to an arbitrary object, we need a double indirection, first going through a pointer, and then through the dynamic object's pointer. this is to handle the fact that the target object might expand or contract at any moment, which might force it to relocate.
 		but, not all objects will relocate. for those, is it possible to have just a regular, raw pointer? (which then forces knowledge that the type won't change)

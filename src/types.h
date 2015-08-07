@@ -266,8 +266,7 @@ this function returns the size of an object as (number of bits/64).
 thus, a uint64 has size "1". a struct of two uint64s has size "2". etc.
 there can't be loops because Types are immut. the user doesn't have access to Type creation functions.
 */
-constexpr uint64_t get_size(Tptr target) __attribute__((pure));
-constexpr uint64_t get_size(Tptr target)
+[[gnu::pure]] constexpr uint64_t get_size(Tptr target)
 {
 	if (target == 0) return 0;
 	else if (Type_descriptor[target.ver()].size != minus_one) return Type_descriptor[target.ver()].size;

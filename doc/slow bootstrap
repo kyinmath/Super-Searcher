@@ -51,9 +51,6 @@ Rollback judgment also likes to edit random-mutation judgment to make things hap
 
 backpropagation can't manage pathways that are shut down.
 
-We have rerun judgment.
-read the input history and then go! hopefully our input history is 1. localized somewhere and 2. stored nicely
-
 no modification constants. but normal values have:
 certainty, tendency, is certainty going down
 	certainty is obvious.
@@ -79,6 +76,7 @@ if the thread runs individual functions instead of an entire vector, then it's e
 also, it's easy to stop threads, interrupt.
 
 somehow, try to _version_ the functions. so if something goes into an infinite loop, then undo the last change.
+judgment runs the functions, but also boxes them by the amount of time they take.
 
 if a function fails, then it probably wants to throw an exception. the main thread handler will catch the exception and not kill the runnable function, but set the function off to the side, for later trial.
 	if a function fails too many times, the thread sends the runnable function to judgment for inspection.

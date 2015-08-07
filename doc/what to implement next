@@ -3,8 +3,14 @@ move the fuzzer into AST format
 		which requires being able to look at types.
 	how to figure out the internals of dynamic objects? since we don't have function parameters, we'll need to use global pointers to pass data.
 test coverage. we need to know that all ASTs are run. for example, load_tag doesn't have any coverage. neither does dyn_subobj for unknown pointers and unknown vectors.
-serialization/snapshots. judgment MUST iterate very quickly. for example, when swinging a tennis racquet, you readjust after every shot.
+	serialization/snapshots. judgment MUST iterate very quickly. for example, when swinging a tennis racquet, you readjust after every shot.
 
+how is the king going to work? must test his countrymen. send out probes, then measure their success.
+	problem: communication must match up. for example, king expects a dynamic pointer of 10 elements, and user must pass in exactly that type.
+		this is really a matter of communication. and maybe it's a good thing to have this problem.
+is it ok for users to communicate with each other? this will result in cheating on tests.
+	we could restrict the users to only communicate with the admin.
+how is country competition going to work? grand admin must send out messages - probably to the king. the king passes the problem on to the countrymen.  
 
 we must always consider bootstrap issues. for example, how to make a function that returns compiled functions with fixed type?
 	if there's no guaranteed mechanism, then such a function would need a static object to substitute. and it's unlikely the judgment function is able to construct these dynamic objects on the fly.
@@ -13,3 +19,6 @@ how do we ever get a regular pointer from a dynamic pointer?
 
 
 maybe we need a shift operator. because mult + shift-right = win.
+
+
+we still can't extract from concatenates.

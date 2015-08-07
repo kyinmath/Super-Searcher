@@ -1,16 +1,5 @@
 true mode.
-arguments:
-1. a 256-bit key
-2. a 256-bit IV
-3. file location to load from.
-
-
-serialization mode:
-1. copy down all the objects and functions
-2. pack them down tight
-3. copy the event-driven info
-
-
+note that only the country admin needs to get entropy passed in. the individual users can grab entropy from /dev/urandom.
 
 
 "One Word: Boost.InterProcess. If it really needs to be fast, shared memory is the way to go. You nearly have zero overhead as the operation system does the usual mapping between virtual and physical addresses and no copy is required for the data. You just have to lookout for concurrency issues.

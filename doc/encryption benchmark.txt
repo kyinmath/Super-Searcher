@@ -2,7 +2,8 @@ to seed:
 simply ask the user to input junk on his keyboard. then run the generator once, take some more junk from the keyboard, and then xor. this solves the problem. bias is eliminated by the single generator run.
 
 encryptor AST: feed it the number of outputs you want.
-	for now, by default, it has 10 visible nodes, and 10 hidden nodes. and, it makes sure that every node is touched at least once.
+	for now, by default, it has 10 visible nodes, and up to 10 hidden nodes. as users grow better, the number of operations can increase, so that each visible node has a higher average number of operations.
+	this is dynamically scaled as users improve performance.
 	operations:
 		1. add/subtract
 		2. swap
@@ -10,11 +11,26 @@ encryptor AST: feed it the number of outputs you want.
 		4. branch
 		5. increment/decrement
 		5. multiply by (1), then divide.
-	array operations? like shifting things around
+	array operations? like shifting things around => can be done using loop and increment. loop a constant number of times? loop until some variable is set some way?
+		whatever the loop condition variable is, that condition variable absolutely must be modified inside the loop itself.
+		it's also super important to keep the number of loops small. in real life, this happens naturally. how does that happen?
+			for us, we can take the initial number, and then take its logarithm.
+arbitrary indices on arrays, which will definitely happen with modulo, is really unnatural. in addition, it can lead to virtually impossible to predict swaps, which will wreck everything.
+
+basically, we want it to be able to do anything. so anything expressible in C++, must be expressible in this shitty encryptor mechanism. our model is a "limited complexity" model. so everything up to finite complexity is representable. here, the restrictions are on the number of operations, and the number of registers.
+what about board games? in chess, you give feedback multiple times, and only learn at the end whether you won. in that case, you're trying to predict something, not match something.
+	this "delayed feedback" is important as well.
+
+problem: real life also likes to have functions, i.e. boundary separation. programs can usually be factored into components with minimal separation, and that are reused.
+	this is possible by referencing previous ASTs, which makes them run again.
+
 is this realistic, though? real life has the property that numbers never grow too large. but multiplication can cause troubles with huge overflows, thus spilling every single number to be very large.
 	solution: after every pass, we run some normalization function. maybe logarithm.
 
+I think: we're not going to have a (1) value. because real numbers can be discretized (as we see with the brain). similarly, negative numbers can be forced onto positive (similarly with the brain). although there may be some costs here.
+	but this is modeling. is it natural? probably not.
 
+actually, this is basically AST creation, except really strongly guided.
 
 
 is our encryption scheme sufficient? we don't want to end up with something stupid like cube boxes, which are only good for low-degree polynomials.

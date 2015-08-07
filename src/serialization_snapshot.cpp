@@ -5,6 +5,7 @@
 #include "globalinfo.h"
 #include "function.h"
 #include "memory.h"
+#include "runtime.h"
 
 //being vectors lets us write them directly into a file, since memory is contiguous.
 extern std::vector< function*> event_roots;
@@ -71,7 +72,7 @@ void serialize(uint64_t id)
 	id_file.write(reinterpret_cast<char*>(type_roots.data()), type_roots.size() * sizeof(uint64_t));
 	id_file.write(reinterpret_cast<char*>(event_roots.data()), event_roots.size() * sizeof(uint64_t));
 	id_file.write(reinterpret_cast<char*>(big_memory_pool), pool_size * sizeof(uint64_t));
-	for (uint64_t x = 0; x < function_pool_size; ++x) id_file.write(reinterpret_cast<char*>(&function_pool[x].the_AST), sizeof(uint64_t));
+	for (uint64_t x = 0; x < function_pool_size; ++x) id_file.write(reinterpret_cast<char*>(&function_pool[x].the_AST), sizeof(uint64_t)); //we copy only the ASTs.
 
 	id_file.close();
 }
@@ -104,9 +105,7 @@ void unserialize(uint64_t id)
 	//this is first, because we need vector_of_ASTs to be uniqued before we can start doing GC work, or converting anything else.
 	UNSERIALIZATION_MODE = true;
 	trace_objects();
-	for (int x = 0; x < function_pool_size; ++x)
-	{
-		if (function_pool[x].the_AST)
-	}
-	//TODO: compile any nonzero ASTs
+	for (uint64_t x = 0; x < function_pool_size; ++x) //compile in place
+		if (function_pool[x].the_AST) compile_specifying_location(function_pool[x].the_AST, &function_pool[x]);	
+	
 }

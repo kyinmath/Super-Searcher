@@ -9,7 +9,6 @@ note: break, and return, are basically goto...
 ()get system values(int), returns int:
 	= # of AST tags
 	= finiteness
-	= random integer
 	= number of users
 	= working size memory
 	= system clock
@@ -22,6 +21,7 @@ note: break, and return, are basically goto...
 	= AES encode
 	= AES decode
 	we never return type tags, because user doesn't need to know them.
+()send object(user, dynobj)
 ()action command(int, int)
 	= print to console
 ()action command(int)
@@ -30,15 +30,12 @@ note: break, and return, are basically goto...
 ()get pointer to function for event driven framework. a specific function is run on an event. possible events:
 	user start (modify directed judgment)
 	country start (modify the random judgment)
-	other user crash (maybe GC OOM, system OOM, or something)
 	generic running
-	message
-	vote called, for killing someone (is there a threshold to start voting? can anyone call a vote? maybe you need N votes)
-
-are votes anonymous, or completely private, or public? 
-	will public votes lead to voting blocs?
-	public votes will likely lead to tit for tat. but public votes also lead to feedback on voting quality (meaningful feedback? in a way, yes, if there is honest feedback)
-	maybe voting blocs can be stamped out. an anti-bloc system is a valuable thing that develops, so we'll implement one initially.
+	message (user, size, some objects. used for country competition as well.)
+King:
+	you are the king!
+	competition time (country)
+	user crash
 
 
 __dynamic object
