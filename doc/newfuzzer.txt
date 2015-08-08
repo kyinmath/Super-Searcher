@@ -4,10 +4,12 @@ _temp_function_vector[nvec [compile]]
 _iterations[imv 100]
 _main_loop[label]
 	_int_function_choice[random]
+	
+	_base_AST[[convert_to_AST [zero]]
 	_function[load_subobj_ref temp_function_vector [urem int_function_choice [vector_size temp_function_vector]]
-	[	_AST_sequence[nvec [pointer [convert_to_AST [zero]]]]
+	_loaded_AST[load_subobj function [zero] [store base_AST loaded_AST]]]
+	_AST_sequence[nvec [pointer [convert_to_AST [zero]]]]
 		_offset_sequence[nvec [zero]]
-		_base_AST[[pointer load_subobj function [zero]]]
 		_current_AST[basicblock base_AST]
 		_find_deeper_AST[label]
 		[if [current_AST]
@@ -35,8 +37,8 @@ _main_loop[label]
 	
 	_compilation_attempt[compile base_AST]
 	[if compilation_attempt [overfunc function compilation_attempt]]
-	]
-	]
+	
+	
 	[store iterations [decrement [iterations]]]
 	[if [iterations] [goto main_loop]]
 	

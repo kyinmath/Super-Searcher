@@ -36,10 +36,8 @@ type_check_result type_check(type_status version, Tptr existing_reference, Tptr 
 	}
 	if (iter[0] == 0 || iter[1] == 0) //at least one is nullptr
 	{
-		if (iter[0] == 0 && iter[1] == 0)
-			return type_check_result::perfect_fit; //success!
-		else if (iter[1] == 0)
-			return type_check_result::existing_reference_too_large;
+		if (iter[0] == 0 && iter[1] == 0) return type_check_result::perfect_fit; //success!
+		else if (iter[1] == 0) return type_check_result::existing_reference_too_large;
 		else return type_check_result::new_reference_too_large;
 	}
 	if (iter[0] == iter[1]) return type_check_result::perfect_fit; //easy way out, if lucky. we can't do this later, because our stack might have extra things to look at.
@@ -102,7 +100,7 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 			if (iter[0].ver() == iter[1].ver())
 			{
 				auto result = type_check(reference, iter[0].field(0), iter[1].field(0));
-				if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
+				if (result == type_check_result::perfect_fit) //requires perfect fit, full pointers must point to the full object
 					return type_check_result::perfect_fit;
 			}
 			else return type_check_result::different;
@@ -143,7 +141,7 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 		case Typen("pointer"):
 			{
 				auto result = type_check(reference, iter[0].field(0), iter[1].field(0));
-				if (result == type_check_result::existing_reference_too_large || result == type_check_result::perfect_fit)
+				if (result == type_check_result::perfect_fit)
 					return type_check_result::perfect_fit;
 				return type_check_result::different;
 			}
