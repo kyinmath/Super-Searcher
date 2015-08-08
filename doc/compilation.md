@@ -23,7 +23,7 @@ sudo ln -s /usr/bin/llvm-config-3.7 /usr/bin/llvm-config
 
 
 Otherwise, to live on the top of trunk, follow the clang "Getting Started" guide, and use at the end (perhaps without assertions if you want, they cause a 80% slowdown):
-cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_ASSERTIONS=On -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_INCLUDE_EXAMPLES=Off -DLLVM_INCLUDE_TESTS=Off -DLLVM_ENABLE_THREADS=Off -DLLVM_ENABLE_CXX1Y=On -DCMAKE_INSTALL_PREFIX=/usr/ ../llvm
+cmake -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_ASSERTIONS=Off -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_INCLUDE_EXAMPLES=Off -DLLVM_INCLUDE_TESTS=Off -DLLVM_ENABLE_THREADS=Off -DLLVM_ENABLE_CXX1Y=On -DCMAKE_INSTALL_PREFIX=/usr/ ../llvm
 sudo make install
 
 Maybe for lld:

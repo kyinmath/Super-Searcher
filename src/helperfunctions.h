@@ -23,7 +23,7 @@ enum IRgen_status {
 	requires_constant, //when offsetting a pointer, you gave something that wasn't a constant
 	vector_cant_take_large_objects, //vectors, for now, can only take 1-sized objects.
 	error_transfer_from_if, //our if function can't transfer error codes. they get lost. so we return this error instead.
-	lost_hidden_subtype, //when working with a pointer to something, you better have its true type lying around in runtime
+	lost_hidden_subtype, //when working with a pointer to something, you need its true type lying around in runtime. if this true type is lost, the object becomes useless.
 };
 
 //solely for convenience

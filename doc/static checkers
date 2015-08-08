@@ -30,7 +30,7 @@ use the sanitizers!
 
 
 make fast
-valgrind --tool=callgrind ./toy benchmark
+valgrind --tool=callgrind ./toy benchmark longrun 1000
 kcachegrind
 
 If you don't want to install kcachegrind, instead replace 63376 with the appropriate number, and run

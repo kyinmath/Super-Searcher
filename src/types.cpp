@@ -19,6 +19,8 @@ don't worry about lock states of integers or pointers; the target will absorb th
 example: an immut TU of pointer, 0, that's been fixed to a pointer, can be converted into just a pointer type.
 
 with RVO, first must be smaller than fields[0]. with reference, it's the opposite.
+
+future: remove the too-big and too-small return types. just make them 0 and 1.
 */
 
 
@@ -150,9 +152,10 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 		case Typen("function pointer"):
 		case Typen("type pointer"):
 		case Typen("dynamic object"):
+			return type_check_result::perfect_fit;
 		case Typen("vector of something"):
 		case Typen("pointer to something"):
-				return type_check_result::perfect_fit;
+			return type_check_result::different; //every runtime-dynamic pointer has an underlying true type.
 	
 		default:
 			error("default case in other branch");

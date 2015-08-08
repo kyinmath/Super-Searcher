@@ -26,6 +26,8 @@ note: break, and return, are basically goto...
 	= print to console
 ()action command(int)
 	= GC schedule
+()acquire message (gives dynamic object)
+()which user gave me the message (gives integer. -1 for admin, 0 for king, 1-N for user)
 
 ()get pointer to function for event driven framework. a specific function is run on an event. possible events:
 	user start (modify directed judgment)

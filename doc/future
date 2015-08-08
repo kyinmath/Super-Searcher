@@ -1,1 +1,4 @@
 destructors. if you create a function, and nobody sees it, you might as well delete it, instead of leaving it around.
+
+fuzztester copy-and-insert doesn't work that well because the new insertion doesn't really interact with the old ASTs. you'd need some points for this to work out.
+	well, we ought to copy in a special way. some referenced ASTs which in the old function, were already active, and were effectively copy_variables, might become "reference points", where we rebind them to a new spot in the new 

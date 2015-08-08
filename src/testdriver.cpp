@@ -96,7 +96,7 @@ then, it chooses pointers randomly from the vector of working ASTs, which go in 
 each remaining field is chosen randomly according to an exponential distribution
 finally, if the created AST successfully compiles, it is added to the vector of working ASTs.
 
-todo: this scheme can't produce forward references, which are necessary for goto. that is, a goto points to an AST that's created after it.
+todo: this scheme can't produce recursive references, which are necessary for goto. that is, a goto points to an AST that's created after it.
 and, it can't produce [concatenate [int]a [load a]]. that requires speculative creation of multiple ASTs simultaneously.
 */
 void fuzztester(uint64_t iterations)
@@ -198,10 +198,9 @@ void fuzztester(uint64_t iterations)
 
 
 /*
-this will never, ever do anything useful. NDEBUG is manipulated like a bitch, I can't even set it by passing in -DNDEBUG to the compiler. don't bother using NDEBUG or assert() for anything.
+NDEBUG will never, ever do anything useful. NDEBUG is manipulated like a bitch, I can't even set it by passing in -DNDEBUG to the compiler. don't bother using NDEBUG or assert() for anything.
 #ifdef NDEBUG
 panic time! refuse to compile.
-except, I don't know why this won't ever trigger
 #endif
 */
 

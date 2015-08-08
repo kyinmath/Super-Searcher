@@ -43,7 +43,7 @@ uint64_t finiteness;
 llvm::TargetMachine* TM;
 
 #include <random>
-std::random_device seeder; //this better be nondeterministic. on Windows, sometimes it isn't
+std::random_device seeder; //this better be nondeterministic. on Linux, it uses /dev/urandom. on Windows, it sometimes isn't.
 std::mt19937_64 mersenne(seeder() + ((uint64_t)seeder() << 32));
 
 #include <llvm/Transforms/Utils/Cloning.h>
@@ -110,9 +110,9 @@ uint64_t compiler_object::compile_AST(uAST* target)
 	{
 		print("optimized code: \n");
 		llvm::legacy::FunctionPassManager FPM(M.get());
-		M->setDataLayout(*TM->getDataLayout());
+		M->setDataLayout(c->DL);
 
-		FPM.add(createBasicAliasAnalysisPass()); //Provide basic AliasAnalysis support for GVN.
+		FPM.add(createCFLAliasAnalysisPass()); //Provide basic AliasAnalysis support for GVN.
 		FPM.add(createInstructionCombiningPass()); //Do simple "peephole" optimizations and bit-twiddling optzns.
 		FPM.add(createReassociatePass()); //Reassociate expressions.
 		FPM.add(createGVNPass()); //Eliminate Common SubExpressions.
@@ -221,6 +221,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	memory_allocation* default_allocation = nullptr;
 	//this will point to the back of the deque. because the values created on the stack last a lot longer than the functions creating those values. and if you're passing through a reference, such as using goto's fail branch, it'll die too fast. so we need to put it in the deque, so it'll last longer.
 	//it needs to be wrapped in a memory_allocation because it might experience a turn_full(), which will invalidate all pointers except for one. so we need to keep the pointer to the location in one place, which is the memory_location.
+	llvm::Value* default_hidden_subtype = nullptr;
 
 	//generated IR of the fields of the AST
 	std::vector<Return_Info> field_results; //we don't actually need the return code, but we leave it anyway.
@@ -267,8 +268,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			}
 
 			//whether or not you made a new location, the Value is nullptr, which signifies that it's a reference.
-			new_living_object(target, Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location));
-			return Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location);
+			new_living_object(target, Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location, default_hidden_subtype));
+			return Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location, default_hidden_subtype);
 		}
 		//we only eliminate temporaries if stack_degree = 2. see "doc/lifetime across fields" for justification.
 		else if (size_of_return >= 1)
@@ -276,13 +277,13 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			check(stack_degree == 0, "stack degree 1 not allowed");
 			if (default_allocation)
 			{
-				new_living_object(target, Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location));
-				return Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location);
+				new_living_object(target, Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location, default_hidden_subtype));
+				return Return_Info(IRgen_status::no_error, default_allocation, type, existing_hidden_location, default_hidden_subtype);
 			}
 			else
 			{
-				new_living_object(target, Return_Info(IRgen_status::no_error, return_value, type, existing_hidden_location));
-				return Return_Info(IRgen_status::no_error, return_value, type, existing_hidden_location);
+				new_living_object(target, Return_Info(IRgen_status::no_error, return_value, type, existing_hidden_location, default_hidden_subtype));
+				return Return_Info(IRgen_status::no_error, return_value, type, existing_hidden_location, default_hidden_subtype);
 			}
 		}
 		else return Return_Info();
@@ -298,7 +299,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 #define finish_special(X, type) do {return finish_internal(X, type); } while (0)
 
 #define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, uniquefy_premade_type(AST_descriptor[target->tag].return_object.type, true)); } while (0)
-#define finish_passthrough(X) do {default_allocation = X.place; return finish_internal(X.IR, X.type);} while(0)
+#define finish_passthrough(X) do {default_hidden_subtype = X.hidden_subtype; default_allocation = X.place; return finish_internal(X.IR, X.type);} while(0)
 
 	//if this AST is already in the object list, return the previously-gotten value. this comes before the loop catcher.
 	auto looking_for_reference = objects.find(target);
@@ -639,6 +640,64 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			write_into_place(field_results[1].IR, field_results[0].place->allocation);
 			finish(0);
 		}
+
+	case ASTn("try_store"): //for now, this attempts to store a dynamic object into a static one, thus exposing the dynamic object's internals. it doesn't store statics into dynamics, for now. eventually, we'll probably want to fold this into the normal store.
+		{
+			if (field_results[0].type == 0) return_code(type_mismatch, 0);
+			if (field_results[0].place == nullptr) return_code(missing_reference, 0);
+
+			//check for the hidden subtype
+			for (uint64_t x : {0, 1})
+			{
+				if (field_results[x].type.ver() == Typen("pointer to something") ||
+					field_results[x].type.ver() == Typen("vector of something"))
+					if (field_results[x].hidden_subtype == nullptr) return_code(lost_hidden_subtype, x);
+			}
+
+			//check that we're writing pointers to pointers, vectors to vectors
+			switch (field_results[0].type.ver())
+			{
+			case Typen("pointer"):
+				if (field_results[1].type != Typen("pointer to something")) return_code(type_mismatch, 1);
+				break;
+			case Typen("vector"):
+				if (field_results[1].type != Typen("vector of something")) return_code(type_mismatch, 1);
+				break;
+			case Typen("vector of something"):
+				if (field_results[1].type != Typen("vector of something") && field_results[1].type.ver() != Typen("vector")) return_code(type_mismatch, 1);
+				break;
+			case Typen("pointer to something"):
+				if (field_results[1].type != Typen("pointer to something") && field_results[1].type.ver() != Typen("pointer")) return_code(type_mismatch, 1);
+				break;
+			default:
+				return_code(type_mismatch, 0);
+			}
+
+			//extract types from either statics or dynamics
+			llvm::Value* type[2];
+			for (int x : {0, 1})
+			{
+				switch (field_results[x].type.ver())
+				{
+				case Typen("pointer"):
+				case Typen("vector"):
+					type[x] = llvm_integer(field_results[x].type.field(0));
+					break;
+				case Typen("vector of something"):
+				case Typen("pointer to something"):
+					type[x] = field_results[x].hidden_subtype;
+					break;
+				default:
+					return_code(type_mismatch, 0);
+				}
+			}
+
+			finish(create_if_value(
+				IRB->CreateICmpEQ(type[0], type[1], s("runtime type check")),
+				[&](){ IRB->CreateStore(field_results[1].IR, field_results[0].place->allocation); return llvm_integer(1); },
+				[&](){ return llvm_integer(0); }
+			));
+		}
 	case ASTn("dyn_subobj"):
 		{
 			llvm::Value* single_type; //the final single type.
@@ -792,9 +851,14 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("vector_size"): //in the future, this should handle dynamic pointers too, and concatenates
 		{
-			if (field_results[0].type.ver() != Typen("vector")) return_code(type_mismatch, 0);
-			llvm::Value* pusher = llvm_int_only_func(vector_size);
-			finish(IRB->CreateCall(pusher, field_results[0].IR));
+			if (field_results[0].type.ver() == Typen("vector") || field_results[0].type.ver() == Typen("vector of something"))
+			{
+				finish(IRB->CreateCall(llvm_int_only_func(vector_size), field_results[0].IR));
+			}
+			/*else if (field_results[0].type.ver() == Typen("AST pointer"))
+			{
+			}*/
+			return_code(type_mismatch, 0);
 		}
 	case ASTn("dynamify"):
 		{
@@ -814,32 +878,29 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		}
 	case ASTn("compile"):
 		{
-			finish(IRB->CreateCall(llvm_int_only_func(compile_returning_just_function), field_results[0].IR, s("compile")));
+			if (type_check(RVO, field_results[0].type, T::null) == type_check_result::perfect_fit) finish(llvm_integer(0));
+			else if (type_check(RVO, field_results[0].type, T::AST_pointer) == type_check_result::perfect_fit)
+				finish(IRB->CreateCall(llvm_int_only_func(compile_returning_just_function), field_results[0].IR, s("compile")));
+			else return_code(type_mismatch, 0);
+		}
+
+	case ASTn("overfunc"):
+		{
+			finish(llvm_int_only_func(overwrite_function), {field_results[0].IR, field_results[1].IR});
 		}
 	case ASTn("convert_to_AST"):
 		{
 			//this helps the bootstrapping issue. can't get an AST without a vector of ASTs; can't get a vector of ASTs without an AST.
 			if (field_results[1].type == T::null)
-			{
-				llvm::Value* converter = llvm_int_only_func(no_vector_to_AST);
-				llvm::Value* AST_result = IRB->CreateCall(converter, field_results[0].IR, s("converter"));
-				finish(AST_result);
-			}
+				finish(IRB->CreateCall(llvm_int_only_func(no_vector_to_AST), field_results[0].IR, s("converter")));
 
 			if (type_check(RVO, field_results[1].type, u::vector_of_ASTs) != type_check_result::perfect_fit)
 				return_code(type_mismatch, 1);
-			llvm::Value* hopeful_vector = field_results[1].IR;
-
-			llvm::Value* converter = llvm_int_only_func(vector_to_AST);
-			std::vector<llvm::Value*> arguments{field_results[0].IR, hopeful_vector};
-			llvm::Value* AST_result = IRB->CreateCall(converter, arguments, s("converter"));
-
-			finish(AST_result);
+			finish(IRB->CreateCall(llvm_int_only_func(vector_to_AST), {field_results[0].IR, field_results[1].IR}, s("converter")));
 		}
 	case ASTn("imv_AST"):
 		{
-			llvm::Value* converter = llvm_int_only_func(new_imv_AST);
-			finish(IRB->CreateCall(converter, field_results[0].IR, s("new imv")));
+			finish(IRB->CreateCall(llvm_int_only_func(new_imv_AST), field_results[0].IR, s("new imv")));
 		}
 	case ASTn("load_tag"):
 		{
@@ -853,8 +914,9 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			}
 		}
 	case ASTn("load_imv_from_AST"):
+	case ASTn("load_vector_from_BB"):
 		{
-			auto loader = llvm_function(load_imv_from_AST, llvm_i64()->getPointerTo(), llvm_i64()); //todo: we should load a reference.
+			auto loader = llvm_function(target->tag == ASTn("load_imv_from_AST") ? load_imv_from_AST : load_BB_from_AST, llvm_i64()->getPointerTo(), llvm_i64());
 			llvm::Value* reference_to_imv = IRB->CreateCall(loader, field_results[0].IR);
 			
 			Return_Info case_IR;

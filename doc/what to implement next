@@ -22,3 +22,11 @@ maybe we need a shift operator. because mult + shift-right = win.
 
 
 we still can't extract from concatenates.
+
+
+
+
+it's good to optimize away cruft between testing runs. because even though some multi-turn changes might be worthwhile, working off of what used to be errors, it's always best to keep the feedback as honest and direct as possible.
+
+
+we still don't have a way to overwrite functions.

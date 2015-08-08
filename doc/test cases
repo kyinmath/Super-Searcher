@@ -1,3 +1,6 @@
 
 //tests moving objects to higher lifetimes. a pointer to in gets stored to p, so the concatenation better stay alive.
 [imv 30]dummy [pointer dummy]p [concatenate [imv 40]in [store [pointer p] [pointer in]]]a [increment p]
+
+need to test try_store().
+	and maybe we can move the regular store there as well.

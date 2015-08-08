@@ -271,6 +271,15 @@ inline void agency2(uint64_t first, uint64_t par)
 	}
 }
 
+inline uint64_t overwrite_func(function* first, function* second)
+{
+	if (first == nullptr || second == nullptr) return 0;
+	if (first->return_type != second->return_type) return 0;
+	first->~function();
+	compile_specifying_location(second->the_AST, first);
+	return 1;
+}
+
 //relies on ABI knowledge. actual function signature is void (return*, type, offset).
 //return object is: type, then branch (ver(), except 0 on null). can be called "readnone" because the types are all immut
 //return 0 if nothing was received.
@@ -300,10 +309,16 @@ inline std::array<uint64_t, 2> dynamic_subtype(Tptr type, uint64_t offset)
 inline uint64_t* load_imv_from_AST(uAST* p)
 {
 	if (p == 0) return 0;
-	else if (p->tag != 0) return 0;
+	else if (p->tag != ASTn("imv")) return 0;
 	else return (uint64_t*)(&p->fields[0]);
 }
 
+inline uint64_t* load_BB_from_AST(uAST* p)
+{
+	if (p == 0) return 0;
+	else if (p->tag != ASTn("basicblock")) return 0;
+	else return (uint64_t*)(&p->fields[0]);
+}
 
 inline uint64_t AST_tag(uAST* p)
 {

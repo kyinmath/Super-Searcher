@@ -42,7 +42,7 @@ public:
 	typedef CompileLayerT::ModuleSetHandleT ModuleHandleT;
 
 
-	KaleidoscopeJIT(llvm::TargetMachine* tm) : DL(*tm->getDataLayout()), CompileLayer(ObjectLayer, llvm::orc::SimpleCompiler(*tm)) {}
+	KaleidoscopeJIT(llvm::TargetMachine* tm) : DL(tm->createDataLayout()), CompileLayer(ObjectLayer, llvm::orc::SimpleCompiler(*tm)) {}
 
 	std::string mangle(const std::string &Name) {
 		std::string MangledName;
@@ -65,9 +65,9 @@ public:
 	llvm::orc::JITSymbol findSymbol(const std::string &Name) { return CompileLayer.findSymbol(Name, true); }
 	llvm::orc::JITSymbol findUnmangledSymbol(const std::string Name) { return findSymbol(mangle(Name)); }
 
+	const llvm::DataLayout DL;
 private:
 
-	const llvm::DataLayout &DL;
 	ObjLayerT ObjectLayer;
 	CompileLayerT CompileLayer;
 };
