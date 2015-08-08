@@ -199,3 +199,4 @@ toy
 /linuxheaders
 /virtual/admin
 /virtual/slave
+callgrind.out.*
