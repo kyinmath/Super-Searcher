@@ -97,6 +97,7 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 		{
 		case Typen("vector"): //for now, this is ok being here because the interior type must have size 1.
 		case Typen("pointer"):
+		case Typen("temp pointer"):
 			if (iter[0].ver() == iter[1].ver())
 			{
 				auto result = type_check(reference, iter[0].field(0), iter[1].field(0));
@@ -139,6 +140,7 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 		{
 		case Typen("vector"): //for now, this is ok being here because the interior type must have size 1.
 		case Typen("pointer"):
+		case Typen("temp pointer"):
 			{
 				auto result = type_check(reference, iter[0].field(0), iter[1].field(0));
 				if (result == type_check_result::perfect_fit)

@@ -25,7 +25,7 @@ void make_sample_file(uint64_t id)
 void write_to_file(uint64_t id)
 {
 	make_sample_file(id);
-	std::ifstream sample_file(std::to_string(id), std::ios::binary | std::ios::ate);
+	std::ifstream sample_file(std::to_string(id), std::ios::binary);
 	unsigned long long size_of_file = sample_file.tellg();
 	unsigned long long no_of_integers = size_of_file >> 3; //uint64_t is 2^3 bytes
 	check(8 * no_of_integers == size_of_file, "File doesn't consist of uint64_t (number of bytes not a multiple of 8)");

@@ -1,3 +1,4 @@
+#include <fstream>
 #include "globalinfo.h"
 #include "cs11.h"
 #include "runtime.h"
@@ -214,16 +215,20 @@ class source_reader
 {
 	std::unordered_map<string, uAST*> ASTmap = {{"0", nullptr}}; //from name to location. starts with 0 = nullptr.
 	std::istream& input;
+	char ending_char;
 
 	//grabs a token. characters like [, ], {, } count as tokens by themselves.
 	//otherwise, get characters until you hit whitespace or a special character.
-	//if the last char is \n, then it doesn't consume it.
+	//if the last char is the end, then it doesn't consume it.
 	string get_token()
 	{
-		while (input.peek() == ' ')
+		char next_char = input.peek();
+		if (next_char == ending_char)
+			return string();
+
+		while (input.peek() == '\n' || input.peek() == '\t' || input.peek() == '\r' || input.peek() == ' ')
 			input.ignore(1);
 
-		char next_char = input.peek();
 		switch (next_char)
 		{
 		case '[':
@@ -232,11 +237,9 @@ class source_reader
 		case '}':
 			input.ignore(1);
 			return string(1, next_char);
-		case '\n':
-			return string();
 		default:
 			string word;
-			while (next_char != '[' && next_char != ']' && next_char != '{' && next_char != '}' && next_char != '\n' && next_char != ' ')
+			while (next_char != '[' && next_char != ']' && next_char != '{' && next_char != '}' && next_char != ending_char && next_char != '\n' && next_char != '\t' && next_char != '\r' && next_char != ' ')
 			{
 				word.push_back(next_char);
 				input.ignore(1);
@@ -342,7 +345,7 @@ class source_reader
 		string last_char;
 		if (create_brace_at_end == false)
 		{
-			if (input.peek() == '\n') input.ignore(1);
+			if (input.peek() == ending_char) input.ignore(1);
 			last_char = "";
 		}
 		else last_char = "}";
@@ -355,7 +358,7 @@ class source_reader
 	}
 
 public:
-	source_reader(std::istream& stream, char end) : input(stream) {} //char end must be '\n', because the char needs to go in a switch case
+	source_reader(std::istream& stream, char end) : input(stream), ending_char(end) {} //char end must be '\n', because the char needs to go in a switch case
 	uAST* read()
 	{
 		uAST* end = create_single_basic_block();
@@ -449,7 +452,7 @@ void test_suite()
 	compile_verify_string("_b[imv 0] _a[label] [store b [increment b]] [goto a] [concatenate b]", u::integer, FINITENESS_LIMIT);
 
 	//vector creation and pushback
-	compile_string("_vec[nvec [typeof [zero]]] [vector_push vec [imv 40]] [concatenate vec]");
+	compile_string("_vec[nvec [typeof [zero]]] [vecpb vec [imv 40]] [concatenate vec]");
 
 	//loading from dynamic objects. a single-object dynamic object, pointing to an int.
 	compile_verify_string("_empty[dynamify] _ret[imv 0] _a[imv 40] _subobj[dyn_subobj _dyn[dynamify [imv 40]] [imv 0] [label] [store ret subobj] [store empty subobj]] [concatenate ret]", u::integer, 40);
@@ -555,6 +558,16 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "deletemodule") == 0) DELETE_MODULE_IMMEDIATELY = true;
 		else if (strcmp(argv[x], "truefuzz") == 0) OUTPUT_MODULE = false;
 		else if (strcmp(argv[x], "serialize") == 0) SERIALIZE_ON_EXIT = true;
+		else if (strcmp(argv[x], "file") == 0)
+		{
+			string filename = argv[++x];
+			std::ifstream file(filename, std::ifstream::in);
+			check(file.is_open() && file.good(), "stream opening failed");
+			TRUERUN = true;
+			source_reader k(file, '\\');
+			uAST* starting_event_AST = k.read();
+			event_roots.push_back(compile_returning_just_function(starting_event_AST));
+		}
 		else if (strcmp(argv[x], "benchmark") == 0)
 		{
 			runs = 10000;
@@ -577,8 +590,7 @@ int main(int argc, char* argv[])
 		else error(string("unrecognized flag ") + argv[x]);
 	}
 
-	if (unserialize_choice)
-		unserialize(unserializationid);
+	if (unserialize_choice) unserialize(unserializationid);
 	else initialize();
 
 #ifndef NOCHECK
@@ -603,6 +615,15 @@ int main(int argc, char* argv[])
 			std::cout << "success rate " << (float)total_successful_compiles/runs << '\n';
 		}
 	} a;
+
+	if (TRUERUN)
+	{
+		while (1)
+		{
+			finiteness = FINITENESS_LIMIT;
+			run_null_parameter_function(event_roots[0]);
+		}
+	}
 
 #ifndef NO_CONSOLE
 	if (CONSOLE)

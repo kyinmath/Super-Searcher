@@ -198,6 +198,13 @@ inline uAST** AST_subfield(uAST* a, uint64_t offset)
 	}
 }
 
+//returns the desired element, or 0 if too far
+inline uAST* AST_subfield_guarantee(uAST* a, uint64_t offset)
+{
+	uAST** result = AST_subfield(a, offset);
+	return result ? *result : 0;
+}
+
 inline uint64_t type_subfield(Tptr a, uint64_t offset)
 {
 	if (a == 0) return 0;

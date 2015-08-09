@@ -65,6 +65,12 @@ inline uint64_t* reference_at(svector* s, uint64_t offset)
 	else return 0;
 }
 
+inline uint64_t vector_load(svector* s, uint64_t offset)
+{
+	if (offset < s->size) return (*s)[offset];
+	else return 0;
+}
+
 
 struct Vector_range
 {

@@ -200,7 +200,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
 	//note: early escapes must still leave the IR builder in a valid state, so that create_if_Value can do its rubbish business.
-#define return_code(X, Y) do { print("error at ", target, '\n'); error_location = target; error_field = Y; return Return_Info(IRgen_status::X, (llvm::Value*)nullptr, u::null); } while (0)
+#define return_code(X, Y) do { print("error at ", target, " field ", Y, '\n'); error_location = target; error_field = Y; return Return_Info(IRgen_status::X, (llvm::Value*)nullptr, u::null); } while (0)
 
 	if (VERBOSE_DEBUG)
 	{
@@ -606,11 +606,17 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			auto found_AST = objects.find(target->fields[0]);
 			if (found_AST == objects.end()) return_code(pointer_without_target, 0);
 			if (found_AST->second.place == nullptr) return_code(pointer_to_temporary, 0);
-			if (found_AST->second.hidden_reference == true) return_code(pointer_to_reference, 0);
-			Tptr new_pointer_type = new_unique_type(Typen("pointer"), found_AST->second.type);
-
+			Tptr new_pointer_type(0);
+			if (found_AST->second.hidden_reference == true || !is_full(found_AST->second.type))
+			{
+				new_pointer_type = new_unique_type(Typen("temp pointer"), found_AST->second.type);
+			}
+			else
+			{
+				new_pointer_type = new_unique_type(Typen("pointer"), found_AST->second.type);
+				objects.find(target->fields[0])->second.place->turn_full(); //todo: this isn't always possible.
+			}
 			llvm::Value* final_result = IRB->CreatePtrToInt(found_AST->second.place->allocation, llvm_i64(), s("flattening pointer"));
-			objects.find(target->fields[0])->second.place->turn_full();
 			finish_special(final_result, new_pointer_type);
 		}
 	case ASTn("concatenate"):
@@ -634,11 +640,23 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 	case ASTn("store"):
 		{
 			if (field_results[0].type == 0) return_code(type_mismatch, 0);
-			if (field_results[0].place == nullptr) return_code(missing_reference, 0);
-			if (type_check(RVO, field_results[1].type, field_results[0].type) != type_check_result::perfect_fit) return_code(type_mismatch, 1);
+			if (type_check(RVO, field_results[1].type, field_results[0].type) == type_check_result::perfect_fit) //store into reference
+			{
+				if (field_results[0].place == nullptr) return_code(missing_reference, 0);
+				write_into_place(field_results[1].IR, field_results[0].place->allocation);
+				finish(0);
+			}
+			//store into pointer
+			if (field_results[0].type.ver() == Typen("temp pointer") || field_results[0].type.ver() == Typen("pointer"))
+			{
+				if (type_check(RVO, field_results[1].type, field_results[0].type.field(0)) == type_check_result::perfect_fit)
+				{
+					write_into_place(field_results[1].IR, field_results[0].IR);
+					finish(0);
+				}
+			}
+			return_code(type_mismatch, 1);
 
-			write_into_place(field_results[1].IR, field_results[0].place->allocation);
-			finish(0);
 		}
 
 	case ASTn("try_store"): //for now, this attempts to store a dynamic object into a static one, thus exposing the dynamic object's internals. it doesn't store statics into dynamics, for now. eventually, we'll probably want to fold this into the normal store.
@@ -839,7 +857,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 			finish(0);
 		}
-	case ASTn("vector_push"):
+	case ASTn("vecpb"):
 		{
 			//requires place, because pushing an element may change the location of the vector
 			if (field_results[0].place == nullptr) return_code(missing_reference, 0);
@@ -849,7 +867,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			IRB->CreateCall(pusher, {field_results[0].place->allocation, field_results[1].IR});
 			finish(0);
 		}
-	case ASTn("vector_size"): //in the future, this should handle dynamic pointers too, and concatenates
+	case ASTn("vecsz"): //in the future, this should handle dynamic pointers too, and concatenates
 		{
 			if (field_results[0].type.ver() == Typen("vector") || field_results[0].type.ver() == Typen("vector of something"))
 			{
@@ -886,7 +904,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 
 	case ASTn("overfunc"):
 		{
-			finish(llvm_int_only_func(overwrite_function), {field_results[0].IR, field_results[1].IR});
+			finish(IRB->CreateCall(llvm_int_only_func(overwrite_func), {field_results[0].IR, field_results[1].IR}));
 		}
 	case ASTn("convert_to_AST"):
 		{
@@ -992,16 +1010,18 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					return_code(requires_constant, 1);
 				}
 			case Typen("type pointer"):
-				{
-					llvm::Value* type_offset = llvm_int_only_func(type_subfield);
-					llvm::Value* result_type = IRB->CreateCall(type_offset, {field_results[0].IR, field_results[1].IR});
-					finish_special(result_type, u::type);
-				}
+				finish_special(IRB->CreateCall(llvm_int_only_func(type_subfield), {field_results[0].IR, field_results[1].IR}), u::type);
+			case Typen("AST pointer"):
+				finish_special(IRB->CreateCall(llvm_int_only_func(AST_subfield_guarantee), {field_results[0].IR, field_results[1].IR}), u::AST_pointer);
+			case Typen("vector"):
+				if (!is_zeroable(field_results[0].type.field(0))) return_code(type_mismatch, 0);
+				finish_special(IRB->CreateCall(llvm_int_only_func(vector_load), {field_results[0].IR, field_results[1].IR}), field_results[0].type.field(0));
 			case Typen("function pointer"):
 				if (auto k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
 				{
 					uint64_t offset = k->getZExtValue();
-					if (offset == 0) finish_special(IRB->CreateCall(llvm_int_only_func(AST_from_function), field_results[0].IR), u::AST_pointer);
+					if (offset == 0)
+						finish_special(IRB->CreateCall(llvm_int_only_func(AST_from_function), field_results[0].IR), u::AST_pointer);
 					else if (offset == 1) finish_special(IRB->CreateCall(llvm_int_only_func(type_from_function), field_results[0].IR), u::type);
 					else return_code(oversized_offset, 1);
 				}

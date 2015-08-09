@@ -115,13 +115,13 @@ constexpr AST_info AST_descriptor[] =
 	a("label", T::null).add_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
 	a("convert_to_AST", T::AST_pointer, T::integer, compile_without_type_check), //returns 0 on failure, the null AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST. integer, then a vector/nothing.
 	a("imv_AST", T::AST_pointer, T::dynamic_object), //makes a new dynamic object
-	{"store", T::null, compile_without_type_check, compile_without_type_check}, //pointer, then value.
+	{"store", T::null, compile_without_type_check, compile_without_type_check}, //pointer, then value. or reference, then value. will use overloading to determine which is needed.
 	{"try_store", T::integer, compile_without_type_check, compile_without_type_check}, //attempts to write the second object into the first. returns 1 on success. works with vector_of_something and pointer_to_something
-	{"load_subobj", special_return, compile_without_type_check, T::integer}, //if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields. this is where the loading is guaranteed to succeed. if function, gives either a copy of the ASTs, or the return type.
+	{"load_subobj", special_return, compile_without_type_check, T::integer}, //if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields. this is where the loading is guaranteed to succeed. if function, gives either a copy of the ASTs, or the return type. if AST, gives Nth subAST, or 0. if vector, and 0 is an acceptable failure value, it gives the Nth object.
 	a("load_subobj_ref", T::null, compile_without_type_check, T::integer).add_pointer_fields(1), //creates a reference and places it in the last field, instead of returning it. this is necessary if the loading can fail. used for ASTs, and for vectors.
 	a("dyn_subobj", T::type, compile_without_type_check, T::integer).add_pointer_fields(Typen("pointer") + 1), //if the proper type is a pointer/vector, we return the "pointer to something"/"vector of something". returns the type obtained. can take in either a dynamic object, a pointer to something, or a vector of something.
-	{"vector_push", T::null, compile_without_type_check, compile_without_type_check}, //push an object.
-	{"vector_size", T::integer, compile_without_type_check}, //maybe in the future, this would work for both vectors and ASTs, to find the number of fields.
+	{"vecpb", T::null, compile_without_type_check, compile_without_type_check}, //push an object.
+	{"vecsz", T::integer, compile_without_type_check}, //maybe in the future, this would work for both vectors and ASTs, to find the number of fields.
 	{"typeof", T::type, compile_without_type_check}, //returns the type of an object. necessary to create new vectors.
 	{"system1", T::integer, T::integer}, //find a system value, using only one parameter. this is a read-only operation, with no effects.
 	{"system2", T::integer, T::integer, T::integer},
@@ -307,9 +307,9 @@ inline std::ostream& operator<< (std::ostream& o, ou t)
 	bool have_printed_field = false;
 	for (uAST*& k : AST_range(t.a))
 	{
-		if (!have_printed_field) o << "fields ";
+		if (!have_printed_field) o << "fields";
 		have_printed_field = true;
-		o << k;
+		o << ' ' << k;
 	}
 	if (!have_printed_field) o << "no fields";
 	return o;

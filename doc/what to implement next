@@ -27,6 +27,10 @@ we still can't extract from concatenates.
 
 
 it's good to optimize away cruft between testing runs. because even though some multi-turn changes might be worthwhile, working off of what used to be errors, it's always best to keep the feedback as honest and direct as possible.
+	well, but there are things like [random] that might be good being stored.
+	
+there's also a situation where you may want to take an existing AST, and make a pointer to it from the basic block. this loads it from its existing location, and makes it a stack variable.
 
-
-we still don't have a way to overwrite functions.
+we don't have a way to get pointers to references. this is important if we are to write them. for example, our fuzztester needs pointers to references.
+	Idea: new type, "temp pointer". simply, when you try to get a pointer to an object that's a reference, you get a temp pointer instead. this works with type checking because you can't store it in a real pointer's spot.
+		then, any time you want to make something into a full object, we'd have to prohibit this from happening.

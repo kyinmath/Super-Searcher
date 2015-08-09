@@ -1,3 +1,7 @@
+todo: getting ASTs from other functions
+function calls
+function units
+
 fuzztester is only for error checking. not for actual operation.
 so, when building, we randomly choose load_subobj_refs. then each time we succeed, we store the offset and the AST, by pushing both onto vectors.
 	then, we know what can be referenced, by looking at previous ASTs and having smaller-sized offsets. any of those are valid to be referenced.
@@ -6,57 +10,3 @@ after we've chosen a spot (which will be either for insertion, deletion, or conc
 1. we'll have basic block ASTs.
 2. every time we make a new loose AST, we'll want to add it to a basic block AST.
 	thus, we first select a basic block AST, and then append to it. then, we get the last element, and then try adding terms.
-
-[imv 100]iterations
-[imv 20]max_fuzztester_size
-[nvec [typeof [convert_to_AST [zero]]]]vector_of_AST_pointers
-[nvec [typeof [convert_to_AST [zero]]]]fuzztester_roots
-[label]main_loop
-	[urem [random] [system1 [zero]]]tag
-	[system2 [zero] tag]pointer_fields
-	[urem [random] [vector_size fuzztester_roots]]prev_AST
-	[nvec [typeof [convert_to_AST [zero]]]]fields
-	[imv 0]incrementor
-	[label]field_push
-	[if [lessu incrementor pointer_fields]
-		{
-			[load_subobj_ref fuzztester_roots [urem [random] [vector_size fuzztester_roots]] [vector_push fields loaded_prev]]loaded_prev
-			[store incrementor [increment incrementor]]
-			[goto field_push]
-		}
-	]
-		for (; incrementor < pointer_fields + AST_descriptor[tag].additional_special_fields; ++incrementor)
-		{
-			if (AST_descriptor[tag].parameter_types[incrementor].type == T::dynamic_pointer)
-			{
-				fields.push_back((uAST*)(u::integer.ver())); //make a random integer
-				fields.push_back((uAST*)new_object(generate_exponential_dist()));
-			}
-		}
-		uAST* test_AST = new_AST(tag, fuzztester_roots.at(prev_AST), fields);
-		output_AST_console_version(test_AST);
-		fuzztester_roots.pop_back(); //delete the null we put on the back
-		finiteness = FINITENESS_LIMIT;
-		uint64_t result[3];
-		compile_returning_legitimate_object(result, (uint64_t)test_AST);
-		print("results of user compile are ", result[0], ' ', result[1] , ' ' , result[2] , '\n');
-		auto func = (function*)result[0];
-		if (result[1] == 0)
-		{
-			fuzztester_roots.push_back((uAST*)func->the_AST);
-			if (fuzztester_roots.size() > max_fuzztester_size)
-				fuzztester_roots.pop_front();
-
-
-			if (DONT_ADD_MODULE_TO_ORC || DELETE_MODULE_IMMEDIATELY)
-				continue;
-
-			std::array<uint64_t, 2> dynamic_result = run_null_parameter_function(result[0]);
-			uint64_t size_of_return = get_size((Tptr)dynamic_result[0]);
-			output_array((uint64_t*)dynamic_result[1], size_of_return);
-			//theoretically, this action is disallowed. these ASTs are pointing to already-immuted ASTs, which can't happen. however, it's safe as long as we isolate these ASTs from the user
-			++hitcount[tag];
-		}
-	}
-[store iterations [decrement iterations]]
-[if iterations [goto main_loop]]

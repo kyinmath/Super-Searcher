@@ -73,6 +73,7 @@ create an entry in type_check.
 marky_mark.
 dynamic offset AST, as well as dynamic_subtype()
 change the T::Types, if you create a Type that takes more subfields, because the tag is actually meaningless much of the time.
+is_full
 */
 constexpr Type_info Type_descriptor[] =
 {
@@ -84,6 +85,7 @@ constexpr Type_info Type_descriptor[] =
 	{"function pointer", 0, 1}, //can be nullptr. the purpose of not specifying the return/parameter type is given in "doc/AST pointers"
 	{"vector", 1, 1}, //base pointer cannot be null. interior type must be exactly size 1.
 	{"pointer", 1, 1}, //nullptr prohibited. comes last, because our dynamic offset AST is fragile and relies on it. same, for our vector AST.
+	{"temp pointer", 1, 1}, //can refer to references. can't be put in the heap.
 	{"pointer to something", 0, 1}, //an in-function type. you better be storing the actual type somewhere. this can never be stored into anything. however, we are currently enforcing that this must be a valid full pointer. so if you convert it to another valid pointer type, you actually can store it somewhere.
 	{"vector of something", 0, 1}, //an in-function type. same as the pointer to something; used for dynamic_subobj.
 	{"does not return", 0, 0}, //an in-function type
@@ -335,6 +337,33 @@ inline std::ostream& operator<< (std::ostream& o, const Tptr t)
 	else o << "no fields";
 	for (auto& x : Type_pointer_range(t)) o << " (" << x << ")";
 	return o;
+}
+
+//determines whether returning 0 is a valid null object.
+constexpr inline bool is_zeroable(Tptr t)
+{
+	if (t == u::integer) return true;
+	if (t == u::dynamic_object) return true;
+	if (t == u::AST_pointer) return true;
+	if (t == u::type) return true;
+	if (t == u::function_pointer) return true;
+	return false; //otherwise
+}
+
+constexpr inline bool is_full(Tptr t)
+{
+	if (t == 0) return true;
+	if (t.ver() == Typen("con_vec"))
+	{
+		for (Tptr& subt : Type_pointer_range(t))
+			if (!is_full(subt)) return false;
+		return true;
+	}
+	if (t.ver() == Typen("pointer to something")) return false;
+	if (t.ver() == Typen("vector of something")) return false;
+	if (t.ver() == Typen("temp pointer")) return false;
+	if (t.ver() == Typen("does not return")) return false;
+	return true;
 }
 
 void debugtypecheck(Tptr test);
