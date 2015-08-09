@@ -13,7 +13,7 @@ bool CONSOLE = false;
 bool OLD_AST_OUTPUT = false;
 bool OUTPUT_MODULE = true;
 bool FUZZTESTER_NO_COMPILE = false;
-bool READER_VERBOSE_DEBUG = false;
+bool READER_VERBOSE_DEBUG = true;
 bool QUIET = false;
 bool SERIALIZE_ON_EXIT = false;
 bool TRUEINIT = false;
@@ -222,13 +222,19 @@ class source_reader
 	//if the last char is the end, then it doesn't consume it.
 	string get_token()
 	{
-		char next_char = input.peek();
-		if (next_char == ending_char)
+		if (input.peek() == ending_char)
 			return string();
 
 		while (input.peek() == '\n' || input.peek() == '\t' || input.peek() == '\r' || input.peek() == ' ')
+		{
+			if (input.peek() == ending_char)
+				return string();
 			input.ignore(1);
+		}
 
+		char next_char = input.peek();
+		if (input.peek() == ending_char)
+			return string();
 		switch (next_char)
 		{
 		case '[':
@@ -282,6 +288,7 @@ class source_reader
 			return create_single_basic_block(true);
 
 		string tag_str = get_token();
+		print("tag_str was (", tag_str, ")");
 		uint64_t AST_type = ASTn(tag_str.c_str());
 
 		std::vector<uAST*> dummy_uASTs(get_size(get_AST_fields_type(AST_type)), nullptr);
@@ -320,7 +327,7 @@ class source_reader
 					if (next_token == "{") pushback_int(k, (uint64_t)create_single_basic_block(true));
 					else pushback_int(k, (uint64_t)read_single_AST(next_token));
 				}
-				else error("trying to write too many fields");
+				else error("trying to write too many fields, tag " + tag_str);
 			}
 		}
 		check(next_token == "]", "failed to have ]");

@@ -11,60 +11,63 @@ _main_loop[label]
 	_offset_sequence[nvec [typeof [zero]]]
 	_find_deeper_AST[label]
 	_pointer_to_current_AST[pointer base_AST]
-	_done_finding[label
-	_current_AST[load pointer_to_current_AST]
-	[if [current_AST]
+	_done_finding[label {
+	_current_AST[load_subobj pointer_to_current_AST [zero]]
+	[if current_AST
 		{	_BB_try[load_vector_from_BB current_AST
 			{
-				[if [lessu [random] 9223372036854775807] {
+				[if [lessu [random] [imv 9223372036854775807]] {
+					_old_vec_size[vecsz BB_try]
 					[vecpb AST_sequence current_AST]
-					[vecpb offset_sequence [vecsz BB_try]]
-					[store current_AST AST_try] [vecpb BB_try [convert_to_AST [zero]]] [goto done_finding]}]
-				_chosen_offset[urem [random] [vecsz BB_try]]
-				_AST_try[load_subobj_ref BB_try chosen_offset
-					[if AST_try
-					_success{[vecpb AST_sequence current_AST] [vecpb offset_sequence chosen_offset] [store pointer_to_current_AST [pointer AST_try]]
-					[if [lessu [random] 9223372036854775807] [goto find_deeper_AST]
+					[vecpb offset_sequence old_vec_size]
+					[vecpb BB_try [convert_to_AST [zero]]]
+					_AST_new_BB_try[load_subobj_ref BB_try old_vec_size [store pointer_to_current_AST [pointer AST_new_BB_try]]] [goto done_finding]}]
+				_chosen_BB_offset[urem [random] [vecsz BB_try]]
+				_AST_BB_try[load_subobj_ref BB_try chosen_BB_offset
+					[if AST_BB_try
+					_success{[vecpb AST_sequence current_AST] [vecpb offset_sequence chosen_BB_offset] [store pointer_to_current_AST [pointer AST_BB_try]]
+					[if [lessu [random] [imv 9223372036854775807]] [goto find_deeper_AST]
 					_time_to_do_work{[goto done_finding]}]}]]}]
 			_imv_try[load_imv_from_AST current_AST
-				{_dynamic_contain[dyn_subobj imv_try [zero] [label] [store imv_try [multiply [ushr imv_try [imv 32]] [ushr random [imv 31]]]]]}]
+				{_dynamic_contain[dyn_subobj imv_try [zero] [label] [store imv_try [multiply [ushr imv_try [imv 32]] [ushr [random] [imv 31]]]]]}]
 			_chosen_offset[urem [random] [system2 [zero] [load_tag current_AST]]]
 			_AST_try[load_subobj_ref current_AST chosen_offset
 				[if AST_try
 				{[vecpb AST_sequence current_AST] [vecpb offset_sequence chosen_offset] [store pointer_to_current_AST [pointer AST_try]]
-				[if [lessu [random] 9223372036854775807] [goto find_deeper_AST]
+				[if [lessu [random] [imv 9223372036854775807]] [goto find_deeper_AST]
 				_time_to_do_work{[goto done_finding]}]}
 			]]
 		}
 	]
+	}
 	]
-	
+	_tag[urem [random] [system1 [zero]]]
 	[if tag
 		_nonzerotag{
-		[if [subtract tag 1] _make_mini_basicblock{
-			_mini_BB[nvec [typeof [convert_to_AST [zero]]]] [vecpb mini_BB [convert_to_AST [zero]]] [vecpb mini_BB [load pointer_to_current_AST]] [store pointer_to_current_AST [convert_to_AST [imv 1] mini_BB]]
-			_second_BB_element[load_subobj_ref [load pointer_to_current_AST] [zero] {[store pointer_to_current_AST [pointer second_BB_element]]}]
+		[if [subtract tag [imv 1]] _make_mini_basicblock{
+			_mini_BB[nvec [typeof [convert_to_AST [zero]]]] [vecpb mini_BB [convert_to_AST [zero]]] [vecpb mini_BB [load_subobj pointer_to_current_AST [zero]]] [store pointer_to_current_AST [convert_to_AST [imv 1] mini_BB]]
+			_second_BB_element[load_subobj_ref [load_subobj pointer_to_current_AST [zero]] [zero] {[store pointer_to_current_AST [pointer second_BB_element]]}]
 			}]
 		_real_valid{
 			_fields[nvec [typeof [convert_to_AST [zero]]]]
-			_increm[integer [system2 [zero] tag]]
+			_increm[system2 [zero] tag]
 			_push_field_start[label]
 			_chosen_member[urem [random] [vecsz AST_sequence]]
 			_chosen_AST_base[load_subobj AST_sequence chosen_member]
-			_chosen_offset[urem [random] [load_subobj offset_sequence chosen_member]]
-			[vecpb fields _chosen_AST[load_subobj chosen_AST_base chosen_offset]]
+			_chosen_prev_offset[urem [random] [load_subobj offset_sequence chosen_member]]
+			[vecpb fields _chosen_AST[load_subobj chosen_AST_base chosen_prev_offset]]
 			[store increm [decrement increm]]
-			[if [increm] [goto push_field_start]]
+			[if increm [goto push_field_start]]
 			[store pointer_to_current_AST [convert_to_AST tag fields]]
 		}}
-		[new_imv_AST [dynamify [random]]]
+		[imv_AST [dynamify [random]]]
 	]
 	
 	_compilation_attempt[compile base_AST]
 	[if compilation_attempt [overfunc function compilation_attempt]]
-	[if [lessu [random] 9223372036854775807] [goto function_modification_start]]
+	[if [lessu [random] [imv 9223372036854775807]] [goto function_modification_start]]
 	
-	[store iterations [decrement [iterations]]]
-	[if [iterations] [goto main_loop]]
+	[store iterations [decrement iterations]]
+	[if iterations [goto main_loop]]
 
 \

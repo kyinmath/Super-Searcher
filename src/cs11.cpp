@@ -988,11 +988,12 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					Tptr type_of_object = type_of_pointer.field(0);
 					if (llvm::ConstantInt* k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
 					{
+						llvm::Value* pointer_cast = IRB->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 						uint64_t offset = k->getZExtValue();
 						if (offset == 0) //no concatenation
 						{
-							default_allocation = new_reference(field_results[0].IR);
-							finish_special(load_from_memory(field_results[0].IR, get_size(type_of_object)), type_of_object);
+							default_allocation = new_reference(pointer_cast);
+							finish_special(load_from_memory(pointer_cast, get_size(type_of_object)), type_of_object);
 						}
 						else //yes concatenation
 						{
@@ -1000,7 +1001,6 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 								return_code(oversized_offset, 1);
 							uint64_t skip_this_many;
 							uint64_t size_of_load = get_size_conc(type_of_object, offset, &skip_this_many);
-							llvm::Value* pointer_cast = IRB->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 							llvm::Value* place = skip_this_many ? IRB->CreateConstInBoundsGEP1_64(pointer_cast, skip_this_many, s("offset")) : pointer_cast;
 
 							default_allocation = new_reference(place);
