@@ -282,16 +282,16 @@ there can't be loops because Types are immut. the user doesn't have access to Ty
 }
 
 //finds one element in a concatenate. the size offset is returns in return_offset. the size of the object is returned normally.
-inline uint64_t get_size_conc(Tptr target, uint64_t offset, uint64_t* return_offset)
+inline Tptr get_offset_type(Tptr target, uint64_t offset)
 {
-	check(target != 0, "conc");
-	check(target.ver() == Typen("con_vec"), "need conc");
-	check(target.field(0) > offset, "error: you must check that there are enough types in the conc to handle the offset beforehand");
-	uint64_t initial_offset = 0;
-	for (uint64_t idx = 0; idx < offset; ++idx)
-		initial_offset += get_size(target.field(idx + 1));
-	*return_offset = initial_offset;
-	return get_size(target.field(offset + 1));
+	check(target != 0, "pointer to nothing");
+	if (target.ver() == Typen("con_vec"))
+	{
+		if (target.field(0) > offset) return target.field(offset + 1);
+		else return 0;
+	}
+	else if (offset == 0) return target;
+	return 0;
 }
 
 
@@ -350,6 +350,7 @@ constexpr inline bool is_zeroable(Tptr t)
 	return false; //otherwise
 }
 
+//returns if the object is allowed to be placed in full memory.
 constexpr inline bool is_full(Tptr t)
 {
 	if (t == 0) return true;

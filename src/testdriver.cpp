@@ -17,6 +17,7 @@ bool READER_VERBOSE_DEBUG = true;
 bool QUIET = false;
 bool SERIALIZE_ON_EXIT = false;
 bool TRUEINIT = false;
+bool FROM_FILE = false;
 bool TRUERUN = false;
 uint64_t runs = ~0ull;
 llvm::raw_null_ostream llvm_null_stream;
@@ -285,8 +286,11 @@ class source_reader
 			return AST_search->second;
 		}
 		if (first == string(1, '{'))
-			return create_single_basic_block(true);
-
+		{
+			uAST* new_type_location = create_single_basic_block(true);
+			if (thisASTname.compare("") != 0) ASTmap.insert(std::make_pair(thisASTname, new_type_location));
+			return new_type_location;
+		}
 		string tag_str = get_token();
 		print("tag_str was (", tag_str, ")");
 		uint64_t AST_type = ASTn(tag_str.c_str());
@@ -294,7 +298,7 @@ class source_reader
 		std::vector<uAST*> dummy_uASTs(get_size(get_AST_fields_type(AST_type)), nullptr);
 		uAST* new_type_location = new_AST(AST_type, dummy_uASTs); //we have to make it now, so that we know where the AST will be. this lets us specify where our reference must be resolved.
 
-		if (thisASTname.compare("") != 0) ASTmap.insert(std::make_pair(thisASTname, new_type_location));
+		if (thisASTname.compare("") != 0) ASTmap.insert(std::make_pair(thisASTname, new_type_location)); //this is over here instead of earlier, because we need to know the location before we can do it
 
 		if (READER_VERBOSE_DEBUG) print("AST tag was ", AST_type, "\n");
 
@@ -511,6 +515,7 @@ void test_suite()
 
 void initialize()
 {
+	u::vector_of_ASTs = new_unique_type(Typen("vector"), u::AST_pointer);
 	type_roots.push_back(u::vector_of_ASTs);
 }
 
@@ -528,6 +533,7 @@ int main(int argc, char* argv[])
 
 	bool unserialize_choice = false;
 	uint64_t unserializationid;
+	std::ifstream file;
 
 	bool BENCHMARK = false;
 	for (int x = 1; x < argc; ++x)
@@ -568,12 +574,10 @@ int main(int argc, char* argv[])
 		else if (strcmp(argv[x], "file") == 0)
 		{
 			string filename = argv[++x];
-			std::ifstream file(filename, std::ifstream::in);
+			file.open(filename, std::ifstream::in);
 			check(file.is_open() && file.good(), "stream opening failed");
 			TRUERUN = true;
-			source_reader k(file, '\\');
-			uAST* starting_event_AST = k.read();
-			event_roots.push_back(compile_returning_just_function(starting_event_AST));
+			FROM_FILE = true;
 		}
 		else if (strcmp(argv[x], "benchmark") == 0)
 		{
@@ -625,10 +629,20 @@ int main(int argc, char* argv[])
 
 	if (TRUERUN)
 	{
+		if (FROM_FILE)
+		{
+			source_reader k(file, '\\');
+			uAST* starting_event_AST = k.read();
+			function* event_func = compile_returning_just_function(starting_event_AST);
+			check(event_func != 0, "zero function from file");
+			event_roots.push_back(event_func);
+		}
 		while (1)
 		{
 			finiteness = FINITENESS_LIMIT;
 			run_null_parameter_function(event_roots[0]);
+			if (free_memory_count < pool_size / 10)
+				start_GC();
 		}
 	}
 

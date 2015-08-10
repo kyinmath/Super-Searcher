@@ -94,7 +94,7 @@ constexpr AST_info AST_descriptor[] =
 	{"decrement", T::integer, T::integer}, //Peano axioms increment operation.
 	{"increment", T::integer, T::integer}, //Peano axioms increment operation.
 	{"random", T::integer},
-	a("if", special_return, T::integer).add_pointer_fields(2), //test, first branch, fields[0] branch. passes through the return object of each branch; the return objects must be the same.
+	a("if", special_return, T::integer).add_pointer_fields(2), //test, first branch, fields[0] branch. passes through the return object of each branch; the return object types must be the same.
 	{"lessu", T::integer, T::integer, T::integer}, //less than comparison
 	{"lesss", T::integer, T::integer, T::integer}, //less than signed comparison
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
@@ -104,6 +104,7 @@ constexpr AST_info AST_descriptor[] =
 	{"udiv", T::integer, T::integer, T::integer},
 	{"urem", T::integer, T::integer, T::integer},
 	a("pointer", special_return).add_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
+	{"tmp_pointer", special_return, compile_without_type_check}, //for now, this turns a regular pointer into a temp pointer, for use with the stack. later, it'll probably be removed, and this will be done automatically instead.
 	a("concatenate", special_return, compile_without_type_check, compile_without_type_check), //squashes two objects together to make a big object
 	a("nvec", special_return, T::type), //makes a new vector, type of interior can't be chosen by a constant int, because pointers need further types.
 	{"dynamify", T::dynamic_object, compile_without_type_check}, //turns a regular pointer into a dynamic object. this is necessary for things like trees, where you undynamify to use, then redynamify to store.

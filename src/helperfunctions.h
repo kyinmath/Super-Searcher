@@ -24,6 +24,7 @@ enum IRgen_status {
 	vector_cant_take_large_objects, //vectors, for now, can only take 1-sized objects.
 	error_transfer_from_if, //our if function can't transfer error codes. they get lost. so we return this error instead.
 	lost_hidden_subtype, //when working with a pointer to something, you need its true type lying around in runtime. if this true type is lost, the object becomes useless.
+	nonfull_object, //tried to move a temporary stack object to the heap.
 };
 
 //solely for convenience

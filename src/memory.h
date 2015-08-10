@@ -25,6 +25,7 @@ inline void correct_function_pointer(uint64_t*& memory) { if (memory != 0) memor
 inline void correct_pointer(uint64_t*& memory) { if (memory != 0) memory += pointer_offset; }
 
 extern uint64_t* big_memory_pool;
+extern uint64_t free_memory_count;
 
 
 void serialize(uint64_t id);

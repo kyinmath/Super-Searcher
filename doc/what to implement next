@@ -23,6 +23,12 @@ maybe we need a shift operator. because mult + shift-right = win.
 
 we still can't extract from concatenates.
 
+temp pointers are hard to work with. you need to create a slot for them. but how do you create a slot for a temp pointer instead of a regular pointer?
+	we can try an automatic conversion. storing a temp pointer into a full pointer converts it instantly. then, we keep track of a flag, "has anyone used my fullness". this flag is set by anything that takes the pointer out of the stack.
+		the problem is that we need it to be in a single, canonical location. that means it must be the memory location.
+		but, basically any operation at all will need to force the type to be full. we can't have an object of one type with references to it as another type.
+			"any operation at all" means mainly copies.
+our current "solution" of using a basicblock passthrough isn't working because basic blocks don't call finish(). thus they don't insert anyhting in the object map.
 
 
 

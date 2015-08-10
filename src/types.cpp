@@ -23,12 +23,14 @@ with RVO, first must be smaller than fields[0]. with reference, it's the opposit
 future: remove the too-big and too-small return types. just make them 0 and 1.
 */
 
+bool VERBOSE_TYPE_CHECK = false;
+
 
 type_check_result type_check_once(type_status version, Tptr existing_reference, Tptr new_reference);
 type_check_result type_check(type_status version, Tptr existing_reference, Tptr new_reference)
 {
 	std::array<Tptr, 2> iter{{existing_reference, new_reference}};
-	if (VERBOSE_DEBUG)
+	if (VERBOSE_TYPE_CHECK)
 	{
 		print("type_checking these types: ");
 		output_type(existing_reference);
@@ -98,7 +100,7 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 		case Typen("vector"): //for now, this is ok being here because the interior type must have size 1.
 		case Typen("pointer"):
 		case Typen("temp pointer"):
-			if (iter[0].ver() == iter[1].ver())
+			if (iter[0].ver() == iter[1].ver() || (iter[0].ver() == Typen("pointer") && iter[1].ver() == Typen("temp pointer")))
 			{
 				auto result = type_check(reference, iter[0].field(0), iter[1].field(0));
 				if (result == type_check_result::perfect_fit) //requires perfect fit, full pointers must point to the full object

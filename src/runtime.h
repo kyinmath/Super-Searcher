@@ -75,7 +75,7 @@ inline dynobj* run_null_parameter_function(function* func)
 	void* fptr = func->fptr;
 	Tptr return_type = func->return_type;
 	uint64_t size_of_return = get_size(return_type);
-	print("return type of run function is: "); output_type(return_type); print('\n');
+	//print("return type of run function is: "); output_type(return_type); print('\n');
 	if (size_of_return == 1)
 	{
 		uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
@@ -305,8 +305,6 @@ inline std::array<uint64_t, 2> dynamic_subtype(Tptr type, uint64_t offset)
 	{
 		if (offset >= type.field(0))
 			return{{0, 0}};
-		uint64_t skip_this_many;
-		get_size_conc(type, offset, &skip_this_many);
 		//if (VERBOSE_DEBUG) print("dynamic_subtype is returning ", type.field(offset + 1), " and ", skip_this_many, '\n');
 		return{{type.field(offset + 1), type.field(offset + 1).ver()}};
 	}

@@ -8,6 +8,8 @@
 #include "function.h"
 #include "vector.h"
 
+uint64_t free_memory_count = pool_size;
+
 //found_living_object and found_function depend on these pools being contiguous
 std::vector<uint64_t> big_memory_allocation(pool_size, initial_special_value);
 uint64_t* big_memory_pool = big_memory_allocation.data();
@@ -44,6 +46,7 @@ uint64_t GC_IS_RUNNING = false; //used to catch allocations while GC is running
 
 uint64_t* allocate(uint64_t size)
 {
+	free_memory_count -= size;
 	check(size != 0, "allocating 0 elements means nothing");
 	check(!GC_IS_RUNNING, "no allocating while GCing");
 	uint64_t true_size = size;
@@ -131,6 +134,7 @@ void initialize_roots()
 			if (UNSERIALIZATION_MODE) uniquefy_premade_type(root_type, true);
 		}
 	}
+	u::vector_of_ASTs = type_roots[0]; //this is necessary for unserialization because we can only set it after the type roots are traced (and hence offsets are corrected), and we must have it before event roots are run.
 	for (auto& root_function : event_roots)
 	{
 		if (VERBOSE_GC) print("gc root function at ", root_function, '\n');
@@ -144,6 +148,7 @@ void trace_objects();
 void start_GC()
 {
 	UNSERIALIZATION_MODE = false;
+	free_memory_count = pool_size;
 	trace_objects();
 }
 
@@ -233,6 +238,7 @@ bool found_living_object(uint64_t* memory, uint64_t size)
 		print('\n');
 	}
 	living_objects.insert({memory, size});
+	free_memory_count -= size;
 	return 0;
 }
 
@@ -287,7 +293,7 @@ void mark_target(uint64_t& memory, Tptr t)
 	case Typen("integer"):
 		break;
 	case Typen("pointer"):
-		if (memory == 0) break;
+		check(memory != 0, "zero pointers not allowed");
 		if (found_living_object(int_pointer, get_size(t))) break;
 		mark_target(*int_pointer, t.field(0)); //this is better for debugging. we get a stack trace instead of flattening the stack.
 
@@ -343,14 +349,14 @@ void mark_target(uint64_t& memory, Tptr t)
 		}
 		break;
 	case Typen("function pointer"):
-		function* func = (function*)memory;
-		if (found_function(func)) break;
-
-		
-		mark_target((uint64_t&)(func->the_AST), u::AST_pointer);
-		mark_target((uint64_t&)(func->return_type), u::type);
-		//future: maybe the parameter
-
+		if (memory != 0)
+		{
+			function* func = (function*)memory;
+			if (found_function(func)) break;
+			mark_target((uint64_t&)(func->the_AST), u::AST_pointer);
+			mark_target((uint64_t&)(func->return_type), u::type);
+			//future: maybe the parameter
+		}
 		break;
 	}
 }
@@ -433,7 +439,7 @@ namespace u
 	Tptr type = uniquefy_premade_type(T::type, true);
 	Tptr AST_pointer = uniquefy_premade_type(T::AST_pointer, true);
 	Tptr function_pointer = uniquefy_premade_type(T::function_pointer, true);
-	Tptr vector_of_ASTs = new_unique_type(Typen("vector"), AST_pointer);
+	Tptr vector_of_ASTs(0);
 	Tptr pointer_to_something = Typen("pointer to something");
 	Tptr vector_of_something = Typen("vector of something");
 };

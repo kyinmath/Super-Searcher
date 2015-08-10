@@ -32,6 +32,7 @@ generate_IR() is the main AST conversion tool. it turns ASTs into llvm::Values, 
 
 bool OPTIMIZE = false;
 bool VERBOSE_DEBUG = false;
+bool VERBOSE_GENERATE = false;
 bool DONT_ADD_MODULE_TO_ORC = false;
 bool DELETE_MODULE_IMMEDIATELY = false;
 
@@ -55,7 +56,12 @@ uint64_t compiler_object::compile_AST(uAST* target)
 
 	builder_context_stack b(&new_builder, new_context.get());
 
-	if (VERBOSE_DEBUG) print("starting compilation\ntarget is ", target, '\n'); //in case it crashes here because target is not valid
+	if (VERBOSE_DEBUG)
+	{
+		print("starting compilation "); //in case it crashes here because target is not valid
+		output_AST_console_version(target);
+		print('\n');
+	}
 	if (target == nullptr) return IRgen_status::null_AST;
 	using namespace llvm;
 	FunctionType *dummy_type(FunctionType::get(llvm_void(), false));
@@ -75,7 +81,7 @@ uint64_t compiler_object::compile_AST(uAST* target)
 
 	auto size_of_return = get_size(return_object.type);
 	FunctionType* FT(FunctionType::get(llvm_type_including_void(size_of_return), false));
-	if (VERBOSE_DEBUG) print("Size of return is ", size_of_return, '\n');
+	if (VERBOSE_GENERATE) print("Size of return is ", size_of_return, '\n');
 	std::string function_name = GenerateUniqueName("");
 	Function *F(Function::Create(FT, Function::ExternalLinkage, function_name, M.get())); //marking this private linkage seems to fail
 	F->addFnAttr(Attribute::NoUnwind); //7% speedup. and required to get Orc not to leak memory, because it doesn't unregister EH frames
@@ -84,10 +90,8 @@ uint64_t compiler_object::compile_AST(uAST* target)
 	dummy_func->eraseFromParent();
 	if (size_of_return)
 	{
-		if (size_of_return == 1)
-			IRB->CreateRet(return_object.IR);
-		else if (return_object.IR->getType()->isArrayTy())
-			IRB->CreateRet(return_object.IR);
+		if (size_of_return == 1) IRB->CreateRet(return_object.IR);
+		else if (return_object.IR->getType()->isArrayTy()) IRB->CreateRet(return_object.IR);
 		else //since we permit {i64, i64}, we have to canonicalize the type here.
 		{
 			check(size_of_return < ~0u, "load object not equipped to deal with large objects, because CreateInsertValue has a small index");
@@ -200,9 +204,9 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 {
 	//an error has occurred. mark the target, return the error code, and don't construct a return object.
 	//note: early escapes must still leave the IR builder in a valid state, so that create_if_Value can do its rubbish business.
-#define return_code(X, Y) do { print("error at ", target, " field ", Y, '\n'); error_location = target; error_field = Y; return Return_Info(IRgen_status::X, (llvm::Value*)nullptr, u::null); } while (0)
+#define return_code(X, Y) do { if (VERBOSE_GENERATE) print("error at ", target, " field ", Y, " code ", X, '\n'); error_location = target; error_field = Y; return Return_Info(IRgen_status::X, (llvm::Value*)nullptr, u::null); } while (0)
 
-	if (VERBOSE_DEBUG)
+	if (VERBOSE_GENERATE)
 	{
 		print("generate_IR single AST start ^^^^^^^^^\n");
 		if (target) output_AST(target);
@@ -236,7 +240,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		//check(type == uniquefy_premade_type(type, false), "returned non unique type in finish()");
 		//no longer possible, not all types are uniqued.
 
-		if (VERBOSE_DEBUG && return_value != nullptr)
+		if (VERBOSE_GENERATE && return_value != nullptr)
 		{
 			print("finish() in generate_IR, Value is ");
 			return_value->print(*llvm_console);
@@ -246,8 +250,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			pftype(type);
 			print('\n');
 		}
-		else if (VERBOSE_DEBUG) print("finish() in generate_IR, null value\n");
-		if (VERBOSE_DEBUG)
+		else if (VERBOSE_GENERATE) print("finish() in generate_IR, null value\n");
+		if (VERBOSE_GENERATE)
 		{
 			IRB->GetInsertBlock()->getParent()->print(*llvm_console, nullptr);
 			print("generate_IR single AST ", target, " ", AST_descriptor[target->tag].name, " vvvvvvvvv\n");
@@ -299,13 +303,14 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 #define finish_special(X, type) do {return finish_internal(X, type); } while (0)
 
 #define finish(X) do {check(AST_descriptor[target->tag].return_object.state != special_return, "need to specify type"); finish_special(X, uniquefy_premade_type(AST_descriptor[target->tag].return_object.type, true)); } while (0)
+//I think this passthrough forces a hidden reference. but for now, we need it to convert pointers on the stack to temp pointers on the stack.
 #define finish_passthrough(X) do {default_hidden_subtype = X.hidden_subtype; default_allocation = X.place; return finish_internal(X.IR, X.type);} while(0)
 
 	//if this AST is already in the object list, return the previously-gotten value. this comes before the loop catcher.
 	auto looking_for_reference = objects.find(target);
 	if (looking_for_reference != objects.end())
 	{
-		if (VERBOSE_DEBUG)
+		if (VERBOSE_GENERATE)
 		{
 			print("I'm copying\n");
 			output_AST(target);
@@ -343,7 +348,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			if (result.error_code) return result;
 		}
 
-		if (VERBOSE_DEBUG)
+		if (VERBOSE_GENERATE)
 		{
 			print("generate_IR() result type is ");
 			pftype(result.type);
@@ -450,12 +455,18 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			{
 				result_type = case_IR[1].type; //if it didn't work, try seeing if else_IR can be the main type.
 				if (type_check(RVO, case_IR[0].type, case_IR[1].type) != type_check_result::perfect_fit)
-					return_code(type_mismatch, 2);
+				{
+					result_type = u::null;
+				}
 			}
 
 			IRB->SetInsertPoint(MergeBB);
-			llvm::Value* endPN = llvm_create_phi({case_IR[0].IR, case_IR[1].IR}, {caseBB[0], caseBB[1]});
-			finish_special(endPN, result_type);
+			if (result_type) //we have to test it, because type_check failure can give a null result type but where the fields don't match.
+			{
+				llvm::Value* endPN = llvm_create_phi({case_IR[0].IR, case_IR[1].IR}, {caseBB[0], caseBB[1]});
+				finish_special(endPN, result_type);
+			}
+			else finish_special(nullptr, u::null);
 
 
 
@@ -527,6 +538,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			print("nvec type is ", type, '\n');
 			if (type == 0) return_code(type_mismatch, 0);
 			if (type.ver() == 0) return_code(vector_cant_take_large_objects, 0);
+
+			if (!is_full(type)) return_code(nonfull_object, 0);
 			else if (type.ver() > Typen("pointer")) return_code(type_mismatch, 0);
 			else if (get_size(type) != 1) return_code(type_mismatch, 0);
 			finish_special(IRB->CreateCall(llvm_int_only_func(new_vector), {}), new_unique_type(Typen("vector"), type));
@@ -614,10 +627,15 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			else
 			{
 				new_pointer_type = new_unique_type(Typen("pointer"), found_AST->second.type);
-				objects.find(target->fields[0])->second.place->turn_full(); //todo: this isn't always possible.
+				objects.find(target->fields[0])->second.place->turn_full();
 			}
 			llvm::Value* final_result = IRB->CreatePtrToInt(found_AST->second.place->allocation, llvm_i64(), s("flattening pointer"));
 			finish_special(final_result, new_pointer_type);
+		}
+	case ASTn("tmp_pointer"):
+		{
+			if (field_results[0].type.ver() != Typen("pointer")) return_code(type_mismatch, 0);
+			finish_special(field_results[0].IR, new_unique_type(Typen("temp pointer"), field_results[0].type.field(0)));
 		}
 	case ASTn("concatenate"):
 		{
@@ -651,7 +669,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			{
 				if (type_check(RVO, field_results[1].type, field_results[0].type.field(0)) == type_check_result::perfect_fit)
 				{
-					write_into_place(field_results[1].IR, field_results[0].IR);
+					llvm::Value* pointer_cast = IRB->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
+					write_into_place(field_results[1].IR, pointer_cast);
 					finish(0);
 				}
 			}
@@ -672,6 +691,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					if (field_results[x].hidden_subtype == nullptr) return_code(lost_hidden_subtype, x);
 			}
 
+			//future: make this take temp pointers?
 			//check that we're writing pointers to pointers, vectors to vectors
 			switch (field_results[0].type.ver())
 			{
@@ -828,11 +848,13 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 				{
 					type_of_object = field_results[0].type.field(0);
 					reference_p = IRB->CreateCall(llvm_function(reference_at, llvm_i64()->getPointerTo(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
+					break;
 				}
 			case Typen("AST pointer"):
 				{
 					type_of_object = u::AST_pointer;
 					reference_p = IRB->CreateCall(llvm_function(AST_subfield, llvm_i64()->getPointerTo(), llvm_i64(), llvm_i64()), {field_results[0].IR, field_results[1].IR});
+					break;
 				}
 			default:
 				return_code(type_mismatch, 0);
@@ -882,6 +904,8 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 		{
 			if (field_results[0].type == 0)
 				finish(llvm_integer(0));
+			if (!is_full(field_results[0].type))
+				return_code(nonfull_object, 0);
 
 			llvm::Value* dynamic_allocator = llvm_function(new_dynamic_obj, llvm_i64()->getPointerTo(), llvm_i64());
 			llvm::Value* dynamic_object = IRB->CreateCall(dynamic_allocator, llvm_integer(field_results[0].type), s("dyn_allocate_memory"));
@@ -945,7 +969,7 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			};
 
 			uint64_t starting_stack_position = object_stack.size();
-			new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(reference_to_imv), Typen("dynamic object"), true));
+			new_living_object(target, Return_Info(IRgen_status::no_error, new_reference(reference_to_imv), target->tag == ASTn("load_imv_from_AST") ? u::dynamic_object : u::vector_of_ASTs, true));
 
 			auto reference_integer = IRB->CreatePtrToInt(reference_to_imv, llvm_i64());
 			llvm::Value* comparison = IRB->CreateICmpNE(reference_integer, llvm_integer(0), s("vector reference zero check"));
@@ -984,28 +1008,20 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			switch (type_of_pointer.ver())
 			{
 			case Typen("pointer"):
+			case Typen("temp pointer"):
 				{
 					Tptr type_of_object = type_of_pointer.field(0);
 					if (llvm::ConstantInt* k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
 					{
 						llvm::Value* pointer_cast = IRB->CreateIntToPtr(field_results[0].IR, llvm_i64()->getPointerTo());
 						uint64_t offset = k->getZExtValue();
-						if (offset == 0) //no concatenation
-						{
-							default_allocation = new_reference(pointer_cast);
-							finish_special(load_from_memory(pointer_cast, get_size(type_of_object)), type_of_object);
-						}
-						else //yes concatenation
-						{
-							if (offset >= type_of_object.field(0))
-								return_code(oversized_offset, 1);
-							uint64_t skip_this_many;
-							uint64_t size_of_load = get_size_conc(type_of_object, offset, &skip_this_many);
-							llvm::Value* place = skip_this_many ? IRB->CreateConstInBoundsGEP1_64(pointer_cast, skip_this_many, s("offset")) : pointer_cast;
 
-							default_allocation = new_reference(place);
-							finish_special(load_from_memory(place, size_of_load), type_of_object.field(offset + 1));
-						}
+						Tptr offset_type = get_offset_type(type_of_object, offset);
+						if (offset_type == 0) return_code(oversized_offset, 1);
+
+						llvm::Value* place = offset ? IRB->CreateConstInBoundsGEP1_64(pointer_cast, offset, s("offset")) : pointer_cast;
+						default_allocation = new_reference(place);
+						finish_special(load_from_memory(place, 1), offset_type);
 					}
 					return_code(requires_constant, 1);
 				}

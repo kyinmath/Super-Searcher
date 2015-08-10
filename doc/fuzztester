@@ -1,3 +1,6 @@
+problem 1: we insert an AST, then the fields are chosen. but the subfields can't point to the AST, because it isn't inserted yet.
+problem 2: we seem to be getting only single-unit ASTs. almost certainly, our BB push-backer is not working. we pushback, and then try to get a reference to the new AST...
+
 todo: getting ASTs from other functions
 function calls
 function units
@@ -10,3 +13,8 @@ after we've chosen a spot (which will be either for insertion, deletion, or conc
 1. we'll have basic block ASTs.
 2. every time we make a new loose AST, we'll want to add it to a basic block AST.
 	thus, we first select a basic block AST, and then append to it. then, we get the last element, and then try adding terms.
+
+	
+our fuzzer needs to handle null ASTs, since we start with a null function. just replace current_AST with something.
+
+basic block appending doesn't need to be special. it can be using the usual methods: except, push_back. then the current_AST is set to the new null AST slot.
