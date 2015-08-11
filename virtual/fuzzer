@@ -1,5 +1,5 @@
-_temp_function_vector[nvec [typeof [compile]]]
-[vecpb temp_function_vector [compile]]
+_temp_pointer_function_vector[imv pointer_to_vec_of_functions]
+_temp_function_vector[load_subobj temp_pointer_function_vector [zero]]
 _iterations[imv 100]
 _main_loop[label]
 	_int_function_choice[random]
@@ -14,6 +14,7 @@ _main_loop[label]
 	_done_finding[label {
 	_current_AST[load_subobj pointer_to_current_AST [zero]]
 	[agency2 [zero] [imv 8888]]
+	[agency2 [zero] current_AST]
 	[if current_AST
 		{
 			[agency2 [zero] [imv 999]]
@@ -47,7 +48,8 @@ _main_loop[label]
 	_tag[urem [random] [system1 [zero]]]
 	[if tag
 		_nonzerotag{
-		[if [subtract tag [imv 1]] _make_mini_basicblock{
+		[if [subtract tag [imv 1]]
+		_make_mini_basicblock{
 			_mini_BB[nvec [typeof [convert_to_AST [zero]]]] [vecpb mini_BB [convert_to_AST [zero]]] [vecpb mini_BB [load_subobj pointer_to_current_AST [zero]]] [store pointer_to_current_AST [convert_to_AST [imv 1] mini_BB]]
 			_second_BB_element[load_subobj_ref [load_subobj pointer_to_current_AST [zero]] [zero] {[store pointer_to_current_AST [pointer second_BB_element]]}]
 			}]
@@ -67,7 +69,12 @@ _main_loop[label]
 	]
 	
 	_compilation_attempt[compile base_AST]
-	[if compilation_attempt [overfunc function compilation_attempt]]
+	[if function
+		[if compilation_attempt {[overfunc function compilation_attempt] [agency2 [zero] [imv 6767]]}]
+		[vecpb temp_function_vector compilation_attempt]
+	]
+	[agency2 [zero] [imv 911]]
+	[agency2 [zero] [vecsz temp_function_vector]]
 	[if [lessu [random] [imv 9223372036854775807]] [goto function_modification_start]]
 	
 	[store iterations [decrement iterations]]

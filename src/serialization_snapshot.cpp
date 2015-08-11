@@ -102,7 +102,6 @@ void unserialize(uint64_t id)
 	for (uint64_t x = 0; x < function_pool_size; ++x) id_file.read(reinterpret_cast<char*>(&function_pool[x].the_AST), sizeof(uint64_t));
 	id_file.close();
 
-	//this is first, because we need vector_of_ASTs to be uniqued before we can start doing GC work, or converting anything else.
 	UNSERIALIZATION_MODE = true;
 	trace_objects();
 	for (uint64_t x = 0; x < function_pool_size; ++x) //compile in place

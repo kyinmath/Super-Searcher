@@ -1,4 +1,10 @@
+How is country competition going to work?
+	this requires single point of contact. for example, controlling a machine, or competing against other countries.
+	but King has problems with single-point-of-failure. and isolation of knowledge - he's the only one who knows how to do things.
+		unfortunately, having only a single king around means he has no competition to improve himself. if the other subusers in a country want a better king, it's hard, because nobody else has experience with kingship.
 
+		
+		
 is it reasonable to expose scores?
 	that is, communication might lead to party systems (like in Congress, open votes led to open corruption)
 the plus side is that it's possible to correct out-of-control voters. well, is it really? will the user have any real ability to detect poor voting? no, I think it's impossible.
@@ -15,10 +21,8 @@ Vote submission, User#, weighted vector of all users. given out AFTER the vote e
 	winner replaces the loser.
 	then, inside their heads, each user docks winner's score by some amount.
 		will this automatically lead to collusion? for example, if we have two parties, each sees the other colluding.
-
-
-problem: how do we prohibit users from voting for their close relatives?
-	it would be severely complicated. essentially, you'd have to weight their votes so that they derived no benefit from nepotism. this is really hard and strange, and forces a lot of thinking.
+yes, automatically. users will vote for their close relatives.
+	preventing this would be severely complicated. essentially, you'd have to weight their votes so that they derived no benefit from nepotism. this is really hard and strange, and forces a lot of thinking.
 
 the idea of a king is looking pretty good.
 	king will kill everyone upon winning the (random) election. then, he'll have no conflict of interest.

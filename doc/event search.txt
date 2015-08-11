@@ -24,9 +24,8 @@ how to find better functions?
 	we need a recommendation system. but recommendation systems are Turing-limit-complete. they must be specialized for the neuron you're looking at. so I guess we're stuck with our function units.
 
 current problem: function units are hard to change when you call them. if you have a function call AST, then you won't have any way to switch your called function to a neighboring function.
-	so instead, our "function unit" is simply a function? and then to access surrounding functions, you would look in the ASTs, and find an imv AST containing a pointer to vector of ASTs. the problem is that reading the ASTs of a function provokes a cascading copy.
-		we really could do this though. however, this also has the problem that the pointer to neighboring functions is at risk of being killed by random modification, unless we bake them together.
-		so we do bake them together. then, function are imv of [concatenation function pointer, pointer to function unit]. you then load out the function pointer. this costs no runtime penalty because it's a constant integer. we can't store the vector because it might be invalidated. we can't store pointer to the vector because it's not a full object. thus, we have to store a pointer to the function unit.
+	so we place the function unit in the imv, next to the function call. the pointer to neighboring functions is at risk of being killed by random modification, unless we bake them together.
+	so we do bake them together. then, function are imv of [concatenation function pointer, pointer to function unit]. you then load out the function pointer. this costs no runtime penalty because it's a constant integer. we can't store the vector because it might be invalidated. we can't store pointer to the vector because it's not a full object. thus, we have to store a pointer to the function unit.
 that means the event searcher is actually Directed Judgment.
 
 
@@ -37,11 +36,12 @@ event searcher:
 1. you're equipped with a goodness function
 2. you go testing functions by random branching. randomly decide to store the current function location.
 	then, whenever you find an improvement, create a branch from the inferior function to the superior function. this enhances your branching.
-	if something turns to be inferior, then randomly decide whether to scratch that branch. the probability should be a combination of memory pressure (GC count) and the running count.
+	if something turns to be inferior, then randomly decide whether to scratch that branch. (Garbage collector) the probability should be a combination of memory pressure (GC count) and the number of other available functions.
 testing works by feeding the dynamic return object to the goodness function.
 
 
 to actually receive values from the tested functions, the event searcher stores their return value. it doesn't let the functions modify some global; otherwise, the functions could cheat by screwing over other functions.
+	but what kind of return value should be gotten? and how do we pass in information to the functions?
 
 event searching, testing functions one by one, will work very poorly for combination. for example, if you want to chain multiple functions together, each solving a small part of the problem. which we do want.
 	idea: we can use the event searcher mechanism to find event searchers.

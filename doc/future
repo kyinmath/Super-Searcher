@@ -2,3 +2,9 @@ destructors. if you create a function, and nobody sees it, you might as well del
 
 fuzztester copy-and-insert doesn't work that well because the new insertion doesn't really interact with the old ASTs. you'd need some points for this to work out.
 	well, we ought to copy in a special way. some referenced ASTs which in the old function, were already active, and were effectively copy_variables, might become "reference points", where we rebind them to a new spot in the new 
+
+	
+trees for our memory allocation system. mainly, since there are different slot sizes, logically we should have different node sizes as well.
+	first element is definitely the free mem size. because some nodes are size 1. this is all they can handle.
+		what other information do we need? the number of subnodes. this will be generally different from the free mem size.
+then, allocation should try to avoid overwriting tree information. because that's expensive, you have to then move the information around.

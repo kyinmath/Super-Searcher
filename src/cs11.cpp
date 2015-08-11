@@ -551,9 +551,10 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			llvm::Function *TheFunction = IRB->GetInsertBlock()->getParent();
 
 			// Create blocks for the then and else cases. Insert the block into the function, or else it'll leak when we return_code
-			llvm::BasicBlock *label = llvm::BasicBlock::Create(*context, "", TheFunction);
+			llvm::BasicBlock *label = llvm::BasicBlock::Create(*context, s("label"), TheFunction);
 			auto label_insertion = labels.insert(std::make_pair(target, label_info(label, final_stack_position, true)));
-			if (label_insertion.second == false) return_code(label_duplication, 0);
+			if (label_insertion.second == false)
+				return_code(label_duplication, 0);
 
 			Return_Info scoped = generate_IR(target->fields[0]);
 			if (scoped.error_code) return scoped;
@@ -604,15 +605,11 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			llvm::Value* finiteness_minus_one = IRB->CreateSub(current_finiteness, llvm_integer(1));
 			IRB->CreateStore(finiteness_minus_one, finiteness_pointer);
 
-			Return_Info Success_IR = generate_IR(target->fields[1]);
-			if (Success_IR.error_code) return Success_IR;
-
 			emit_dtors(info.stack_size);
 			IRB->CreateBr(labelsearch->second.block);
 			IRB->SetInsertPoint(FailureBB);
 
-			Return_Info Failure_IR = generate_IR(target->fields[2]);
-			finish_passthrough(Failure_IR); //whether it's a failure or not.
+			finish(0); //whether it's a failure or not.
 		}
 	case ASTn("pointer"):
 		{

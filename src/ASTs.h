@@ -112,7 +112,7 @@ constexpr AST_info AST_descriptor[] =
 	a("overfunc", T::integer, T::function_pointer, T::function_pointer), //overwrites the first function with the second. return 1 on success.
 	{"run_function", T::dynamic_object, T::function_pointer},
 	//{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, compile_without_type_check}, //concatenate the interiors of two dynamic objects
-	a("goto", special_return).add_pointer_fields(3), //first field is label, second field is success, third field is failure
+	a("goto", T::null).add_pointer_fields(1), //first field is label. for success and failure, user must test finiteness manually.
 	a("label", T::null).add_pointer_fields(1), //the field is like a brace. anything inside the label can goto() out of the label. the purpose is to enforce that no extra stack elements are created.
 	a("convert_to_AST", T::AST_pointer, T::integer, compile_without_type_check), //returns 0 on failure, the null AST. the purpose is to solve bootstrap issues; this is guaranteed to successfully create an AST. integer, then a vector/nothing.
 	a("imv_AST", T::AST_pointer, T::dynamic_object), //makes a new dynamic object

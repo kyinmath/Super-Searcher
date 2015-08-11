@@ -108,7 +108,7 @@ type_check_result type_check_once(type_status version, Tptr existing_reference, 
 			}
 			else return type_check_result::different;
 		case Typen("integer"):
-			if (iter[0].ver() == iter[1].ver() || iter[0].ver() == Typen("pointer") || iter[0].ver() == Typen("type pointer") || iter[0].ver() == Typen("function pointer") || iter[0].ver() == Typen("AST pointer"))
+			if (iter[0].ver() == iter[1].ver() || iter[0].ver() == Typen("pointer") || iter[0].ver() == Typen("type pointer") || iter[0].ver() == Typen("function pointer") || iter[0].ver() == Typen("AST pointer") || iter[0].ver() == Typen("temp pointer"))
 				return type_check_result::perfect_fit;
 			return type_check_result::different;
 

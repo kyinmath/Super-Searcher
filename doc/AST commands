@@ -33,27 +33,20 @@ note: break, and return, are basically goto...
 	user start (modify directed judgment)
 	country start (modify the random judgment)
 	generic running
-	message (user, size, some objects. used for country competition as well.)
+	new message (user, size, some objects. used for country competition as well.)
 King:
-	you are the king!
+	king start (modify king judgment)
 	competition time (country)
-	user crash
+	user crash? no, this should be handled automatically.
 
 
 __dynamic object
 ()append-in-place only. fails if no space.
 ()Truncate(X). going down to X.
-	problem: this isn't possible. so how will something like a stack be done? user will have to keep track of a separate "size" object, whereas the size of the dynamic object will simply be for memory management...
 ()change_reserved_memory
 ()get_reserved_memory_size()
-()get Nth element.
 
 
-How is country competition going to work?
-	we need a voting system.
-	this requires single point of contact. for example, controlling a machine, or competing against other countries.
-	but King has problems with single-point-of-failure. and isolation of knowledge - he's the only one who knows how to do things.
-		unfortunately, having only a single king around means he has no competition to improve himself. if the other subusers in a country want a better king, it's hard, because nobody else has experience with kingship.
 %Delete user (can be overwritten later). You can't delete yourself; somebody has to be the king.
 %delegate kingship
 %revolution, if you are not king.

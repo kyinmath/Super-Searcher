@@ -20,9 +20,8 @@ function* function_pool = (function*)function_memory_allocation.data(); //we use
 uint64_t function_pool_flags[function_pool_size / 64] = {0}; //each bit is marked 0 if free, 1 if occupied. the {0} is necessary by https://stackoverflow.com/questions/629017/how-does-array100-0-set-the-entire-array-to-0#comment441685_629023
 uint64_t* sweep_function_pool_flags; //we need this to be able to run finalizers on the functions.
 
-//if we did want to multi-thread, we'd eventually want a lock on these things.
 std::multimap<uint64_t, uint64_t*> free_memory = {{pool_size, big_memory_pool}}; //first value = size of slot. second value = address
-std::map<uint64_t*, uint64_t> living_objects; //first value = address of user-seen memory. second slot = size of user-seen memory. ignores headers. must be ordered to find new memory.
+std::map<uint64_t*, uint64_t> living_objects; //first value = address of user-seen memory. second slot = size of user-seen memory. ignores headers. must be ordered to find new memory. only lives for the duration of garbage collection.
 uint64_t first_possible_empty_function_block; //where to start looking for an empty function block.
 std::stack < std::pair<uint64_t*, Tptr>> to_be_marked; //stack of things to be marked. this is good because it lets us avoid recursion.
 
@@ -125,6 +124,7 @@ function* allocate_function()
 
 void initialize_roots()
 {
+	//this is first, because we need vector_of_ASTs to be uniqued before we can start doing GC work, or converting anything else.
 	for (auto& root_type : type_roots)
 	{
 		if (VERBOSE_GC) print("gc root type at ", root_type, '\n');

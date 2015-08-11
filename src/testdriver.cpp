@@ -214,7 +214,10 @@ panic time! refuse to compile.
 using std::string; //this can't go inside source_reader for stupid C++ reasons
 class source_reader
 {
+public:
 	std::unordered_map<string, uAST*> ASTmap = {{"0", nullptr}}; //from name to location. starts with 0 = nullptr.
+	//you can also manipulate it externally to add things like dynamic objects, which are necessary for imvs.
+private:
 	std::istream& input;
 	char ending_char;
 
@@ -321,9 +324,17 @@ class source_reader
 					bool isNumber = true;
 					for (auto& k : next_token)
 						isNumber = isNumber && isdigit(k);
-					check(isNumber, string("tried to input non-number ") + next_token);
-					check(next_token.size(), "token is empty, probably a missing ]");
-					new_type_location->fields[field_num] = (uAST*)new_object_value(u::integer, std::stoull(next_token));
+					if (!isNumber)
+					{
+						auto AST_search = ASTmap.find(next_token);
+						check(AST_search != ASTmap.end(), string("non-number, and variable name not found: ") + next_token);
+						new_type_location->fields[field_num] = AST_search->second;
+					}
+					else
+					{
+						check(next_token.size(), "token is empty, probably a missing ]");
+						new_type_location->fields[field_num] = (uAST*)new_object_value(u::integer, std::stoull(next_token));
+					}
 				}
 				else if (AST_type == ASTn("basicblock"))
 				{
@@ -469,6 +480,9 @@ void test_suite()
 	compile_verify_string("_empty[dynamify] _ret[imv 0] _a[imv 40] _subobj[dyn_subobj _dyn[dynamify [imv 40]] [imv 0] [label] [store ret subobj] [store empty subobj]] [concatenate ret]", u::integer, 40);
 	//try to load the next object. it should go through the failure branch.
 	compile_verify_string("_empty[dynamify] _ret[imv 0] _a[imv 40] _subobj[dyn_subobj _dyn[dynamify [imv 40]] [imv 1] [store ret [imv 4]] [store ret subobj] [store empty subobj]] [concatenate ret]", u::integer, 4);
+
+
+	compile_verify_string("_a[imv 400] _p[tmp_pointer [pointer a]] [agency2 [zero] p] _l[load_subobj p [zero]] [subtract l [zero]]", u::integer, 400);
 
 	//future: implement the "pointer to something", then test it here.
 
@@ -632,6 +646,13 @@ int main(int argc, char* argv[])
 		if (FROM_FILE)
 		{
 			source_reader k(file, '\\');
+			svector* static_vector_of_functions = new_vector();
+			uint64_t* pointer_to_vec = new_object_value(static_vector_of_functions);
+			Tptr Tvector_of_functions = new_unique_type(Typen("vector"), u::function_pointer);
+			Tptr Tpointer_vec_func = new_unique_type(Typen("pointer"), Tvector_of_functions);
+			dynobj* imv_vector_of_functions = new_dynamic_obj(Tpointer_vec_func);
+			(*imv_vector_of_functions)[0] = (uint64_t)pointer_to_vec;
+			k.ASTmap.insert({"pointer_to_vec_of_functions", (uAST*)imv_vector_of_functions});
 			uAST* starting_event_AST = k.read();
 			function* event_func = compile_returning_just_function(starting_event_AST);
 			check(event_func != 0, "zero function from file");
