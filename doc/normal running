@@ -1,0 +1,36 @@
+new event:
+1. store the event somewhere
+2. event searcher runs on the function units. does some culling, ends up at a single function. copies that function, passes to fuzzer judgment
+3. judgment reruns the function constantly, modifying it until it's considered "good". (how? we need to return values somehow. and we need a goodness function somewhere, which means we must have a way to choose a goodness function as well)
+	should it should keep multiple versions, modifying simultaneously? if so, that'd be very difficult, because you'd need to keep these functions around (where?) and remember their performance across multiple encryption runs (how?)
+
+this will have problems with multi-time processes like playing chess, which is what we're really interested in.
+
+note that each user absolutely must have his own judgment. this was the whole point of countries: judgment develops on the level of countries, instead of globally. 
+note that multiple judgment rerun, for a single try, isn't always possible. for example, if you're playing chess. you need to submit a move before having it evaluated.
+	goodness is also an extremely deep task. for example, in chess, knowing whether your move is good or not is the same as playing well.
+	let's think about reversi. here, judgment evolves from "take everything", to "minimize pieces", to then understand corners and things.
+		so how does a human manage to evolve goodness without having it die off? goodness is very carefully kept under control. built from a foundation of emotions, and then always kept to these foundations.
+		goodness is fundamentally bound to "new user" mechanics. that means that chess works perfectly, since it's a new-user thing, and so is its multi-turn feedback structure.
+		
+goodness is basically bound to judgment. but it should definitely be outsourced, because of its complexity. and some parts of goodness can also be judged, as well. because occasionally you have a complete setup, such as access to a chess server. in this case, we have true feedback for goodness, so we can run judgment on the individual parts of chess goodness.
+	that is: goodness should be updated any time we get true feedback. but, how? perhaps we make goodness report back to the king, who possesses true feedback.
+	then, this means that goodness has a built-in upgrading system, which is very good.
+
+should goodness be developed by the user, or by the king? the key here is "true feedback". if it's developed by the king, then the users report values, and then the king culls. however, this mixes with the king's usual activity, which is to judge progress.
+
+so how should goodness be operated? one thing is that each goodness function should be allowed to specify whether it wants to take action or not. it is trusted.
+	we should separate goodness into a few functions, because chess goodness is different from relationship goodness.
+	can we just rebind the event searcher? no, because the mechanism is totally different, event searcher uses an external goodness function and tests, while goodness is trusted.
+	maybe there should only be one event searcher function. it calls other functions as it likes.
+		but then, when doing judgment, we need to know which thing we should be modifying. it's not easy to just trace the execution.
+		sure, there should be a "goodness finding function". this returns the appropriate thing to run. but functions can't take in information for now; no parameters. thus, passing information must be done by using globals.
+therefore, we continually move globals from the creation functions into the goodness function.
+	these globals should be the things that are the product, though. and again, how do we create a product?
+	at least, they should include the product. something like AIME may want to include just the answer, but have an underlying proof.
+
+how does a human normally work with interfacing answers? our chess system wants a specific answer format.
+	in the real world, you use your hands. for us, that corresponds to words.
+	it also means basic communication.
+
+a lot of communication is just immune system self-culling. you want to make sure you can understand your own words, and then you copy yourself.
