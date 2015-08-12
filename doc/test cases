@@ -5,3 +5,4 @@
 need to test try_store().
 	and maybe we can move the regular store there as well.
 temp pointers
+load_tag doesn't have any coverage. neither does dyn_subobj for unknown pointers and unknown vectors.

@@ -1,9 +1,8 @@
-move the fuzzer into AST format
-	getting types of ASTs
-		which requires being able to look at types.
-	how to figure out the internals of dynamic objects? since we don't have function parameters, we'll need to use global pointers to pass data.
-test coverage. we need to know that all ASTs are run. for example, load_tag doesn't have any coverage. neither does dyn_subobj for unknown pointers and unknown vectors.
-	serialization/snapshots. judgment MUST iterate very quickly. for example, when swinging a tennis racquet, you readjust after every shot.
+maybe load_subobj_ref can use a phi for its reference?
+	but that will create null references. even C++ doesn't allow this.
+	if we build a rubbish slot just to have something to point to, that will work poorly.
+	
+serialization/snapshots. judgment MUST iterate very quickly. for example, when swinging a tennis racquet, you readjust after every shot.
 
 how is the king going to work? must test his countrymen. send out probes, then measure their success.
 	problem: communication must match up. for example, king expects a dynamic pointer of 10 elements, and user must pass in exactly that type.
@@ -15,14 +14,14 @@ how is country competition going to work? grand admin must send out messages - p
 we must always consider bootstrap issues. for example, how to make a function that returns compiled functions with fixed type?
 	if there's no guaranteed mechanism, then such a function would need a static object to substitute. and it's unlikely the judgment function is able to construct these dynamic objects on the fly.
 
-how do we ever get a regular pointer from a dynamic pointer?
+do we need shift-left operator?
 
 
-maybe we need a shift operator. because mult + shift-right = win.
+our current way to extract from concatenates is to build a pointer to them, and use load_subobj. later, we should ditch this stupid method.
 
-
-we still can't extract from concatenates.
-
+pointers to references are necessary. this is important if we are to write them. for example, our fuzztester needs pointers to references.
+	Idea: new type, "temp pointer". simply, when you try to get a pointer to an object that's a reference, you get a temp pointer instead. this works with type checking because you can't store it in a real pointer's spot.
+		then, any time you want to make something into a full object, we'd have to prohibit this from happening.
 temp pointers are hard to work with. you need to create a slot for them. but how do you create a slot for a temp pointer instead of a regular pointer?
 	we can try an automatic conversion. storing a temp pointer into a full pointer converts it instantly. then, we keep track of a flag, "has anyone used my fullness". this flag is set by anything that takes the pointer out of the stack.
 		the problem is that we need it to be in a single, canonical location. that means it must be the memory location.
@@ -37,6 +36,7 @@ it's good to optimize away cruft between testing runs. because even though some 
 	
 there's also a situation where you may want to take an existing AST, and make a pointer to it from the basic block. this loads it from its existing location, and makes it a stack variable.
 
-we don't have a way to get pointers to references. this is important if we are to write them. for example, our fuzztester needs pointers to references.
-	Idea: new type, "temp pointer". simply, when you try to get a pointer to an object that's a reference, you get a temp pointer instead. this works with type checking because you can't store it in a real pointer's spot.
-		then, any time you want to make something into a full object, we'd have to prohibit this from happening.
+how to create global variables?
+	solution: choose a random AST. compile it! this gives a dynamic object.
+	but we don't want a dynamic object. we want a pointer. so make a  "pointer" AST, pointing to the AST you want. then compile the new pointer AST. this would require our "pointer" AST to work differently though, by passing in stack_degree = 2 to its first argument. I remember there are some caveats to doing this.
+	would it be possible instead to convert a dynamic object, to a dynamic object containing a pointer to the dynamic object?
