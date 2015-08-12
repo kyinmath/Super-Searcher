@@ -103,7 +103,7 @@ void unserialize(uint64_t id)
 	id_file.close();
 
 	UNSERIALIZATION_MODE = true;
-	trace_objects();
+	trace_objects(); //correct pointers, populate the type hash table, mark occupied memory, etc.
 	for (uint64_t x = 0; x < function_pool_size; ++x) //compile in place
 		if (function_pool[x].the_AST) compile_specifying_location(function_pool[x].the_AST, &function_pool[x]);	
 	

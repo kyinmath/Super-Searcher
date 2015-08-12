@@ -34,7 +34,13 @@ _main_loop[label]
 					[if [lessu [random] [imv 9223372036854775807]] [goto find_deeper_AST] time_to_do_work]
 					}]]}]
 			_imv_try[load_imv_from_AST current_AST
-				{_dynamic_contain[dyn_subobj imv_try [zero] [label] [store dynamic_contain [multiply [ushr dynamic_contain [imv 32]] [ushr [random] [imv 31]]]]]}]
+				{_dynamic_contain[dyn_subobj imv_try [zero] [label]
+				{
+				[if [lessu [imv 4294967296] dynamic_contain]
+				[store dynamic_contain [multiply [ushr dynamic_contain [imv 32]] [ushr [random] [imv 31]]]]
+				[store dynamic_contain [ushr [multiply dynamic_contain [ushr [random] [imv 47]]] [imv 48]]]
+				]
+				}]}]
 			_chosen_offset[urem [random] [system2 [zero] [load_tag current_AST]]]
 			_AST_try[load_subobj_ref current_AST chosen_offset
 				[if AST_try

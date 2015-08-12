@@ -3,6 +3,7 @@ problem 1: we insert an AST, then the fields are chosen. but the subfields can't
 todo: getting ASTs from other functions
 function calls
 function units
+moving global variables from function to function. in addition, creating these global variables as pointer-to-object. this is super important, because it allows for parameter passing.
 
 
 basic block appending uses push_back. then the current_AST is set to the new null AST slot.

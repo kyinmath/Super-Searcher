@@ -37,3 +37,6 @@ If you don't want to install kcachegrind, instead replace 63376 with the appropr
 callgrind_annotate callgrind.out.63376 >profile
 The results will be in the file "profile".
 Note: the "prof" tool doesn't work on VMware, so that's why I use callgrind.
+
+Multithreading in the llvm build costs some
+Asserts cost some

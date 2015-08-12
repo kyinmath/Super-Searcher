@@ -41,13 +41,13 @@ void initialize_roots();
 void sweepy_sweep();
 
 bool UNSERIALIZATION_MODE;
-uint64_t GC_IS_RUNNING = false; //used to catch allocations while GC is running
+uint64_t MEMORY_BEING_TRACED = false; //used to catch allocations while GC is running
 
 uint64_t* allocate(uint64_t size)
 {
 	free_memory_count -= size;
 	check(size != 0, "allocating 0 elements means nothing");
-	check(!GC_IS_RUNNING, "no allocating while GCing");
+	check(!MEMORY_BEING_TRACED, "no allocating while GCing");
 	uint64_t true_size = size;
 	auto k = free_memory.lower_bound(true_size);
 	if (k == free_memory.end())
@@ -155,7 +155,7 @@ void start_GC()
 
 void trace_objects()
 {
-	GC_IS_RUNNING = true;
+	MEMORY_BEING_TRACED = true;
 	if (SUPER_VERBOSE_GC)
 	{
 		print("listing all memory\n");
@@ -214,7 +214,7 @@ void trace_objects()
 
 		for (auto& x : living_objects) print("living object after GC ", x.first, " size ", x.second, '\n');
 	}
-	GC_IS_RUNNING = false;
+	MEMORY_BEING_TRACED = false;
 
 }
 
