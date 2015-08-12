@@ -1,12 +1,11 @@
 the only objects which require finalizers are functions.
 therefore, we simply shove functions in a special memory section. when garbage collecting, we delete them specially
 
-possibly, the reason why our gyarfas ghetto-dynarray is slow is because it doesn't use the stack.
+the reason why our gyarfas ghetto-dynarray is slow is probably because it doesn't use the stack.
 
 tracing allocation
 ++++:if we don't have reference counting, then our code doesn't need to know about it!
-	that means we don't have to insert a lot of rubbish LLVM code.
-	what's more, we don't have to keep track of any dtors at all anymore.
+	+++that means we don't have to insert a lot of rubbish LLVM code, and means no constructors, copy constructors, or dtors. huge bonus to simplicity of code
 ++reference counting is reported to be very slow, experimentally.
 	I guess it is the difference between keeping track at that instant, requiring constant updating when information changes (perfect state), and keeping track later and looking for batched information in random places.
 	http://blogs.msdn.com/b/brada/archive/2005/02/11/371015.aspx
@@ -21,7 +20,7 @@ we don't actually need a complete moving GC. we can move just the elements whose
 	so we preserve bump allocation, locality, and everything.
 	however, vector expansion would need to be special.
 
-we prohibit GC during thread running, because references to dynamic objects may point to missing memory.
+we prohibit GC during thread running, because references to vectors may point to missing memory.
 
 how do dynamic objects (ownership dynamic pointer) and dynamic pointers interact with each other in the type system?
 	if we have an ownership dynamic pointer, we can't let it be seen as a dynamic pointer, because that will let people get excessive references to it.

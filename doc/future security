@@ -1,3 +1,6 @@
+safe-stack, for both the parent and while compiling in the JIT...although the JIT support may possibly have bugs
+probe-stack. waiting for zoxc in phabricator
+
 Usually, Xeon-series processors have much larger L3 cache and higher multi-core capacity (up to 12) than comparable i-series processors on top of other server/workstation nitty-gritty details and optimizations for server-specific tasks.
 The other benefit of 2011 is more channels for RAM. 8x isn't uncommon and some configurations even use tri-channel memory.
 Additionally, Socket 2011 + Xeon allows for ECC RAM, which is very desirable for server and workstation environments. I would even go so far as to say this is the #2 reason people get 2011+Xeon, and sometimes even the #1 reason.

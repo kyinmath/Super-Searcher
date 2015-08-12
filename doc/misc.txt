@@ -1,5 +1,0 @@
-idea: our "store" function can take function pointers as well. but we can't write functions, because we only ever have function pointers...
-
-safe-stack, for both the parent and while compiling in the JIT...although the JIT support may possibly have bugs
-probe-stack. waiting for zoxc in phabricator
-

@@ -1,7 +1,6 @@
 
 must full pointers point to the beginning of the object?
 	+garbage collection is faster, with our bitset. only need to check the first bit to see if you already checked that object.
-	+in the future, we'll want mutators to know where the object is, for concurrent GC. will that require knowing the full object?
 	-less expressivity. so: what's the cost precisely?
 		you can't store the pointer on the heap. when might we want this? for ASTs?
 		actually, when might you want big objects on the heap at all? when they logically belong together. for example, one of our big compilation objects (passes).

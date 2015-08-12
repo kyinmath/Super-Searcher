@@ -1,1 +1,0 @@
-we need pointer offsets. it can't just be load_N + store_N, because that will absolutely kill transparency. impossible to handle cases generically.

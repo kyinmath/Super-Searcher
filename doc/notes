@@ -2,15 +2,10 @@ the random AST generator should succeed as often as possible. thus, ASTs should 
 for example, if error handling is required, taking a minimum of 3 extra ASTs, then that's at least 10x barrier for each one, and possibly up to 1000x barrier for more complex ones like goto.
 	that means that random creation won't work.
 
-PROBLEM: pointers go one way in ASTs, except for goto() which goes forward with labels.
-	this also breaks our console input, since we can no longer defer the reading of addresses until after the dependencies are processed.
-
 
 potential bugs:
 search for "-1", that might be non-uint64_t, or might not! standard permits both, which gives different values.
 search for "unsigned", since all of those aren't uint64_t
-
-we need an AST that can call functions. this works using the static_object AST
 
 JuliaLang: https://github.com/JuliaLang/julia/issues/54#issuecomment-1391348
 "I checked the vmkit source to see how they handle this for java, and they emit a check for zero with every integer divide. We probably have to do this too."
@@ -19,7 +14,7 @@ https://groups.google.com/d/msg/llvm-dev/1FOyTcEJ3FI/nCsWOyNIUjkJ
 C++ standard 5.6.4 "if the quotient a/b is representable in the type of the result, (a/b)*b + a%b is equal to a; otherwise, the behavior of both a/b and a%b is undefined"
 
 can just kill off threads that are in infinite loops, leaving the user in a valid state?
-	no, we have to handle dtors.
+	we purposely have no dtors at the moment.
 	and because of noexcept, instructions can be reordered around function calls. so the user is dead.
 
 

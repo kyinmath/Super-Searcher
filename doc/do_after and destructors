@@ -1,4 +1,17 @@
-we want some things:
+suppose we do have ownership objects. how do we look inside them? we can't load them; that will make a gigantic copy.
+thus, we note that copy constructors are basically always bad. nothing should ever have a copy constructor, because that makes it impossible to read it.
+	for example, C++ has references, which are basically pointers. whenever manipulating or reading an object, you always use the pointer *this.
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	we want some things:
 1. move constructors. dynamic objects should not be copied.
 	this is only useful if anything has a constructor/copy constructor. if everything is a straight memcopy, it's not useful.
 thus, we have a function which creates the object in the first branch, and then runs the second branch knowing the existence of the first branch.
@@ -17,3 +30,7 @@ Do we need two separate things or one?
 	two. because the move_ctor() shouldn't run if anything fails.
 
 maybe if() statements should also work as move_ctors.
+
+
+
+

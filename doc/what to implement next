@@ -39,4 +39,4 @@ there's also a situation where you may want to take an existing AST, and make a 
 how to create global variables?
 	solution: choose a random AST. compile it! this gives a dynamic object.
 	but we don't want a dynamic object. we want a pointer. so make a  "pointer" AST, pointing to the AST you want. then compile the new pointer AST. this would require our "pointer" AST to work differently though, by passing in stack_degree = 2 to its first argument. I remember there are some caveats to doing this.
-	would it be possible instead to convert a dynamic object, to a dynamic object containing a pointer to the dynamic object?
+	would it be possible instead to convert a dynamic object, to a dynamic object containing a pointer to the dynamic object? maybe not, because that would require handling null dynamic objects.
