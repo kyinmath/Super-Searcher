@@ -419,6 +419,18 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			[&](){ return IRB->CreateLShr(field_results[0].IR, field_results[1].IR); },
 			[&](){ return llvm_integer(0); }
 		));
+	case ASTn("sshr"): //unsigned shift right
+		finish(create_if_value(
+			IRB->CreateICmpULT(field_results[1].IR, llvm_integer(64), s("lt64 shift")),
+			[&](){ return IRB->CreateAShr(field_results[0].IR, field_results[1].IR); },
+			[&](){ return llvm_integer(0); }
+		));
+	case ASTn("shl"): //shift left
+		finish(create_if_value(
+			IRB->CreateICmpULT(field_results[1].IR, llvm_integer(64), s("lt64 shift")),
+			[&](){ return IRB->CreateShl(field_results[0].IR, field_results[1].IR); },
+			[&](){ return llvm_integer(0); }
+		));
 	case ASTn("if"): //it's vitally important that this can check pointers, so that we can tell if they're nullptr.
 		{
 			//condition object is automatically pushed onto the stack.

@@ -100,7 +100,9 @@ constexpr AST_info AST_descriptor[] =
 	{"add", T::integer, T::integer, T::integer}, //adds two integers
 	{"subtract", T::integer, T::integer, T::integer},
 	{"multiply", T::integer, T::integer, T::integer},
-	{"ushr", T::integer, T::integer, T::integer},
+	{"ushr", T::integer, T::integer, T::integer}, //shift right unsigned
+	{"sshr", T::integer, T::integer, T::integer},
+	{"shl", T::integer, T::integer, T::integer}, //returns 0 on overfull.
 	{"udiv", T::integer, T::integer, T::integer},
 	{"urem", T::integer, T::integer, T::integer},
 	a("pointer", special_return).add_pointer_fields(1), //creates a pointer to an alloca'd element. takes a pointer to the AST, but does not compile it; it treats it like a variable name
