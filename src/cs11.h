@@ -25,7 +25,7 @@ extern KaleidoscopeJIT* c;
 
 //being vectors lets us write them directly into a file, since memory is contiguous.
 struct function;
-extern std::vector< function*> event_roots;
+extern std::vector< function*> event_roots; //in our current iteration, we force this to have size exactly 1. it cannot be nullptr.
 extern std::vector< Tptr > type_roots;
 
 class compiler_object

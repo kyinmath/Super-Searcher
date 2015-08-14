@@ -1051,6 +1051,30 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 					else return_code(oversized_offset, 1);
 				}
 				return_code(requires_constant, 1);
+			case Typen("con_vec"):
+				{
+					Tptr type_of_object = type_of_pointer;
+					if (llvm::ConstantInt* k = llvm::dyn_cast<llvm::ConstantInt>(field_results[1].IR)) //we need the second field to be a constant.
+					{
+						uint64_t offset = k->getZExtValue();
+						Tptr offset_type = get_offset_type(type_of_object, offset);
+						if (offset_type == 0) return_code(oversized_offset, 1);
+						if (field_results[0].place)
+						{
+							llvm::Value* pointer_cast = field_results[0].place->allocation;
+							llvm::Value* place = offset ? IRB->CreateConstInBoundsGEP1_64(pointer_cast, offset, s("offset")) : pointer_cast;
+							default_allocation = new_reference(place);
+							finish_special(load_from_memory(place, 1), offset_type);
+						}
+						else
+						{
+							llvm::Value* load_single = IRB->CreateExtractValue(field_results[0].IR, offset, s("offset"));
+							finish_special(load_single, offset_type);
+						}
+					}
+					return_code(requires_constant, 1);
+				}
+
 			default:
 				return_code(type_mismatch, 0);
 			}
@@ -1085,6 +1109,12 @@ Return_Info compiler_object::generate_IR(uAST* target, uint64_t stack_degree)
 			systemquery->addAttribute(llvm::AttributeSet::FunctionIndex, llvm::Attribute::NoUnwind);
 			finish(systemquery);
 		}
+	case ASTn("get_event_loop"):
+		{
+			finish(llvm_integer((uint64_t)event_roots.at(0)));
+		}
+	default:
+		error("no switch");
 	}
 	error("fell through switches");
 }

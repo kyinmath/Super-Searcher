@@ -111,7 +111,7 @@ constexpr AST_info AST_descriptor[] =
 	a("nvec", special_return, T::type), //makes a new vector, type of interior can't be chosen by a constant int, because pointers need further types.
 	{"dynamify", T::dynamic_object, compile_without_type_check}, //turns a regular pointer into a dynamic object. this is necessary for things like trees, where you undynamify to use, then redynamify to store.
 	a("compile", T::function_pointer, compile_without_type_check), //compiles an AST, returning a dynamic AST. for now, we don't return an error code. can also take nothing, to type bootstrap.
-	a("overfunc", T::integer, T::function_pointer, T::function_pointer), //overwrites the first function with the second. return 1 on success.
+	a("overfunc", T::integer, T::function_pointer, T::function_pointer), //overwrites the first function with the second. return 1 on success. checks both function pointers for nonzero.
 	{"run_function", T::dynamic_object, T::function_pointer},
 	//{"dynamic_conc", T::dynamic_pointer, T::dynamic_pointer, compile_without_type_check}, //concatenate the interiors of two dynamic objects
 	a("goto", T::null).add_pointer_fields(1), //first field is label. for success and failure, user must test finiteness manually.
@@ -120,7 +120,7 @@ constexpr AST_info AST_descriptor[] =
 	a("imv_AST", T::AST_pointer, T::dynamic_object), //makes a new dynamic object
 	{"store", T::null, compile_without_type_check, compile_without_type_check}, //pointer, then value. or reference, then value. will use overloading to determine which is needed.
 	{"try_store", T::integer, compile_without_type_check, compile_without_type_check}, //attempts to write the second object into the first. returns 1 on success. works with vector_of_something and pointer_to_something. maybe later, we'll merge this into either store or overfunc.
-	{"load_subobj", special_return, compile_without_type_check, T::integer}, //if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields. this is where the loading is guaranteed to succeed. if function, gives either a copy of the ASTs, or the return type. if AST, gives Nth subAST, or 0. if vector, and 0 is an acceptable failure value, it gives the Nth object.
+	{"load_subobj", special_return, compile_without_type_check, T::integer}, //if pointer, gives Nth subobject. if Type, gives Nth subtype. cannot handle dynamics, because those split into having 6 AST parameter fields. this is where the loading is guaranteed to succeed. if function, gives either a copy of the ASTs, or the return type. if AST, gives Nth subAST, or 0. if vector, and 0 is an acceptable failure value, it gives the Nth object. if con_vec, it gives the Nth subobject.
 	a("load_subobj_ref", T::null, compile_without_type_check, T::integer).add_pointer_fields(1), //creates a reference and places it in the last field, instead of returning it. this is necessary if the loading can fail. used for ASTs, and for vectors.
 	a("dyn_subobj", T::type, compile_without_type_check, T::integer).add_pointer_fields(Typen("pointer") + 1), //if the proper type is a pointer/vector, we return the "pointer to something"/"vector of something". returns the type obtained. can take in either a dynamic object, a pointer to something, or a vector of something.
 	{"vecpb", T::null, compile_without_type_check, compile_without_type_check}, //push an object.
@@ -134,6 +134,7 @@ constexpr AST_info AST_descriptor[] =
 	a("load_tag", T::integer, compile_without_type_check), //takes AST or type.
 	a("load_imv_from_AST", T::null, T::AST_pointer).add_pointer_fields(1),
 	a("load_vector_from_BB", T::null, T::AST_pointer).add_pointer_fields(1),
+	{"get_event_loop", T::function_pointer}, //acquires the function that's used over and over. use overfunc to change it. the actual fptr is fixed, which is good because the event loop doesn't need to reload the fptr constantly. although it must still reload the function constantly.
 	//a("do_after", T::special_return, compile_without_type_check).make_pointer_fields(2),
 	//{"return", T::special_return, T::compile_without_type_check}, have to check that the type matches the actual return type. call all dtors. we can take T::does_not_return, but that just disables the return.
 	//{"snapshot", T::dynamic_pointer, T::dynamic object}, //makes a deep copy. ought to return size as well, since size is a way to cheat, by growing larger.
