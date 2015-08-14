@@ -71,7 +71,6 @@
   <ItemGroup>
     <ClCompile Include="..\mmap.cpp" />
     <ClCompile Include="..\slave.cpp" />
-    <ClCompile Include="..\user_admin.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -60,6 +60,9 @@
     <ClInclude Include="src\fitter.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\generic_ipc.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\cs11.cpp">

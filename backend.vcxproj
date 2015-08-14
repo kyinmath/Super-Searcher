@@ -18,6 +18,7 @@
     <ClInclude Include="src\dynamic.h" />
     <ClInclude Include="src\fitter.h" />
     <ClInclude Include="src\function.h" />
+    <ClInclude Include="src\generic_ipc.h" />
     <ClInclude Include="src\globalinfo.h" />
     <ClInclude Include="src\helperfunctions.h" />
     <ClInclude Include="src\memory.h" />
