@@ -1,10 +1,7 @@
-#include <time.h>
+#include <chrono>
 #include <unistd.h>
-#include <string.h>
-#include <stdio.h>
 #include <sys/mman.h>
 #include <sys/types.h>
-#include <stdlib.h>
 #include <sys/stat.h>        /* For mode constants */
 #include <fcntl.h>           /* For O_* constants */
 #include <cstdint>
@@ -15,90 +12,147 @@
 #include <thread>
 #include "../src/generic_ipc.h"
 
-constexpr uint64_t header_size = 2;
+uint64_t mmap_size = 1024 * 10; //10 kB
+
+multiple_sender_queue admin_receiver;
+std::vector<std::chrono::steady_clock::time_point> time_of_last_ping;
+std::vector<bool> pinged_already;
+std::vector<pid_t> user_PIDs;
+
+//call only when it is already known that an event must be processed
+void admin_handle_event()
+{
+	switch (admin_receiver.get_next_value())
+	{
+	case existence_ping:
+		{
+			uint64_t citizen_ID = admin_receiver.get_next_value();
+			time_of_last_ping.at(citizen_ID) = std::chrono::steady_clock::now(); //.at() performs a bounds check since citizen_ID may not be right.
+			std::cerr << "ping by " << citizen_ID << '\n';
+			pinged_already[citizen_ID] = false;
+			break;
+		}
+	default:
+		error("unknown event enum");
+		break;
+	}
+}
 
 int main() {
 
 	std::random_device random;
-	int integerSize = 1024 * 10; //10 kB
 
-	int number_of_users = std::thread::hardware_concurrency();
-	assert(number_of_users > 0, "hardware_concurrency() returned 0");
+	uint64_t number_of_users = std::thread::hardware_concurrency();
+	number_of_users = 5; //todo: remove this
+	check(number_of_users > 0, "hardware_concurrency() returned 0");
 
 	std::vector<uint64_t> id_list;
-	for (unsigned x = number_of_users; x; --x) //make the king last
+	std::vector<void*> mmap_list;
+	unsigned number_of_mmaps = number_of_users + 1;
+	for (unsigned x = number_of_mmaps; x; --x) //make the king last
 	{
-		id_list.push_back(random() + random() << 32);
+		id_list.push_back(random() + ((uint64_t)random() << 32));
 	}
 
-	for (unsigned x = 0; x < number_of_users; ++x) //make the king last
+	for (unsigned x = 0; x < number_of_mmaps; ++x) //the last one is for the admin to communicate with the king.
 	{
-		const char* file_ID = (std::string("/") + std::to_string(id_list[x])).c_str();
+		mmap_list.push_back(allocate_shm(id_list[x]));
+	}
 
-		std::cerr << "file ID in parent is " << file_ID << '\n';
-
-
-		int descriptor = -1;
-		int rdescriptor = -1;
-		int mmap_flags = MAP_SHARED;
-
-
-		// Open the shared memory.
-		descriptor = shm_open(file_ID, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
-
-		// Size up the shared memory. it'll be 0's.
-		ftruncate(descriptor, integerSize);
-		ftruncate(rdescriptor, integerSize);
-
-		void *mmap_result = mmap(NULL, integerSize, PROT_WRITE | PROT_READ, mmap_flags, descriptor, 0);
-		if (mmap_result == MAP_FAILED) abort();
-
-		if (x)
+	for (unsigned x = 0; x < number_of_mmaps; ++x)
+	{
+		if (x < number_of_users && x != 0) //it's a user
 		{
-			single_sender_queue user_receiver(mmap_result);
+			single_sender_queue user_receiver(mmap_list[x]);
 			user_receiver.initialize();
+
+			user_receiver.write_values({events::file_ID_of_king, id_list[0]});
+			user_receiver.write_values({events::file_ID_of_admin, id_list[number_of_users]});
 		}
-		else
+		else if (x == 0) //it's the king
 		{
-			multiple_sender_queue user_receiver(mmap_result);
+			multiple_sender_queue user_receiver(mmap_list[x]);
 			user_receiver.initialize();
+			
+			user_receiver.write_values({events::file_ID_of_king, id_list[0]});
+			for (unsigned x = 1; x < number_of_users; ++x)
+				user_receiver.write_values({events::file_ID_of_user, x, id_list[x]});
+			user_receiver.write_values({events::file_ID_of_admin, id_list[number_of_users]});
 		}
+		else //it's the admin
+		{
+			admin_receiver.memory_location = (std::atomic<uint64_t>*)(mmap_list[x]);
+			admin_receiver.initialize();
+		}
+	}
+	for (uint64_t x = 0; x < number_of_users; ++x)
+	{
+		time_of_last_ping.push_back(std::chrono::steady_clock::now());
+		pinged_already.push_back(false);
+	}
 
-
-		//todo: this is wrong.
-		for (uint64_t x = 0; x < 40; ++x)
-			mapped_area[x + 1].store(x);
-		mapped_area[0].store(40);
-
-
-
+	for (unsigned x = 0; x < number_of_users; ++x)
+	{
 		pid_t child_pid = fork();
 
 		switch (child_pid) {
 		case 0:
-			//std::cerr << "I'm the child!"; //endl necessary to flush the stream before the process gets exec killed
+			//endl necessary to flush the stream before the process gets exec killed
 			//I'm the child!
-			execl("slave", "slave", "truerun", std::to_string(id).c_str(), std::to_string(integerSize).c_str(), nullptr); //last nullptr is required to terminate a list of arguments, because of Linux variadic nonsense. first "slave" argument is to make the argc work; otherwise, the list of argv[] starts at 0 instead of 1, which is inconsistent with when we run the program from console
-			//arguments: mmap place, mmap size.
+			execl("slave", "slave", (x == 0) ? "trueking" : "truerun", std::to_string(x).c_str(), std::to_string(id_list[x]).c_str(), std::to_string(mmap_size).c_str(), nullptr);
+			//last nullptr is required to terminate a list of arguments, because of Linux variadic nonsense. first "slave" argument is to make the argc work; otherwise, the list of argv[] starts at 0 instead of 1, which is inconsistent with when we run the program from console
+			//arguments: ID (0-N), mmap place, mmap size.
 			break;
 		case -1:
 			abort(); //fail -- super rare
 			break;
 		default:
+			user_PIDs.push_back(child_pid);
+			break;
 			//I'm the parent. now I know what the child's PID is.
-			//let the Kernel GC this object once no process sees it anymore (the mapped file will still stay alive for now)
-			//std::cerr << "I'm the parent!"; //cerr necessary to flush, so that the stream doesn't go afk while we sleep()
-			sleep(1);
-			if (shm_unlink(file_ID)) abort();
-
-			for (uint64_t x = 40; x < 80; ++x)
-				mapped_area[x + 1].store(x);
-			mapped_area[0].store(80);
 		}
 	}
 
 
-	if (munmap(mmap_result, integerSize) == -1) abort();
+	while (1)
+	{
+		while (admin_receiver.should_I_load()) admin_handle_event();
+		for (uint64_t x = 0; x < number_of_users; ++x)
+		{
+			using namespace std::chrono;
+			std::chrono::steady_clock::time_point current_time = std::chrono::steady_clock::now();
+			duration<double> time_span = duration_cast<duration<double>>(current_time - time_of_last_ping[x]);
+			std::cerr << "time difference user " << x << " c " << time_span.count() << '\n';
+			if (time_span.count() > 1) //more than one second elapsed since last aliveness ping
+			{
+				if (time_span.count() > 3) //more than three seconds elapsed!
+				{
+					error("need to kill unresponsive guy");
+				}
+				else if (!pinged_already[x])
+				{
+					pinged_already[x] = true;
+					if (x == 0)
+					{
+						multiple_sender_queue queue(mmap_list[x]);
+						queue.write_values(aliveness_check);
+					}
+					else
+					{
+						single_sender_queue queue(mmap_list[x]);
+						queue.write_values(aliveness_check);
+					}
+				}
+			}
+		}
+		std::this_thread::sleep_for(std::chrono::milliseconds(300));
+	}
+
+	for (uint64_t x = 0; x < mmap_list.size(); ++x)
+	{
+		if (munmap(mmap_list[x], mmap_size) == -1) error("munmap failure");
+		if (shm_unlink((std::string("/") + std::to_string(id_list[x])).c_str()) == -1) error("shm_unlink failure");
+	}
 
 
 	return 0;

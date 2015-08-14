@@ -39,6 +39,7 @@ template<typename ...Rubbish> inline void print(Rubbish && ...rest){}
 extern bool VERBOSE_DEBUG;
 //llvm::StringRef disallowed because cout can't take it
 [[noreturn]] inline constexpr void error(const string& Str) { std::cerr << "Error: " << Str << '\n'; abort(); } //std::cerr, because we want error messages even when default console output (print) is turned off.
+//later, we'll want it to work in a big way by logging and everything. and then we'll have "small errors", for OOM and such.
 
 
 //s("test") returns "test" if enabled, and nothing otherwise
@@ -49,7 +50,7 @@ extern bool VERBOSE_DEBUG;
 inline std::string s(std::string k) { return ""; }
 #else
 inline std::string s(std::string k) { return k; }
-inline constexpr void check(bool condition, const string& Str = "") { if (!condition) error(Str); }
+inline constexpr void check(bool condition, const string& Str) { if (!condition) error(Str); }
 #endif
 //future: expanding memory. (or, acquire maximum available memory? nah, we'll let the OOM killer work)
 //the constexpr objects are outside of our memory pool. they're quite exceptional, since they can't be GC'd. 

@@ -39,7 +39,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Users\CompAcc\Downloads\boost_1_55_0\boost_1_55_0\boost;C:\Users\CompAcc\Stuff\Fitting\linuxheaders</IncludePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Users\CompAcc\Downloads\boost_1_55_0\boost_1_55_0\boost;C:\Users\CompAcc\Stuff\Fitting\linuxheaders;C:\Users\CompAcc\Readonly virtual\llvm-trunk\llvm\include</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

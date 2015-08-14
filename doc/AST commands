@@ -14,31 +14,31 @@ note: break, and return, are basically goto...
 	= system clock
 	= my user ID inside the country (unique)
 	= country ID (unique)
-	= country size, number of countries, who is the controller in your country, who are the other users in the country
-	= suicide. however, requires some kind of confirmation. otherwise, it'll be super bad for the user to luck into this.
+	= number of countries
 ()get system values(int, int)
 	= # of AST fields for tag N
-	= AES encode
-	= AES decode
+	%= AES encode
+	%= AES decode
 	we never return type tags, because user doesn't need to know them.
 ()send object(user, dynobj)
 ()action command(int, int)
 	= print to console
+	= delegation N. king chooses a guy to become the new king. should probably require some confirmation.
+	= steal. if you're not doing so well, then maybe you should kill yourself and become a copy of your brother country.
 ()action command(int)
 	= GC schedule
 ()acquire message (gives dynamic object)
 ()which user gave me the message (gives integer. -1 for admin, 0 for king, 1-N for user)
 
 ()get pointer to function for event driven framework. a specific function is run on an event. possible events:
-	user start (modify directed judgment)
-	country start (modify the random judgment)
+	user start (modify random judgment. if you're the king (looking at your user ID), then do something else as well (modify king judgment.
 	generic running
-	new message (user, size, some objects. used for country competition as well.)
-King:
-	king start (modify king judgment)
-	competition time (country)
-	user crash? no, this should be handled automatically.
 
+user crash? no, this should be handled automatically. copy the oldest user with the furthest ancestor from the crashed user. and send a message to the king telling him which user was copied.
+
+should new message be an event?
+	new message (user, size, some objects. used for country competition as well.)
+	the naive purpose is for efficiency. we're checking for events anyway in our main loop, so we might as well pass in the information, right?
 
 __dynamic object
 ()append-in-place only. fails if no space.
@@ -47,35 +47,16 @@ __dynamic object
 ()get_reserved_memory_size()
 
 
-%Delete user (can be overwritten later). You can't delete yourself; somebody has to be the king.
-%delegate kingship
-%revolution, if you are not king.
-%vote for king.
 communicate with me (encrypted)
 how much RAM does the system support
 
-You get your own filesystem that you can read and write to (but not execute). You have a special NFS folder that people can read from. You can move stuff from virtual drive <--> filesystem.
-	NFS folder is vulnerable to denial of service.
-	A lot of the file access is filesystem-to-your-own-filesystem transfer, then reading directly from your own filesystem. But you can still bypass the disk and load directly to RAM.
-
-Your allowed computer is on a different physical machine for isolation, security, and increased computing power at the cost of latency.
+for eventual running, we'd give the user a shell in a virtual machine, on a different physical machine for isolation, security, and increased computing power at the cost of latency.
 Virtual machines are not to be trusted, because they are insufficiently tested.
+	and later, we'd even give the user a mouse, keyboard, and screen.
 
-user to user communication: raw sockets. (no UDP)
 boost asio.
 encryption, how? this is an admin issue, because the user should be able to identify itself authoritatively.
 	when a new user is placed online, I manually give the user its private key.
 	then, I use my own encryption key to tell all the users the public key.
 How does the user communicate with me? This is also crucial. My computer must respond in a fixed, expected way.
 Revolution: threshold, 1 to N-1, that when reached, kills the king. Should be invisible to the king.
-
-no scope(). because label allows the user to do goto to a lot of places.
-no need to load type from dynamic, because you can do nothing with types (except compare them, but you can still do nothing). the interesting AST is instead the dynamic_subobj, which already returns the type.
-	well, except that you can load the return type of a function. this is useful. so maybe loading types from dynamic is useful as well.
-
-machine input (mouse and keyboard) and output (screen)
-	size of each screen
-
-inputs: sight, sound, access to computer, memory usage, cpu usage, real time, country actions (kings, war results, person transfer, country changes (size or number), new user creation)
-	later: temperature, touch
-outputs: vocal (64 channels for now), mouse, access to virtual machine

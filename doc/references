@@ -1,6 +1,8 @@
-ok, now we must figure out how to write into dynamic pointers.
-	the thing to note is that the writing check is mainly done AFTER all the work of creating the object to be written.
-in addition, I think by the time you're writing into something, you already basically know what the underlying object is.
+problem with references: suppose you load from an object. to do this, you simply reference: this makes a copy.
+which is nice, except that suppose you now want to read the loaded value. you're boned now. all attempts to read that temp value will reload the reference instead.
+	which is kind of how C++ works, except that C++ lets you also make a copy.
+
+I think by the time you're writing into something, you already basically know what the underlying object is because you read it. that information should persist.
 
 idea: dyn_subobj doesn't load a pointer precisely, but it loads a reference. like stack_degree == 2. so you can write into it after all.
 	the problem is that this is equivalent to getting subobject pointers. and that's not allowed to happen.

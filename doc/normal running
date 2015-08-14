@@ -38,3 +38,8 @@ for us, that means vectors of integers are the way to go. corresponding to gener
 		basically, what it means is that a unique interface, such as a global used for passing, will no longer function as an interface after being sent from user to user.
 	
 a lot of communication is just immune system self-culling. you want to make sure you can understand your own words, and then you copy yourself.
+
+we should really reuse our king mechanism for self. that is, the way the king judges his constituents, should equally be used for the constituent to judge himself.
+	this is really good for king development as well.
+	that means you can probably send a message to yourself.
+	

@@ -1,2 +1,5 @@
 how does the king develop? he runs a lot, maybe makes some improvements, and then dies...
 	I don't think king developing is possible, outside of kill-and-mutate.
+	
+we ssh over the network and then start the admin that way.
+then we use boost asio to communicate.

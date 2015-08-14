@@ -1,17 +1,3 @@
-shared memory is in the address space of the creator, but does it belong to the creator?
-
-everybody gets his own admin communication.
-
-king must keep track of all the other users. this must be done as part of the starting user.
-	a vector full of information. vector of vector of ints.
-
-admin sends possible signals. these are:
-YOU are the winner. pack up and make a copy of yourself!
-COUNTRY is the winner. pack up and make a copy of yourself!
-YOU are the king.
-If king: some user died. User #.
-Country competition. how?
-
 shared memory is divided into two halves. the local admin simply increments a counter, allocating as he goes along. the user follows along with an internal pointer.
 	when the admin tries to move from one half to the other, he checks if the user is done with that half. to do this, admin sets the "used" flag on a half whenever allocating from it. then, user clears the "used" flag when user's internal event checking is done with it.
 if the admin tries to move from one half to the other and it's still in use, then the user is deadlocked and the admin kills the user.
