@@ -21,8 +21,8 @@ uint64_t mmap_size; //same number for every single IPC receiver
 uint64_t user_number; //0-N
 
 
-single_sender_queue citizen_receive_mem; //only used if you are a citizen. your own receiver.
-std::vector<single_sender_queue> citizen_mem; //only used if you are the king. the country's receivers.
+multiple_sender_queue citizen_receive_mem; //only used if you are a citizen. your own receiver.
+std::vector<multiple_sender_queue> citizen_mem; //only used if you are the king. the country's receivers.
 multiple_sender_queue king_receive_mem;
 multiple_sender_queue admin_receive_mem;
 

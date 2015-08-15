@@ -1,4 +1,6 @@
-a vector is good in general. simple long-chain types are not that good, because you must make a new type every single time you add (since types are immutable)
+a vector is good in general. simple long-chain types are not that good, because they require constant type checks.
+
+with long-chain types, you must make a new type every single time you add (since types are immutable)
 	although...if we can guarantee that vector types are always private, so one dynamic object <=> one private type, and disallow copying types, then that will be awesome.
 	and it'll be invisible to the user as well.
 		this will also allow invisible spying on additions to the vector. that's good, but are there downsides?
@@ -6,41 +8,19 @@ a vector is good in general. simple long-chain types are not that good, because 
 
 
 
-
-
-
-so here's what we're doing.
-dynamic pointer -> pointer to dynamic object. store the type in the target instead of the pointer. the purpose is to make all objects size 1. this makes get_size fast, which is very good for dynamic objects, since you have to get the Nth element. so instead of checking 1-N, you can just check N. O(N) to O(1). even though every dynamic pointer type check has an extra indirection, it also loses an indirection from not needing to read the type.
-	is there another advantage? originally, when we wanted this, we were trying to allow for expansion. storing the type next to the target made it 
+		
+having all objects size 1 makes get_size fast, which is very good for dynamic objects, since you have to get the Nth element. so instead of checking 1-N, you can just check N. O(N) to O(1). even though every dynamic pointer type check has an extra indirection, it also loses an indirection from not needing to read the type.
+	is there another advantage? originally, when we wanted this, we were trying to allow for expansion. but memory issues disallow easy expansion.
 dynamic pointer concatenation = disabled.
 vector = pointer to std::vector<uint64_t>. stores size, and reserved size. the purpose of storing reserved size is to allow for concatenation. if you want fixed size, use dynamic pointer instead.
 	advantage: guaranteed modification once the type is known
 	advantage: pushback (which is necessary), and popback (which is also necessary)
-	
-fake dynamic pointer enabled. necessary for references, when you don't know the type of the target. can't be stored anywhere. handled like old-style dynamic pointers.
 
-the downside is that if we have a regular pointer to something, we can't turn it into a dynamic pointer. because there's no type information stored there.
-problem: how to see the inside of a vector. not even old 2-size dynamic pointers will work, since you can't get pointers, only references.
-	generally, you'd normally handle things one at a time. load the Nth element. then check the first, check the second, etc.
-	in C++, you wouldn't slice: load Nth + Mth offset. then Nth + M+1th offset. no, only a single load N.
-	well, we could handle it like the usual C++ anyway?
-
-problem: with vector double-load, what we're doing is two checks. one check for the vector size, then another check for the actual size
-problem: how do get references to vector objects? if you're past the end, you're basically boned.
-	we disallow the reference in that case.
-solved: how are you going to specify the vector type? it's impossible for the user to specify what the type of an empty vector should be. 
-	for now, if we only allow one object per vector, we can pass in a constantint, specifying the size.
+for now, if we only allow one object per vector, we can pass in a constantint, specifying the size.
 
 
 vectors have serious bootstrapping issues. this is important for AST creation.
 we're fixing this by using typeof(). and then, we allow for convert_to_AST to take a null third field, which means that all fields should be null.
-
-
-
-idea: dynamic pointers have fixed targets. so no expansion or deletion. you can replace the pointer with another pointer though.
-however, vectors have arbitrary targets. which have fixed types.
-unfortunately, in this case we need to work out ownership semantics...
-	also, how the hell do we grab the inside of an arbitrary vector?
 
 in practice, the loss of information from having only vectors, instead of arbitrary variadics, is pretty low.
 	I never needed it in C++. and you can have a vector of dynamic pointers anyway.

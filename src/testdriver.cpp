@@ -659,8 +659,8 @@ int main(int argc, char* argv[])
 			}
 			svector* vector_of_functions = new_vector();
 			uint64_t* pointer_to_function_unit = new_object_value(0, vector_of_functions);
-			Tptr Tvector_of_functions = new_unique_type(Typen("vector"), u::function_pointer);
-			Tptr Tfuncunit = concatenate_types({u::function_pointer, Tvector_of_functions});
+			Tptr Tvector_of_dynamics = new_unique_type(Typen("vector"), u::dynamic_object);
+			Tptr Tfuncunit = concatenate_types({u::function_pointer, Tvector_of_dynamics});
 			Tptr Tpointerfunc_unit = new_unique_type(Typen("pointer"), Tfuncunit);
 			dynobj* funcunit = new_dynamic_obj(Tpointerfunc_unit);
 			(*funcunit)[0] = 0;

@@ -138,6 +138,7 @@ constexpr AST_info AST_descriptor[] =
 	//a("do_after", T::special_return, compile_without_type_check).make_pointer_fields(2),
 	//{"return", T::special_return, T::compile_without_type_check}, have to check that the type matches the actual return type. call all dtors. we can take T::does_not_return, but that just disables the return.
 	//{"snapshot", T::dynamic_pointer, T::dynamic object}, //makes a deep copy. ought to return size as well, since size is a way to cheat, by growing larger.
+	//{"copy_target", T::special_return, T::compile_without_type_check}, //does a shallow copy. good for dynamic pointers, vectors.
 	//{"optimize", T::AST_pointer, T::AST_pointer}, //optimizes an AST chain into a better AST chain that produces the same code.
 	//{"send_message", T::integer, T::integer, T::dynamic_object}, //returns 1 on success. integer is user-ID, dynamic object is what is to be sent.
 	{"never reached", special_return}, //marks the end of the currently-implemented ASTs. beyond this is rubbish.

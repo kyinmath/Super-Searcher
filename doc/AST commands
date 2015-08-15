@@ -33,6 +33,8 @@ admin messages:
 	user start (modify random judgment. if you're the king (looking at your user ID), then do something else as well (modify king judgment).
 	user crash. this is handled automatically. copy the oldest user with the furthest ancestor from the crashed user. and send a message to the king telling him which user was copied.
 
+should king running/user running use different event functions? if not, then you'll have to manually check your ID, then branch.
+
 should new message be an event? that is, it makes the user run a special function?
 	new message (user, size, some objects. used for country competition as well.)
 	the naive purpose is for efficiency. we're checking for events anyway in our main loop, so we might as well pass in the information, right? but the cost is remembering a whole new function.

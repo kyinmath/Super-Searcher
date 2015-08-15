@@ -8,9 +8,6 @@
 #include <sys/stat.h>        /* For mode constants */
 #include <fcntl.h>           /* For O_* constants */
 
-//sender position, then user read position, then memory start.
-//each user has one receiver and one sender.
-//king and admin have multi-sender queues. individuals have single-sender queues.
 //we assume that users cannot crash in the middle of writing to a queue. that's very optimistic. what if the admin decides to send a kill-message?
 extern uint64_t mmap_size;
 constexpr uint64_t ssqh_size = 2; //single sender queue header size
@@ -22,8 +19,12 @@ enum events
 	file_ID_of_admin, //address of shared memory of admin
 	existence_ping, //from a user to the admin, telling the admin that the user still exists.
 	aliveness_check, //from admin to user. requesting a ping.
+	panic, //from anyone to anyone. forces everyone to shut down and serialize. used on bug event. unimplemented
 };
+/*
+//nobody is a single sender queue anymore. because both the king and the admin can send messages.
 
+//sender position, then user read position, then memory start. used for things that only have a single sender.
 struct single_sender_queue
 {
 	single_sender_queue() : memory_location((std::atomic<uint64_t>*)53535) {}
@@ -106,7 +107,7 @@ struct single_sender_queue
 		commit_memory(values.size());
 	}
 };
-
+*/
 
 constexpr uint64_t msqh_size = 3; //_multiple_ sender queue header size. sender reserve, then sender size, then user size.
 

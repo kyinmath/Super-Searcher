@@ -63,7 +63,7 @@ int main() {
 	{
 		if (x < number_of_users && x != 0) //it's a user
 		{
-			single_sender_queue user_receiver(mmap_list[x]);
+			multiple_sender_queue user_receiver(mmap_list[x]);
 			user_receiver.initialize();
 
 			user_receiver.write_values({events::file_ID_of_king, id_list[0]});
@@ -132,16 +132,8 @@ int main() {
 				else if (!pinged_already[x])
 				{
 					pinged_already[x] = true;
-					if (x == 0)
-					{
-						multiple_sender_queue queue(mmap_list[x]);
-						queue.write_values(aliveness_check);
-					}
-					else
-					{
-						single_sender_queue queue(mmap_list[x]);
-						queue.write_values(aliveness_check);
-					}
+					multiple_sender_queue queue(mmap_list[x]);
+					queue.write_values(aliveness_check);
 				}
 			}
 		}
