@@ -68,3 +68,10 @@ note that you can't pass references as parameters; you'll need to pass pointers
 if we allow references, then note that dynamic_subobj is not equivalent to returning a fake-dynamic pointer. because the fake-dynamic pointer might be stored somewhere.
 
 references aren't perfect, because you can't create a vector of them. if you're traversing a tree using references only, you don't really have a way to store your position.
+
+
+
+maybe load_subobj_ref can use a phi for its reference?
+	but that will create null references. even C++ doesn't allow this.
+	if we build a rubbish slot just to have something to point to, that will work poorly.
+	

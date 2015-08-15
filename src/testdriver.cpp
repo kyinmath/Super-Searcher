@@ -643,16 +643,30 @@ int main(int argc, char* argv[])
 
 	if (TRUERUN)
 	{
+		//load from scratch!
 		if (FROM_FILE)
 		{
 			source_reader k(file, '\\');
-			svector* static_vector_of_functions = new_vector();
-			uint64_t* pointer_to_vec = new_object_value(static_vector_of_functions);
+
+			{
+				svector* static_vector_of_functions = new_vector();
+				uint64_t* pointer_to_vec = new_object_value(static_vector_of_functions);
+				Tptr Tvector_of_functions = new_unique_type(Typen("vector"), u::function_pointer);
+				Tptr Tpointer_vec_func = new_unique_type(Typen("pointer"), Tvector_of_functions);
+				dynobj* imv_vector_of_functions = new_dynamic_obj(Tpointer_vec_func);
+				(*imv_vector_of_functions)[0] = (uint64_t)pointer_to_vec;
+				k.ASTmap.insert({"pointer_to_vec_of_functions", (uAST*)imv_vector_of_functions});
+			}
+			svector* vector_of_functions = new_vector();
+			uint64_t* pointer_to_function_unit = new_object_value(0, vector_of_functions);
 			Tptr Tvector_of_functions = new_unique_type(Typen("vector"), u::function_pointer);
-			Tptr Tpointer_vec_func = new_unique_type(Typen("pointer"), Tvector_of_functions);
-			dynobj* imv_vector_of_functions = new_dynamic_obj(Tpointer_vec_func);
-			(*imv_vector_of_functions)[0] = (uint64_t)pointer_to_vec;
-			k.ASTmap.insert({"pointer_to_vec_of_functions", (uAST*)imv_vector_of_functions});
+			Tptr Tfuncunit = concatenate_types({u::function_pointer, Tvector_of_functions});
+			Tptr Tpointerfunc_unit = new_unique_type(Typen("pointer"), Tfuncunit);
+			dynobj* funcunit = new_dynamic_obj(Tpointerfunc_unit);
+			(*funcunit)[0] = 0;
+			(*funcunit)[1] = (uint64_t)vector_of_functions;
+			k.ASTmap.insert({"func_unit", (uAST*)funcunit});
+
 			uAST* starting_event_AST = k.read();
 			function* event_func = compile_returning_just_function(starting_event_AST);
 			check(event_func != 0, "zero function from file");

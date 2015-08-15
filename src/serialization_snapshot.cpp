@@ -45,6 +45,7 @@ void write_to_file(uint64_t id)
 
 struct file_header
 {
+	uint64_t version_number; //for different versions of the file format.
 	uint64_t* pool;
 	uint64_t pool_size;
 	function* function_pool;
@@ -61,6 +62,7 @@ void serialize(uint64_t id)
 	check(id_file.is_open(), "stream opening failed");
 	file_header header;
 
+	header.version_number = 0;
 	header.pool = big_memory_pool;
 	header.pool_size = pool_size;
 	header.function_pool = function_pool;

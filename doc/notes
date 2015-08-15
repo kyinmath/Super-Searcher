@@ -20,3 +20,5 @@ can just kill off threads that are in infinite loops, leaving the user in a vali
 
 20.3.3/8 in C++03
 "For templates greater, less, greater_equal, and less_equal, the specializations for any pointer type yield a total order, even if the built-in operators <, >, <=, >= do not."
+
+splitting things into functions is really good, because it provides logical boundaries between them. that means that judgment's modification is more focused and relevant, instead of spraying crap into adjacent operations.

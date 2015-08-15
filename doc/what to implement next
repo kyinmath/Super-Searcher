@@ -1,7 +1,5 @@
-maybe load_subobj_ref can use a phi for its reference?
-	but that will create null references. even C++ doesn't allow this.
-	if we build a rubbish slot just to have something to point to, that will work poorly.
-	
+current problem: goodness and the event searcher.
+
 serialization/snapshots. judgment MUST iterate very quickly. for example, when swinging a tennis racquet, you readjust after every shot.
 
 how is the king going to work? must test his countrymen. send out probes, then measure their success.
