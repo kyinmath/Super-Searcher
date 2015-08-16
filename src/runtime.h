@@ -74,27 +74,28 @@ inline dynobj* run_null_parameter_function(function* func)
 	else --finiteness;
 	void* fptr = func->fptr;
 	Tptr return_type = func->return_type;
+	if (return_type == u::dynamic_object) return ((dynobj*(*)())fptr)(); //special case: if it already returns a dynamic object, don't wrap it again.
 	uint64_t size_of_return = get_size(return_type);
 	//print("return type of run function is: "); output_type(return_type); print('\n');
 	if (size_of_return == 1)
 	{
-		uint64_t(*FP)() = (uint64_t(*)())(uintptr_t)fptr;
+		uint64_t(*FP)() = (uint64_t(*)())fptr;
 		return (dynobj*)new_object_value((uint64_t)return_type, FP());
 	}
 	else if (size_of_return == 0)
 	{
-		void(*FP)() = (void(*)())(intptr_t)fptr;
+		void(*FP)() = (void(*)())fptr;
 		FP();
 		return 0;
 	}
-/*	else if (size_of_return >= 4)
+/*	else if (size_of_return >= 4) //probably is so rare, not even worth making a case for.
 	{
 		auto FP = ((uint64_t*)(*)(uint64_t*))(void*)fptr;
 		uint64_t* k = FP(new uint64_t[size_of_return]);
 		output_array(&k[0], size_of_return);
 		return std::array < uint64_t, 2 > {{(uint64_t)return_type, (uint64_t)k}};
 	}*/
-	else //make a trampoline. this is definitely a bad solution, but too bad for us.
+	else //make a trampoline. this is definitely a bad solution, but too bad for us. later, we'll want a persistent trampoline that we can reuse and pass in function pointers to.
 	{
 		llvm::LLVMContext mini_context;
 		llvm::IRBuilder<> new_builder(mini_context);
@@ -110,7 +111,7 @@ inline dynobj* run_null_parameter_function(function* func)
 
 		BasicBlock *BB(BasicBlock::Create(*context, "entry", trampoline));
 		new_builder.SetInsertPoint(BB);
-		Value* target_function = llvm_function((uint64_t(*)(void))fptr, llvm_type(size_of_return)); //cast the function to a fake fptr type.
+		Value* target_function = llvm_function((uint64_t(*)())fptr, llvm_type(size_of_return)); //cast the function to a fake fptr type.
 		Value* result_of_call = new_builder.CreateCall(target_function, {});
 
 		//START DYNAMIC. writes in both the type and the object.

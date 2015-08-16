@@ -35,11 +35,9 @@ admin messages:
 
 should king running/user running use different event functions? if not, then you'll have to manually check your ID, then branch.
 
-should new message be an event? that is, it makes the user run a special function?
-	new message (user, size, some objects. used for country competition as well.)
-	the naive purpose is for efficiency. we're checking for events anyway in our main loop, so we might as well pass in the information, right? but the cost is remembering a whole new function.
-	and binding the iteration-speed to events is a pretty bad idea. sometimes you want multiple events, such as if you're streaming information.
-	we can make new user start a message as well.
+new message (user, size, some objects. used for country competition as well.)
+	the naive purpose of choosing event-loop functions based on the current event is for efficiency. we're checking for events anyway in our main loop, so we might as well pass in the information, right? but the cost is remembering a whole new function.
+	but binding the iteration-speed of event-reading to the event-loop timing is a pretty bad idea. sometimes you want multiple events, such as if you're streaming information.
 
 __dynamic object
 ()append-in-place only. fails if no space.
@@ -54,9 +52,5 @@ for eventual running, we'd give the user a shell in a virtual machine, on a diff
 Virtual machines are not to be trusted, because they are insufficiently tested.
 	and later, we'd even give the user a mouse, keyboard, and screen.
 
-boost asio.
-encryption, how? this is an admin issue, because the user should be able to identify itself authoritatively.
-	when a new user is placed online, I manually give the user its private key.
-	then, I use my own encryption key to tell all the users the public key.
-How does the user communicate with me? This is also crucial. My computer must respond in a fixed, expected way.
+user identification, using public/private keys.
 Revolution: threshold, 1 to N-1, that when reached, kills the king. Should be invisible to the king.

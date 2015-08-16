@@ -1,7 +1,13 @@
 approximate goodness: Goodness absolutely must be divided into a few functions, so that judgment can work properly.
 	then, something must choose the appropriate goodness function.
-	the chooser is a single function, with a big tree and maybe some persistent memory, and maybe some gotos.
-	it returns the function pointer.
-
-is it ok that the chooser is only a single level? because then judgment has a hard time working with the chooser.
-	so the answer is no. instead, approximate goodness is a huge mess of functions. each function returns a different function. judgment stores each function in turn, and runs it.
+	each chooser is a single function, with a big tree and maybe some persistent memory, and maybe some gotos. it returns the function pointer.
+	it's not ok if chooser is only a single level, because then judgment has a hard time working with the chooser.
+		thus, approximate goodness is a huge mess of functions. each function returns a different function. judgment stores each function in turn, and runs it.
+	the message passing is through yet another global: the judgment in-queue. this is a vector of integers, and is somehow interpreted by judgment. judgment takes a look every time a goodness function runs. it uses the information when deciding whether to stop or continue.
+modification of the goodness mesh requires heavy moving around of AST snippets/function addresses from one function to another.
+	
+finally, true goodness. how do we decide if something is truly good? and if we do decide so, then this ought to affect how we judge the rest of goodness.
+	are there gradients to how truly good something is? for example, the signal of truth may be obscured by noise. like in Chess, winning/losing is true goodness, but there are other factors as well.
+	
+note how goodness returns other functions. should normal running also return functions?
+	no, because choosing adjacent functions is a goodness responsibility, but not a normal running one.

@@ -663,8 +663,7 @@ int main(int argc, char* argv[])
 			Tptr Tfuncunit = concatenate_types({u::function_pointer, Tvector_of_dynamics});
 			Tptr Tpointerfunc_unit = new_unique_type(Typen("pointer"), Tfuncunit);
 			dynobj* funcunit = new_dynamic_obj(Tpointerfunc_unit);
-			(*funcunit)[0] = 0;
-			(*funcunit)[1] = (uint64_t)vector_of_functions;
+			(*funcunit)[0] = (uint64_t)pointer_to_function_unit;
 			k.ASTmap.insert({"func_unit", (uAST*)funcunit});
 
 			uAST* starting_event_AST = k.read();

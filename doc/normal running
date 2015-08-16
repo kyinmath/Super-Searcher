@@ -1,6 +1,9 @@
-new event:
+new arbitrary message: handled by event handler (which is privileged). event handler often stores it in the message in-queue, and sometimes in the goodness in-queue.
+
+new message in in-queue:
 1. store the event somewhere
-2. event searcher runs on the function units. does some culling, ends up at a single function. copies that function, passes to fuzzer judgment
+2. event searcher runs a function unit, then runs the privileged approximate goodness function.
+	then it branches and searches. does some culling, ends up at a single function. copies that function, passes to fuzzer judgment
 3. judgment reruns the function constantly, modifying it until it's considered "good". (how? we need to return values somehow. and we need a goodness function somewhere, which means we must have a way to choose a goodness function as well)
 	should it should keep multiple versions, modifying simultaneously? if so, that'd be very difficult, because you'd need to keep these functions around (where?) and remember their performance across multiple encryption runs (how?)
 
@@ -28,18 +31,3 @@ so how should goodness be operated? one thing is that each goodness function sho
 therefore, we continually move globals from the creation functions into the goodness function.
 	these globals should be the things that are the product, though. and again, how do we create a product?
 	at least, they should include the product. something like AIME may want to include just the answer, but have an underlying proof.
-
-how does a human normally work with interfacing answers? our chess system wants a specific answer format.
-	in the real world, you use your hands. for us, that corresponds to words.
-	it also means basic communication.
-for us, that means vectors of integers are the way to go. corresponding to general speech
-	what's more, it's logical that we communicate with the admin using vectors of integers. and it's logical that the users communicate with each other using vectors of integers.
-	this does mean that there's no more sexual recombination, but with globals, that isn't significantly possible anyway (unless the addresses actually do happen to match up).
-		basically, what it means is that a unique interface, such as a global used for passing, will no longer function as an interface after being sent from user to user.
-	
-a lot of communication is just immune system self-culling. you want to make sure you can understand your own words, and then you copy yourself.
-
-we should really reuse our king mechanism for self. that is, the way the king judges his constituents, should equally be used for the constituent to judge himself.
-	this is really good for king development as well.
-	that means you can probably send a message to yourself.
-	
