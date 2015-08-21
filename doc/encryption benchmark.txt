@@ -26,9 +26,19 @@ what about board games? in chess, you give feedback multiple times, and only lea
 problem: real life also likes to have functions, i.e. boundary separation. programs can usually be factored into components with minimal separation, and that are reused.
 	this is possible by referencing previous ASTs, which makes them run again.
 
-is this realistic, though? real life has the property that numbers never grow too large. but multiplication can cause troubles with huge overflows, thus spilling every single number to be very large.
+problem: the format of the vector is important as well. we want the user to be able to develop communication, and choose how many integers to pass around. thus, things like context-free grammars.
+	but then, how do we score them?
+	idea: the "solution program" simply has an occasional "read integer from vector" command. then, it uses these integers to produce a score. user's goal is to maximize score.
+		we'd need a way to prevent this from becoming very stupid though. for example, if the solution program just reads in a certain integer as the score.
+		and we also need randomization, so the user can't just find a single amazing value and run with it forever
+		this also solves the problem of chess playing, and of responding to stimuli. no more simple "copy".
+		however, it lowers the feedback spray - users get much less information in response.
+idea: perhaps the response "goodness" from admin can also be an interpreted vector. however, we do need meaningful feedback to be understandable.
+	so if we return this interpreted vector, it should give extra information, and not be the only information.
+under this scheme, goodness is really hard to work with. how does the user determine what the admin's goodness function is? how does the user evaluate itself when it doesn't even know what the admin program is?
+	
+is our system realistic? real life has the property that numbers never grow too large. but multiplication can cause troubles with huge overflows, thus spilling every single number to be very large.
 	solution: after every pass, we run some normalization function. maybe logarithm.
-
 I think: we're not going to have a (1) value. because real numbers can be discretized (as we see with the brain). similarly, negative numbers can be forced onto positive (similarly with the brain). although there may be some costs here.
 	but this is modeling. is it natural? probably not.
 

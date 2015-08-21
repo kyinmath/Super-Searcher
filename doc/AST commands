@@ -32,12 +32,10 @@ note: break, and return, are basically goto...
 admin messages:
 	user start (modify random judgment. if you're the king (looking at your user ID), then do something else as well (modify king judgment).
 	user crash. this is handled automatically. copy the oldest user with the furthest ancestor from the crashed user. and send a message to the king telling him which user was copied.
+	starting new event.
 
 should king running/user running use different event functions? if not, then you'll have to manually check your ID, then branch.
 
-new message (user, size, some objects. used for country competition as well.)
-	the naive purpose of choosing event-loop functions based on the current event is for efficiency. we're checking for events anyway in our main loop, so we might as well pass in the information, right? but the cost is remembering a whole new function.
-	but binding the iteration-speed of event-reading to the event-loop timing is a pretty bad idea. sometimes you want multiple events, such as if you're streaming information.
 
 __dynamic object
 ()append-in-place only. fails if no space.

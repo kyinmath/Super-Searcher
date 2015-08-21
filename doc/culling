@@ -1,0 +1,3 @@
+how do we really cull running functions?
+	I think, we had better have the first vector of function units treated specially. because life is divided into discrete tasks. even if something is non-useful many times in a row, it may be useful for a different situation.
+it's when it's intended to be useful for a purpose, but isn't, that it should be culled.

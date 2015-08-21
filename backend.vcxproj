@@ -11,6 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\ancestry.h" />
     <ClInclude Include="src\ASTs.h" />
     <ClInclude Include="src\comms.h" />
     <ClInclude Include="src\cs11.h" />
@@ -29,6 +30,7 @@
     <ClInclude Include="src\vector.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\ancestry.cpp" />
     <ClCompile Include="src\comms.cpp" />
     <ClCompile Include="src\cs11.cpp" />
     <ClCompile Include="src\memory.cpp" />

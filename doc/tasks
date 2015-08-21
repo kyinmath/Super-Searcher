@@ -1,5 +1,6 @@
 initial learning will come through automated artificial selection for simplistic pattern recognition.
 it has to be as fast as possible, yet still retain potential for improvement.
+acceptance should be generous. so even if the vector size is wrong, the user will still get points. it takes a while for the user to learn the correct format to send in answers, for any task. reading instructions, like a user does when playing chess, is a bit difficult.
 
 idea for automatic testing:
 1. the admin, separately, creates a random function that sprays out a huge amount of data. it has some global integers. the function reads the global integers, maybe tweaks them, then uses data to set other global integers. the user only gets to see half of the global integers.

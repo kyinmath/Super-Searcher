@@ -63,6 +63,9 @@
     <ClInclude Include="src\generic_ipc.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\ancestry.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\cs11.cpp">
@@ -84,6 +87,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\comms.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ancestry.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

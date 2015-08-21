@@ -1,0 +1,10 @@
+keeping track of the ancestry tree.
+we have a tree full of nodes, each nodes has an arbitrary number of descendants.
+then, some nodes are marked as "living". a living node corresponds to a valid current user.
+a node is kept alive iff it has a living descendant.
+so: creating nodes is easy. each node has a single parent, and a possibly-empty vector of subnodes.
+when a node is destroyed, then go up to its parent. if the parent has no other living descendants, then kill the parent as well.
+	the exception is the oldest node in a connected component. if a node has no parent, and only one descendant, and is not living, then it should be killed as well. then, its single descendant should be probed as well.
+	
+can we collapse dead nodes by moving their descendants to the parent? I think the answer is no. because suppose a dead node has two dead subnodes, each with two living subnodes. by collapsing the tree, it's no longer possible to see who is farther away.
+	however, if a dead node has only one subnode, then it can be collapsed

@@ -1,0 +1,16 @@
+how does a human normally work with interfacing answers? our chess system wants a specific answer format.
+	in the real world, you use your hands. for us, that corresponds to words.
+	it also means basic communication.
+for us, that means vectors of integers are the way to go. corresponding to general speech
+	what's more, it's logical that we communicate with the admin using vectors of integers. and it's logical that the users communicate with each other using vectors of integers.
+	this does mean that there's no more sexual recombination, but with globals, that isn't significantly possible anyway (unless the addresses actually do happen to match up).
+		basically, what it means is that a unique interface, such as a global used for passing, will no longer function as an interface after being sent from user to user.
+	
+a lot of communication is just immune system self-culling. you want to make sure you can understand your own words, and then you copy yourself.
+
+we should really reuse our king mechanism for self. that is, the way the king judges his constituents, should equally be used for the constituent to judge himself.
+	this is really good for king development as well.
+	that means you can probably send a message to yourself.
+
+how does the king manage to switch between users? if the king can't, then he'll need to process every user completely before moving on to the next user.
+	for the king to switch, he'll need a vector of the entire thing, to remember people. but we only have one copy of goodnes. so we need a switch, to make goodness work on everything equally.

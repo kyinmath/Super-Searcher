@@ -5,6 +5,9 @@ note that only the country admin needs to get entropy passed in. the individual 
 For actually sending commands like shutdown and query, i would use message queues. I previously used localhost network programming to do that.."
 	-litb, on IPC
 	
+As far as I know MPI is currently incapable of handling the situation, when the new distributed nodes want to join the already started group. The problems also may occur if one of the nodes goes offline.
+https://stackoverflow.com/questions/2399019/for-distributed-applications-which-to-use-asio-vs-mpi
+
  no user-to-user communication. the purpose here is to prevent cheating.
 	later, when they connect to the internet, there will be cheating for sure. but hopefully at that time, there will be more intelligent anti-cheating mechanisms for kings.
 	

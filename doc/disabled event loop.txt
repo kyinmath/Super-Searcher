@@ -1,0 +1,2 @@
+the naive purpose of choosing event-loop functions based on the current event is for efficiency. we're checking for events anyway in our main loop, so we might as well pass in the information, right? but the cost is remembering a whole new function.
+	but binding the iteration-speed of event-reading to the event-loop timing is a pretty bad idea. sometimes you want multiple events, such as if you're streaming information.

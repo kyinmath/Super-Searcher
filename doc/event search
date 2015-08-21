@@ -1,5 +1,6 @@
 how the function units work for now:
 every time you create a new function, make a graph two-way link between them.
+we have a base vector of things to search?
 
 event system: we have to search for functions. we use a separate, modifiable function. this function randomly browses through the graph, starting with an initial function.
 	it creates a connection from function A to function B if function B turned out to be useful? yeah, that's perfect. better, more useful functions will get stronger connectionsb
@@ -10,9 +11,13 @@ event system: we have to search for functions. we use a separate, modifiable fun
 		on the other hand, event search is legitimately a hard problem. like figuring out when geometry applies to algebra.
 		building descriptors of neurons is basically impossible.
 
-
-this requires us to get our function-to-something pointers going...
-
+the most useful functions should be placed at the beginning of a vector. that enhances the information storage of our event system.
+	when you start searching, you start searching from the beginning until you give up at some point.
+well, maybe it's good to store a single integer next to each function, as well? this would be used to rank functions, to preserve information instead of randomly deciding to permute.
+	integers aren't that great. they would need to be scaled, and then you still wouldn't be able to search on them well.
+		but the scaling is easy. you can have the scale be the value of the original function. so 2^16 = 1. 
+	ordering is much better: easy to search through.
+is that really the scale we want? the proper scale would be something like "chance of improvement * chance of awesomeness".
 
 
 special unit of storage: "function unit"
@@ -23,7 +28,7 @@ the thing that finds functions is the "event"
 how to find better functions?
 	we need a recommendation system. but recommendation systems are Turing-limit-complete. they must be specialized for the neuron you're looking at. so I guess we're stuck with our function units.
 
-current problem: function units are hard to change when you call them. if you have a function call AST, then you won't have any way to switch your called function to a neighboring function.
+solved: function units are hard to change when you call them. if you have a function call AST, then you won't have any way to switch your called function to a neighboring function.
 	so we place the function unit in the imv, next to the function call. the pointer to neighboring functions is at risk of being killed by random modification, unless we bake them together.
 	so we do bake them together. then, function are imv of [concatenation function pointer, pointer to function unit]. you then load out the function pointer. this costs no runtime penalty because it's a constant integer. we can't store the vector because it might be invalidated. we can't store pointer to the vector because it's not a full object. thus, we have to store a pointer to the function unit.
 that means the event searcher is actually Directed Judgment.
@@ -40,8 +45,7 @@ event searcher:
 testing works by feeding the dynamic return object to the goodness function.
 
 
-to actually receive values from the tested functions, the event searcher stores their return value. it doesn't let the functions modify some global; otherwise, the functions could cheat by screwing over other functions.
-	but what kind of return value should be gotten? and how do we pass in information to the functions?
+to actually receive values from the tested functions, the event searcher receives values through a global vector of ints.
 
 event searching, testing functions one by one, will work very poorly for combination. for example, if you want to chain multiple functions together, each solving a small part of the problem. which we do want.
 	idea: we can use the event searcher mechanism to find event searchers.
